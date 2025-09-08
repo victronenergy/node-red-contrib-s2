@@ -1,0 +1,11 @@
+{
+  "name": "esbuild-node-red-experiment",
+  "version": "0.1.0",
+  "description": "Experimental package to test setting up a node-red contribution project with typescript support\"",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run jest"
+  },
+  "author": "chris@uber5.com",
+  "license": "ISC"
+}
