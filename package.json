@@ -4,7 +4,8 @@
   "description": "Experimental package to test setting up a node-red contribution project with typescript support\"",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild src/my-node.ts --bundle --platform=node --target=node18 --outdir=dist --external:node-red && cp src/my-node.html dist/my-node.html",
+    "build": "esbuild src/* --bundle --platform=node --loader:.html=copy --loader:.ts=ts --target=node18 --outdir=dist --external:node-red",
+    "dev": "esbuild --watch src/* --bundle --platform=node --loader:.html=copy --loader:.ts=ts --target=node18 --outdir=dist --external:node-red",
     "test": "npm run jest"
   },
   "author": "chris@uber5.com",
