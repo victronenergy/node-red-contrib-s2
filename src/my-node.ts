@@ -1,6 +1,7 @@
 import { NodeAPI } from 'node-red';
 
 module.exports = function(RED: NodeAPI) {
+  console.log("Hey, this is my-node!");
   function MyNode(config: any) {
     RED.nodes.createNode(this, config);
     const node = this;
