@@ -6,7 +6,7 @@
   "scripts": {
     "build": "esbuild src/* --bundle --platform=node --loader:.html=copy --loader:.ts=ts --target=node18 --outdir=dist --external:node-red",
     "dev": "esbuild --watch src/* --bundle --platform=node --loader:.html=copy --loader:.ts=ts --target=node18 --outdir=dist --external:node-red",
-    "test": "npm run jest"
+    "test": "jest"
   },
   "author": "chris@uber5.com",
   "license": "ISC",
@@ -16,8 +16,11 @@
     }
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node-red": "^1.3.5",
     "esbuild": "0.25.9",
-    "node-red": "^4.1.0"
+    "jest": "^30.1.3",
+    "node-red": "^4.1.0",
+    "ts-jest": "^29.4.1"
   }
 }
