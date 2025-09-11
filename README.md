@@ -1,5 +1,5 @@
 
-# Experimental Node-RED Node with TypesScript Support
+# Node-RED Contrib S2
 
 (tbc)
 
