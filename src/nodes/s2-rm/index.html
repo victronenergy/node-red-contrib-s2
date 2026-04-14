@@ -6,7 +6,8 @@
       name: { value: '' },
       rmConfig: { value: '', type: 's2-rm-config', required: true },
       controlTypeConfig: { value: '' },
-      providesPowerMeasurement: { value: true }
+      providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
+      providesForecast: { value: false }
     },
     inputs: 1,
     outputs: 3,
@@ -20,6 +21,15 @@
       return this.name ? 'node_label_italic' : ''
     },
     oneditprepare: function () {
+      // Migrate legacy boolean to string value
+      if (this.providesPowerMeasurement === true) {
+        this.providesPowerMeasurement = '3_PHASE_SYMMETRIC'
+        $('#node-input-providesPowerMeasurement').val('3_PHASE_SYMMETRIC')
+      } else if (this.providesPowerMeasurement === false) {
+        this.providesPowerMeasurement = ''
+        $('#node-input-providesPowerMeasurement').val('')
+      }
+
       $('#node-input-controlTypeConfig').typedInput({ types: ['json'] })
 
       if (!this.controlTypeConfig) {
@@ -92,9 +102,21 @@
     <div class="form-row">
       <label for="node-input-providesPowerMeasurement">
         <i class="fa fa-bolt"></i> Power Measurement
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i>
       </label>
-      <input type="checkbox" id="node-input-providesPowerMeasurement" style="width: auto; margin-top: 6px;">
-      <span style="margin-left: 6px;">Provides power measurement</span>
+      <select id="node-input-providesPowerMeasurement" style="width: 70%;">
+        <option value="">None</option>
+        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-providesForecast">
+        <i class="fa fa-line-chart"></i> Forecast
+      </label>
+      <input type="checkbox" id="node-input-providesForecast" style="width: auto; margin-top: 6px;">
+      <span style="margin-left: 6px;">Provides power forecast</span>
     </div>
 
   </div>

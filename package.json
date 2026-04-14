@@ -6,6 +6,8 @@
   "node-red": {
     "version": ">=3.0.2",
     "nodes": {
+      "s2-rm-config": "./dist/nodes/s2-rm-config/index.js",
+      "s2-cem-config": "./dist/nodes/s2-cem-config/index.js",
       "s2-websocket": "./dist/nodes/s2-websocket/index.js",
       "s2-rm": "./dist/nodes/s2-rm/index.js"
     }
@@ -13,7 +15,7 @@
   "scripts": {
     "build": "tsc && npm run copy-html",
     "clean": "rm -rf dist",
-    "copy-html": "mkdir -p dist/nodes/s2-rm dist/nodes/s2-websocket && cp src/nodes/s2-rm/index.html dist/nodes/s2-rm/ && cp src/nodes/s2-websocket/index.html dist/nodes/s2-websocket/",
+    "copy-html": "mkdir -p dist/nodes/s2-rm dist/nodes/s2-websocket dist/nodes/s2-rm-config dist/nodes/s2-cem-config && cp src/nodes/s2-rm/index.html dist/nodes/s2-rm/ && cp src/nodes/s2-websocket/index.html dist/nodes/s2-websocket/ && cp src/nodes/s2-rm-config/index.html dist/nodes/s2-rm-config/ && cp src/nodes/s2-cem-config/index.html dist/nodes/s2-cem-config/",
     "test": "npm run lint && npm run test:unit",
     "test:unit": "jest",
     "test:watch": "jest --watch",

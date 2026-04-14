@@ -11,6 +11,7 @@ import {
   makeOMBCStatus,
   makePowerMeasurement,
   makePEBCPowerConstraints,
+  makePowerForecast,
   generateId
 } from '../../src/lib/s2/messages'
 
@@ -273,7 +274,7 @@ describe('makePEBCPowerConstraints', () => {
 
   it('produces one LOWER_LIMIT and one UPPER_LIMIT entry at the top level', () => {
     const msg = makePEBCPowerConstraints(input) as {
-      allowed_limit_ranges: Array<{ commodity_quantity: string, limit_type: string, range_boundary: { start_of_range: number, end_of_range: number } }>
+      allowed_limit_ranges: Array<{ commodity_quantity: string, limit_type: string, range_boundary: { start_of_range: number, end_of_range: number }, abnormal_condition_only: boolean }>
     }
     expect(msg.allowed_limit_ranges).toHaveLength(2)
     const lower = msg.allowed_limit_ranges.find(r => r.limit_type === 'LOWER_LIMIT')!
@@ -281,6 +282,8 @@ describe('makePEBCPowerConstraints', () => {
     expect(lower.commodity_quantity).toBe('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
     expect(lower.range_boundary).toEqual({ start_of_range: -3000, end_of_range: 3000 })
     expect(upper.range_boundary).toEqual({ start_of_range: -3000, end_of_range: 3000 })
+    expect(lower.abnormal_condition_only).toBe(false)
+    expect(upper.abnormal_condition_only).toBe(false)
   })
 
   it('does not include a power_constraints field', () => {
@@ -299,5 +302,37 @@ describe('makePEBCPowerConstraints', () => {
     const after = new Date().toISOString()
     expect(msg.valid_from as string >= before).toBe(true)
     expect(msg.valid_from as string <= after).toBe(true)
+  })
+})
+
+describe('makePowerForecast', () => {
+  const input = {
+    startTime: '2026-04-14T10:00:00Z',
+    elements: [
+      {
+        duration: 900000,
+        power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: 1500 }]
+      },
+      {
+        duration: 900000,
+        power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: 2000 }]
+      }
+    ]
+  }
+
+  it('produces a PowerForecast message', () => {
+    const msg = makePowerForecast(input) as Record<string, unknown>
+    expect(msg.message_type).toBe(MessageType.POWER_FORECAST)
+    expect(msg.message_id).toBeDefined()
+    expect(msg.start_time).toBe('2026-04-14T10:00:00Z')
+  })
+
+  it('passes elements through unchanged', () => {
+    const msg = makePowerForecast(input) as { elements: unknown[] }
+    expect(msg.elements).toHaveLength(2)
+    expect(msg.elements[0]).toEqual({
+      duration: 900000,
+      power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: 1500 }]
+    })
   })
 })

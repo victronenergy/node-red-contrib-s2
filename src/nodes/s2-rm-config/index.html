@@ -5,7 +5,9 @@
       name: { value: '' },
       resourceId: { value: '' },
       rmName: { value: 'RM: Virtual' },
+      roles: { value: 'ENERGY_CONSUMER' },
       controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+      serialNumber: { value: '' },
       manufacturer: { value: 'Victron Energy' },
       model: { value: 'Virtual RM' },
       firmwareVersion: { value: '1.0.0' }
@@ -32,6 +34,17 @@
           $(this).prop('checked', true)
         }
       })
+
+      var savedRoles = ($('#node-config-input-roles').val() || '').split(',').map(function (s) { return s.trim() })
+      $('.s2-rm-config-role-checkbox').each(function () {
+        $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
+      })
+
+      $('.s2-rm-config-role-checkbox').on('change', function () {
+        if ($('.s2-rm-config-role-checkbox:checked').length === 0) {
+          $(this).prop('checked', true)
+        }
+      })
     },
     oneditsave: function () {
       var checked = []
@@ -39,6 +52,12 @@
         checked.push($(this).val())
       })
       $('#node-config-input-controlTypes').val(checked.join(','))
+
+      var checkedRoles = []
+      $('.s2-rm-config-role-checkbox:checked').each(function () {
+        checkedRoles.push($(this).val())
+      })
+      $('#node-config-input-roles').val(checkedRoles.join(','))
     }
   })
 </script>
@@ -69,6 +88,21 @@
 
     <div class="form-row">
       <label class="s2-section-label">
+        <i class="fa fa-bolt"></i> Roles
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Energy roles advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
+      </label>
+    </div>
+    <div class="form-row s2-full-row">
+      <div class="s2-control-types-container">
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_CONSUMER"> Consumer <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site consumes energy from the grid"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_PRODUCER"> Producer <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site produces energy (battery, solar)"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_STORAGE"> Storage <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site has energy storage (battery)"></i></label>
+      </div>
+      <input type="hidden" id="node-config-input-roles">
+    </div>
+
+    <div class="form-row">
+      <label class="s2-section-label">
         <i class="fa fa-sliders"></i> Control Types
         <i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
       </label>
@@ -93,6 +127,14 @@
     <div class="form-row">
       <label for="node-config-input-model"><i class="fa fa-cube"></i> Model</label>
       <input type="text" id="node-config-input-model" placeholder="e.g. Virtual AC Load">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-serialNumber">
+        <i class="fa fa-barcode"></i> Serial Number
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Serial number sent in ResourceManagerDetails. Supports context variables: {{global.vrmId}}, {{flow.siteId}}. Defaults to the node ID if empty."></i>
+      </label>
+      <input type="text" id="node-config-input-serialNumber" placeholder="e.g. {{global.vrmId}} or leave empty for node ID">
     </div>
 
     <div class="form-row">

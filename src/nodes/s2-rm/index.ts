@@ -1,12 +1,13 @@
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode } from '../../types/config-nodes'
 import { S2Session, State } from '../../lib/s2/session'
-import { generateId, makePowerMeasurement, MessageType, PEBCPowerConstraintsInput, PowerMeasurementValue } from '../../lib/s2/messages'
+import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
   controlTypeConfig?: string
-  providesPowerMeasurement?: boolean
+  providesPowerMeasurement?: string
+  providesForecast?: boolean
 }
 
 /**
@@ -49,20 +50,36 @@ export = function (RED: NodeRedApp): void {
       return
     }
 
+    // Map providesPowerMeasurement config to commodity quantity list
+    // Supports legacy boolean (true -> 3_PHASE_SYMMETRIC) and new string values
+    function parsePowerMeasurementTypes (value: unknown): string[] {
+      if (value === true || value === '3_PHASE_SYMMETRIC') return ['ELECTRIC.POWER.3_PHASE_SYMMETRIC']
+      if (value === 'L1_L2_L3') return ['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3']
+      return []
+    }
+
+    // Resolve {{global.xxx}} and {{flow.xxx}} context variable templates
+    function resolveTemplate (template: string): string {
+      return template.replace(/\{\{(global|flow)\.([^}]+)\}\}/g, (_match, scope, key) => {
+        const val = node.context()[scope as 'global' | 'flow'].get(key)
+        return val != null ? String(val) : ''
+      })
+    }
+
     const rmDetails = {
       resourceId: rmConfigNode.resourceId || generateId(),
       name: rmConfigNode.rmName || 'RM: Virtual',
-      roles: [{ role: 'ENERGY_CONSUMER', commodity: 'ELECTRICITY' }],
+      roles: (rmConfigNode.roles || 'ENERGY_CONSUMER')
+        .split(',').map((s: string) => s.trim()).filter(Boolean)
+        .map((role: string) => ({ role, commodity: 'ELECTRICITY' })),
       availableControlTypes: (rmConfigNode.controlTypes || 'OPERATION_MODE_BASED_CONTROL')
         .split(',').map((s: string) => s.trim()).filter(Boolean),
-      providesForecast: false,
-      providesPowerMeasurementTypes: config.providesPowerMeasurement
-        ? ['ELECTRIC.POWER.3_PHASE_SYMMETRIC']
-        : [],
+      providesForecast: config.providesForecast === true,
+      providesPowerMeasurementTypes: parsePowerMeasurementTypes(config.providesPowerMeasurement),
       instructionProcessingDelay: 0,
       manufacturer: rmConfigNode.manufacturer || 'Victron Energy',
       model: rmConfigNode.model || 'Virtual RM',
-      serialNumber: node.id,
+      serialNumber: rmConfigNode.serialNumber || node.id,
       firmwareVersion: rmConfigNode.firmwareVersion || '1.0.0'
     }
 
@@ -92,9 +109,13 @@ export = function (RED: NodeRedApp): void {
     }
 
     function createSession (cemId: string): S2Session {
+      // Resolve context variable templates at connect time (not at init)
+      const resolvedDetails = rmDetails.serialNumber.includes('{{')
+        ? { ...rmDetails, serialNumber: resolveTemplate(rmDetails.serialNumber) || node.id }
+        : rmDetails
       const session = new S2Session({
         cemId,
-        rmDetails,
+        rmDetails: resolvedDetails,
         controlTypeConfig,
 
         onSend: (msg) => {
@@ -109,6 +130,12 @@ export = function (RED: NodeRedApp): void {
         },
 
         onMessage: (msg) => {
+          if (msg.message_type === MessageType.RECEPTION_STATUS &&
+              msg.status && msg.status !== ReceptionStatusResult.OK) {
+            const diag = msg.diagnostic_label ? `: ${msg.diagnostic_label}` : ''
+            node.warn(`CEM ${cemId} rejected message ${msg.subject_message_id || '?'} with ${msg.status}${diag}`)
+            node.status({ fill: 'yellow', shape: 'dot', text: `${msg.status}` })
+          }
           node.send([null, { payload: msg, cemId }, null])
           if (msg.message_type === MessageType.SELECT_CONTROL_TYPE &&
               rmDetails.providesPowerMeasurementTypes.length > 0) {
@@ -228,6 +255,23 @@ export = function (RED: NodeRedApp): void {
           for (const session of sessions.values()) {
             session.setPEBCPowerConstraints(constraints)
           }
+          done()
+          break
+        }
+
+        case 'Forecast': {
+          const { forecast } = msg.payload as { forecast?: PowerForecastInput }
+          if (!forecast || !forecast.startTime || !Array.isArray(forecast.elements)) {
+            done(new Error('Forecast requires a forecast object with startTime and elements'))
+            return
+          }
+          const fcSession = sessions.get(cemId)
+          if (!fcSession) {
+            node.warn(`Forecast for unknown CEM ${cemId} - ignoring`)
+            done()
+            return
+          }
+          fcSession.send(makePowerForecast(forecast))
           done()
           break
         }

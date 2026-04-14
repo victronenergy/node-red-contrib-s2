@@ -143,6 +143,12 @@ export class S2Session {
     if (!msg) return
 
     switch (msg.message_type) {
+      case MessageType.HANDSHAKE:
+        // CEM's own Handshake (role: CEM) - ack and forward as a regular message
+        this._onSend(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+        this._onMessage(msg)
+        break
+
       case MessageType.HANDSHAKE_RESPONSE:
         this._handleHandshakeResponse(msg)
         break

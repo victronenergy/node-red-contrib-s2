@@ -19,6 +19,18 @@ export interface NodeMessage {
 export type DoneFunction = (err?: Error) => void
 export type SendFunction = (msgs: NodeMessage | Array<NodeMessage | null> | null) => void
 
+export interface NodeRedContextStore {
+  get(key: string): unknown
+  set(key: string, value: unknown): void
+}
+
+export interface NodeRedContext {
+  global: NodeRedContextStore
+  flow: NodeRedContextStore
+  get(key: string): unknown
+  set(key: string, value: unknown): void
+}
+
 export interface NodeRedNode {
   id: string
   name: string
@@ -29,6 +41,7 @@ export interface NodeRedNode {
   debug(logMessage: string): void
   trace(logMessage: string): void
   status(status: NodeRedStatus | Record<string, never>): void
+  context(): NodeRedContext
   on(event: 'input', listener: (msg: NodeMessage, send: SendFunction, done: DoneFunction) => void): this
   on(event: 'close', listener: (done: () => void) => void): this
   on(event: string, listener: (...args: unknown[]) => void): this

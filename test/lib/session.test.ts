@@ -67,6 +67,30 @@ describe('S2Session start', () => {
   })
 })
 
+describe('S2Session CEM Handshake', () => {
+  it('sends ReceptionStatus OK and forwards via onMessage', () => {
+    const onInstruction = jest.fn()
+    const { session, onSend, onMessage } = makeSession({ onInstruction })
+    session.start()
+    onSend.mockClear()
+
+    session.handleMessage(raw({
+      message_type: MessageType.HANDSHAKE,
+      message_id: 'cem-hs-1',
+      role: 'CEM',
+      supported_protocol_versions: ['0.0.2-beta']
+    }))
+
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+      message_type: MessageType.RECEPTION_STATUS,
+      subject_message_id: 'cem-hs-1',
+      status: 'OK'
+    }))
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ message_type: MessageType.HANDSHAKE }))
+    expect(onInstruction).not.toHaveBeenCalled()
+  })
+})
+
 describe('S2Session HandshakeResponse', () => {
   function startedSession () {
     const mocks = makeSession()

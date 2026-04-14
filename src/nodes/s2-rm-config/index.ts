@@ -6,6 +6,8 @@ export = function (RED: NodeRedApp): void {
     RED.nodes.createNode(this, config)
     this.resourceId = config.resourceId as string
     this.rmName = config.rmName as string
+    this.roles = config.roles as string
+    this.serialNumber = config.serialNumber as string
     this.manufacturer = config.manufacturer as string
     this.model = config.model as string
     this.firmwareVersion = config.firmwareVersion as string

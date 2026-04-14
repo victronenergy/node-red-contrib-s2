@@ -55,7 +55,10 @@ export const MessageType = Object.freeze({
   PEBC_POWER_CONSTRAINTS: 'PEBC.PowerConstraints',
   PEBC_DEVICE_CONSTRAINTS: 'PEBC.DeviceConstraints',
   PEBC_ENERGY_CONSTRAINT: 'PEBC.EnergyConstraint',
-  PEBC_INSTRUCTION: 'PEBC.Instruction'
+  PEBC_INSTRUCTION: 'PEBC.Instruction',
+
+  // Common
+  POWER_FORECAST: 'PowerForecast'
 } as const)
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType]
@@ -206,6 +209,23 @@ export interface PEBCPowerConstraintsInput {
   maxPower: number
   /** ISO 8601 datetime; defaults to now */
   validFrom?: string
+}
+
+export interface PowerForecastValue {
+  commodity_quantity: string
+  value_expected: number
+  value_upper_limit?: number
+  value_lower_limit?: number
+}
+
+export interface PowerForecastElement {
+  duration: number // milliseconds
+  power_values: PowerForecastValue[]
+}
+
+export interface PowerForecastInput {
+  startTime: string // ISO 8601 timezone-aware datetime
+  elements: PowerForecastElement[]
 }
 
 /**
@@ -361,9 +381,24 @@ export function makePEBCPowerConstraints (input: PEBCPowerConstraintsInput): obj
     valid_until: null,
     consequence_type: 'DEFER',
     allowed_limit_ranges: [
-      { commodity_quantity: input.commodityQuantity, limit_type: 'LOWER_LIMIT', range_boundary: rangeBoundary },
-      { commodity_quantity: input.commodityQuantity, limit_type: 'UPPER_LIMIT', range_boundary: rangeBoundary }
+      { commodity_quantity: input.commodityQuantity, limit_type: 'LOWER_LIMIT', range_boundary: rangeBoundary, abnormal_condition_only: false },
+      { commodity_quantity: input.commodityQuantity, limit_type: 'UPPER_LIMIT', range_boundary: rangeBoundary, abnormal_condition_only: false }
     ]
+  }
+}
+
+/**
+ * Build a PowerForecast message from pre-formed elements.
+ *
+ * @param input.startTime - ISO 8601 timezone-aware datetime for the first element
+ * @param input.elements - array of { duration (ms), power_values: [{ commodity_quantity, value_expected }] }
+ */
+export function makePowerForecast (input: PowerForecastInput): object {
+  return {
+    message_type: MessageType.POWER_FORECAST,
+    message_id: generateId(),
+    start_time: input.startTime,
+    elements: input.elements
   }
 }
 

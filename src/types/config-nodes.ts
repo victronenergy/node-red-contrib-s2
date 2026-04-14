@@ -7,6 +7,8 @@ import { NodeRedNode } from './node-red'
 export interface S2RmConfigNode extends NodeRedNode {
   resourceId: string
   rmName: string
+  roles: string // comma-separated list of role values (e.g. 'ENERGY_CONSUMER,ENERGY_PRODUCER')
+  serialNumber: string
   manufacturer: string
   model: string
   firmwareVersion: string
