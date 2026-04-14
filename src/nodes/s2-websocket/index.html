@@ -1,0 +1,54 @@
+<script type="text/javascript">
+  RED.nodes.registerType('s2-websocket', {
+    category: 's2',
+    color: '#4CAF50',
+    defaults: {
+      name: { value: '' },
+      url: { value: 'ws://localhost:8080/s2', required: true },
+      rmId: { value: '' },
+      reconnectInterval: { value: 5 }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'font-awesome/fa-plug',
+    label: function () {
+      return this.name || this.url || 's2-websocket'
+    },
+    labelStyle: function () {
+      return this.name ? 'node_label_italic' : ''
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-websocket">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-url"><i class="fa fa-globe"></i> CEM URL</label>
+    <input type="text" id="node-input-url" placeholder="ws://cem.local:8080/s2">
+  </div>
+  <div class="form-row">
+    <label for="node-input-rmId"><i class="fa fa-id-card"></i> RM ID</label>
+    <input type="text" id="node-input-rmId" placeholder="(defaults to node ID)">
+  </div>
+  <div class="form-row">
+    <label for="node-input-reconnectInterval"><i class="fa fa-refresh"></i> Reconnect (s)</label>
+    <input type="number" id="node-input-reconnectInterval" min="1" max="300">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="s2-websocket">
+  <p>Connects to a CEM (Customer Energy Manager) as an S2 Resource Manager over WebSocket.</p>
+  <h3>Input</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>An S2 message object to send to the CEM. Only valid when connected.</dd>
+  </dl>
+  <h3>Output</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>An S2 message object received from the CEM.</dd>
+  </dl>
+</script>

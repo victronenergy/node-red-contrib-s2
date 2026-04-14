@@ -1,0 +1,76 @@
+/**
+ * S2 Node-RED Nodes - Stylesheet
+ *
+ * All selectors MUST be scoped under .s2-form to prevent
+ * affecting other Node-RED nodes.
+ */
+
+/* ============================================================================
+   FORM LAYOUT - Labels and Inputs
+   ============================================================================ */
+
+.s2-form {
+  overflow-x: hidden;
+}
+
+.s2-form .form-row {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.s2-form .form-row label {
+  width: 216px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.s2-form .form-row input[type="text"],
+.s2-form .form-row input[type="number"],
+.s2-form .form-row select,
+.s2-form .form-row .red-ui-typedInput-container {
+  width: calc(100% - 232px) !important;
+  vertical-align: middle;
+}
+
+.s2-form .form-row input[type="checkbox"] {
+  width: auto !important;
+}
+
+.s2-form .tooltip-icon {
+  margin-left: 4px;
+}
+
+/* ============================================================================
+   CONTROL TYPES - Checkbox Grid
+   ============================================================================ */
+
+.s2-form .s2-section-label {
+  width: 100% !important;
+}
+
+.s2-form .s2-full-row {
+  display: block;
+  margin-left: 216px;
+}
+
+.s2-form .s2-control-types-container {
+  display: grid;
+  grid-template-columns: 116px 116px;
+  gap: 6px 8px;
+}
+
+.s2-form .s2-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto !important;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.s2-form .s2-checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
