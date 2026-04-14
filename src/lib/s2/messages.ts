@@ -52,6 +52,7 @@ export const MessageType = Object.freeze({
   OMBC_INSTRUCTION: 'OMBC.Instruction',
 
   // Power Envelope Based Control (PEBC)
+  PEBC_POWER_CONSTRAINTS: 'PEBC.PowerConstraints',
   PEBC_DEVICE_CONSTRAINTS: 'PEBC.DeviceConstraints',
   PEBC_ENERGY_CONSTRAINT: 'PEBC.EnergyConstraint',
   PEBC_INSTRUCTION: 'PEBC.Instruction'
@@ -192,6 +193,22 @@ export interface OMBCStatusConfig {
 }
 
 /**
+ * Simplified input for building a PEBC.PowerConstraints message.
+ * Produces a single commodity constraint with matching LOWER_LIMIT and
+ * UPPER_LIMIT ranges, consequence_type DEFER - as required by most CEMs.
+ */
+export interface PEBCPowerConstraintsInput {
+  /** e.g. 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' */
+  commodityQuantity: string
+  /** Lower bound of the allowed power range in Watts (may be negative for export) */
+  minPower: number
+  /** Upper bound of the allowed power range in Watts */
+  maxPower: number
+  /** ISO 8601 datetime; defaults to now */
+  validFrom?: string
+}
+
+/**
  * Parse a raw WebSocket message string into an S2 message object.
  * Returns null and calls onError if parsing fails.
  *
@@ -322,6 +339,31 @@ export function makePowerMeasurement(values: PowerMeasurementValue[]): S2PowerMe
     message_id: generateId(),
     measurement_timestamp: new Date().toISOString(),
     values
+  }
+}
+
+/**
+ * Build a PEBC.PowerConstraints message with matching LOWER_LIMIT and
+ * UPPER_LIMIT ranges and consequence_type DEFER.
+ *
+ * Wire format (s2-ws-json 0.0.2-beta):
+ *   id + allowed_limit_ranges are top-level fields on the message itself,
+ *   not nested under a power_constraints array.
+ */
+export function makePEBCPowerConstraints (input: PEBCPowerConstraintsInput): object {
+  const validFrom = input.validFrom ?? new Date().toISOString()
+  const rangeBoundary = { start_of_range: input.minPower, end_of_range: input.maxPower }
+  return {
+    message_type: MessageType.PEBC_POWER_CONSTRAINTS,
+    message_id: generateId(),
+    id: generateId(),
+    valid_from: validFrom,
+    valid_until: null,
+    consequence_type: 'DEFER',
+    allowed_limit_ranges: [
+      { commodity_quantity: input.commodityQuantity, limit_type: 'LOWER_LIMIT', range_boundary: rangeBoundary },
+      { commodity_quantity: input.commodityQuantity, limit_type: 'UPPER_LIMIT', range_boundary: rangeBoundary }
+    ]
   }
 }
 

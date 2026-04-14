@@ -7,11 +7,13 @@ import {
   RmDetails,
   OMBCSystemDescriptionConfig,
   OMBCStatusConfig,
+  PEBCPowerConstraintsInput,
   makeReceptionStatus,
   makeHandshake,
   makeResourceManagerDetails,
   makeOMBCSystemDescription,
   makeOMBCStatus,
+  makePEBCPowerConstraints,
   parse
 } from './messages'
 
@@ -86,6 +88,7 @@ export class S2Session {
   private _state: StateValue
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
+  private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
 
   constructor ({ cemId, rmDetails, controlTypeConfig, onSend, onStateChange, onMessage, onInstruction, onError }: S2SessionOptions) {
     this._cemId = cemId
@@ -100,6 +103,7 @@ export class S2Session {
     this._state = State.HANDSHAKING
     this._selectedControlType = ControlType.NO_SELECTION
     this._lastKeepAlive = null
+    this._pebcPowerConstraints = null
   }
 
   get cemId (): string { return this._cemId }
@@ -180,6 +184,19 @@ export class S2Session {
     this._onSend(msg)
   }
 
+  /**
+   * Store PEBC power constraints and send them to the CEM immediately if
+   * PEBC is the active control type. Stored constraints are also sent
+   * automatically when SelectControlType(PEBC) is received.
+   */
+  setPEBCPowerConstraints (input: PEBCPowerConstraintsInput): void {
+    this._pebcPowerConstraints = input
+    if (this._state === State.CONNECTED &&
+        this._selectedControlType === ControlType.PEBC) {
+      this._onSend(makePEBCPowerConstraints(input))
+    }
+  }
+
   // -- private --
 
   private _setState (newState: StateValue): void {
@@ -213,8 +230,11 @@ export class S2Session {
     const controlType = msg.control_type as string
     if (controlType === ControlType.OMBC || controlType === 'OMBC') {
       this._sendOMBCSystemDescriptionAndStatus()
+    } else if (controlType === ControlType.PEBC) {
+      if (this._pebcPowerConstraints) {
+        this._onSend(makePEBCPowerConstraints(this._pebcPowerConstraints))
+      }
     }
-    // Add support for other control types (FRBC, DDBC, etc.) as needed
   }
 
   private _sendOMBCSystemDescriptionAndStatus (): void {

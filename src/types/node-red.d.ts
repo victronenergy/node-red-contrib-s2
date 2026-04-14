@@ -1,6 +1,6 @@
 /**
  * Minimal type stubs for the Node-RED RED object.
- * Official @types/node-red does not exist; these cover what s2-rm uses.
+ * Official @types/node-red does not exist; these cover what s2-rm and s2-websocket use.
  */
 
 export interface NodeRedStatus {
@@ -26,6 +26,8 @@ export interface NodeRedNode {
   error(logMessage: string, msg?: NodeMessage): void
   warn(logMessage: string, msg?: NodeMessage): void
   log(logMessage: string): void
+  debug(logMessage: string): void
+  trace(logMessage: string): void
   status(status: NodeRedStatus | Record<string, never>): void
   on(event: 'input', listener: (msg: NodeMessage, send: SendFunction, done: DoneFunction) => void): this
   on(event: 'close', listener: (done: () => void) => void): this
@@ -39,11 +41,20 @@ export interface NodeConfig {
   [key: string]: unknown
 }
 
+export interface NodeRedCredentialType {
+  type: 'text' | 'password'
+}
+
+export interface NodeRedTypeOptions {
+  credentials?: Record<string, NodeRedCredentialType>
+}
+
 export interface NodeRedNodes {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createNode(node: NodeRedNode, config: NodeConfig): void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registerType(type: string, constructor: any): void
+  registerType(type: string, constructor: any, options?: NodeRedTypeOptions): void
+  getNode(id: string): NodeRedNode | null
 }
 
 export interface NodeRedApp {

@@ -400,3 +400,88 @@ describe('S2Session invalid input', () => {
     expect(onError).toHaveBeenCalledWith(expect.any(Error))
   })
 })
+
+// Helper: drive a session to CONNECTED state
+function connectSession (session: S2Session, onSend: jest.Mock): void {
+  session.start()
+  onSend.mockClear()
+  session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+  onSend.mockClear()
+}
+
+function selectPEBC (session: S2Session, onSend: jest.Mock): void {
+  session.handleMessage(raw({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'POWER_ENVELOPE_BASED_CONTROL' }))
+  onSend.mockClear()
+}
+
+const pebcInput = {
+  commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+  minPower: -3000,
+  maxPower: 3000
+}
+
+describe('S2Session PEBC.PowerConstraints - setPEBCPowerConstraints', () => {
+  it('sends PEBC.PowerConstraints immediately when PEBC is already the active control type', () => {
+    const { session, onSend } = makeSession()
+    connectSession(session, onSend)
+    selectPEBC(session, onSend)
+
+    session.setPEBCPowerConstraints(pebcInput)
+
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({ message_type: 'PEBC.PowerConstraints' }))
+  })
+
+  it('does not send when PEBC is not yet selected', () => {
+    const { session, onSend } = makeSession()
+    connectSession(session, onSend)
+
+    session.setPEBCPowerConstraints(pebcInput)
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not send when not yet connected', () => {
+    const { session, onSend } = makeSession()
+
+    session.setPEBCPowerConstraints(pebcInput)
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+})
+
+describe('S2Session PEBC.PowerConstraints - auto-send on SelectControlType', () => {
+  it('sends stored constraints when SelectControlType(PEBC) is received', () => {
+    const { session, onSend } = makeSession()
+    connectSession(session, onSend)
+    session.setPEBCPowerConstraints(pebcInput)
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'POWER_ENVELOPE_BASED_CONTROL' }))
+
+    const pcCall = onSend.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).message_type === 'PEBC.PowerConstraints')
+    expect(pcCall).toBeDefined()
+  })
+
+  it('does not send constraints when SelectControlType is for a different control type', () => {
+    const { session, onSend } = makeSession()
+    connectSession(session, onSend)
+    session.setPEBCPowerConstraints(pebcInput)
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }))
+
+    const pcCall = onSend.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).message_type === 'PEBC.PowerConstraints')
+    expect(pcCall).toBeUndefined()
+  })
+
+  it('does not send constraints when none have been set', () => {
+    const { session, onSend } = makeSession()
+    connectSession(session, onSend)
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'POWER_ENVELOPE_BASED_CONTROL' }))
+
+    const pcCall = onSend.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).message_type === 'PEBC.PowerConstraints')
+    expect(pcCall).toBeUndefined()
+  })
+})

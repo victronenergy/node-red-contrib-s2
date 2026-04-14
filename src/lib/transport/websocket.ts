@@ -4,6 +4,7 @@ import WebSocket from 'ws'
 export interface S2WebSocketTransportOptions {
   url: string
   reconnectInterval?: number
+  headers?: Record<string, string>
 }
 
 /**
@@ -12,29 +13,31 @@ export interface S2WebSocketTransportOptions {
  * with automatic reconnection.
  *
  * Events:
- *   'open'    - WS connection established, arg: sendFn
+ *   'open'    - WS connection established
  *   'message' - raw string received from CEM, arg: string
  *   'close'   - connection closed
  *   'error'   - error occurred, arg: Error
  *
  * @example
- * const transport = new S2WebSocketTransport({ url: 'ws://cem.local:8080/s2' })
- * transport.on('open', (send) => stateMachine.onOpen(send))
- * transport.on('message', (raw) => stateMachine.onMessage(raw))
- * transport.on('close', () => stateMachine.onClose())
+ * const transport = new S2WebSocketTransport({ url: 'wss://cem.local/s2/{resourceId}' })
+ * transport.on('open', () => { transport.send(JSON.stringify(handshake)) })
+ * transport.on('message', (raw) => handleMessage(raw))
+ * transport.on('close', () => handleDisconnect())
  * transport.connect()
  */
 export class S2WebSocketTransport extends EventEmitter {
   private readonly _url: string
   private readonly _reconnectInterval: number
+  private readonly _headers: Record<string, string> | undefined
   private _ws: WebSocket | null
   private _reconnectTimer: ReturnType<typeof setTimeout> | null
   private _intentionalClose: boolean
 
-  constructor ({ url, reconnectInterval = 5000 }: S2WebSocketTransportOptions) {
+  constructor ({ url, reconnectInterval = 5000, headers }: S2WebSocketTransportOptions) {
     super()
     this._url = url
     this._reconnectInterval = reconnectInterval
+    this._headers = headers
     this._ws = null
     this._reconnectTimer = null
     this._intentionalClose = false
@@ -63,6 +66,16 @@ export class S2WebSocketTransport extends EventEmitter {
     }
   }
 
+  /**
+   * Send a raw string over the WebSocket. Throws if not connected.
+   */
+  send (raw: string): void {
+    if (!this._ws) {
+      throw new Error('WebSocket is not connected')
+    }
+    this._ws.send(raw)
+  }
+
   get url (): string {
     return this._url
   }
@@ -70,11 +83,13 @@ export class S2WebSocketTransport extends EventEmitter {
   // -- private --
 
   private _doConnect (): void {
-    const ws = new WebSocket(this._url, 'reids.2')
+    const ws = this._headers
+      ? new WebSocket(this._url, { headers: this._headers })
+      : new WebSocket(this._url)
     this._ws = ws
 
     ws.on('open', () => {
-      this.emit('open', (raw: string) => ws.send(raw))
+      this.emit('open')
     })
 
     ws.on('message', (data) => {

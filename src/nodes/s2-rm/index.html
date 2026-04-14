@@ -4,14 +4,9 @@
     color: '#4CAF50',
     defaults: {
       name: { value: '' },
-      resourceId: { value: '' },
-      rmName: { value: 'RM: Virtual' },
-      controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+      rmConfig: { value: '', type: 's2-rm-config', required: true },
       controlTypeConfig: { value: '' },
-      providesPowerMeasurement: { value: true },
-      manufacturer: { value: 'Victron Energy' },
-      model: { value: 'Virtual RM' },
-      firmwareVersion: { value: '1.0.0' }
+      providesPowerMeasurement: { value: true }
     },
     inputs: 1,
     outputs: 3,
@@ -19,20 +14,12 @@
     outputLabels: ['to transport', 'from CEM', 'instructions'],
     inputLabels: ['from transport'],
     label: function () {
-      return this.name || this.rmName || 'S2 Resource Manager'
+      return this.name || 'S2 Resource Manager'
     },
     labelStyle: function () {
       return this.name ? 'node_label_italic' : ''
     },
     oneditprepare: function () {
-      if (!this.resourceId) {
-        var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-          var r = Math.random() * 16 | 0
-          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
-        })
-        $('#node-input-resourceId').val(id)
-      }
-      // Init typedInput first so we can use its API to set the default value
       $('#node-input-controlTypeConfig').typedInput({ types: ['json'] })
 
       if (!this.controlTypeConfig) {
@@ -69,31 +56,9 @@
         $('#node-input-controlTypeConfig').typedInput('value', JSON.stringify(defaultConfig, null, 2))
       }
 
-      // Populate checkboxes from saved controlTypes value
-      var saved = $('#node-input-controlTypes').val().split(',').map(function (s) { return s.trim() })
-      $('.s2-control-type-checkbox').each(function () {
-        $(this).prop('checked', saved.indexOf($(this).val()) !== -1)
-      })
-
-      // Prevent unchecking the last remaining checkbox
-      $('.s2-control-type-checkbox').on('change', function () {
-        var checkedCount = $('.s2-control-type-checkbox:checked').length
-        if (checkedCount === 0) {
-          $(this).prop('checked', true)
-        }
-      })
-
       if (window.__victronCommon && typeof window.__victronCommon.initializeTooltips === 'function') {
         window.__victronCommon.initializeTooltips()
       }
-    },
-    oneditsave: function () {
-      // Serialize checked control types back into the hidden input
-      var checked = []
-      $('.s2-control-type-checkbox:checked').each(function () {
-        checked.push($(this).val())
-      })
-      $('#node-input-controlTypes').val(checked.join(','))
     }
   })
 </script>
@@ -109,37 +74,11 @@
     </div>
 
     <div class="form-row">
-      <label for="node-input-rmName">
-        <i class="fa fa-tag"></i> RM Name
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Human-readable name sent to the CEM in ResourceManagerDetails"></i>
+      <label for="node-input-rmConfig">
+        <i class="fa fa-id-card"></i> RM Config
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID, name, control types, manufacturer. Shared with the transport node."></i>
       </label>
-      <input type="text" id="node-input-rmName" placeholder="e.g. Victron Virtual RM">
-    </div>
-
-    <div class="form-row">
-      <label for="node-input-resourceId">
-        <i class="fa fa-id-card"></i> Resource ID
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Auto-generated on first use - do not change after deployment."></i>
-      </label>
-      <input type="text" id="node-input-resourceId" placeholder="Auto-generated UUID">
-    </div>
-
-    <div class="form-row">
-      <label class="s2-section-label">
-        <i class="fa fa-sliders"></i> Control Types
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
-      </label>
-    </div>
-    <div class="form-row s2-full-row">
-      <div class="s2-control-types-container">
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="OPERATION_MODE_BASED_CONTROL"> OMBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Operation Mode Based Control"></i></label>
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="FILL_RATE_BASED_CONTROL"> FRBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Fill-rate Based Control"></i></label>
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="DEMAND_DRIVEN_BASED_CONTROL"> DDBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Demand Driven Based Control"></i></label>
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="POWER_PROFILE_BASED_CONTROL"> PPBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Profile Based Control"></i></label>
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="POWER_ENVELOPE_BASED_CONTROL"> PEBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Envelope Based Control"></i></label>
-        <label class="s2-checkbox-label"><input type="checkbox" class="s2-control-type-checkbox" value="NOT_CONTROLABLE"> Not Ctrl <i class="fa fa-info-circle tooltip-icon" data-tooltip="Not Controllable - device cannot be controlled by the CEM"></i></label>
-      </div>
-      <input type="hidden" id="node-input-controlTypes">
+      <input type="text" id="node-input-rmConfig">
     </div>
 
     <div class="form-row">
@@ -158,27 +97,6 @@
       <span style="margin-left: 6px;">Provides power measurement</span>
     </div>
 
-    <div class="form-row">
-      <label for="node-input-manufacturer">
-        <i class="fa fa-industry"></i> Manufacturer
-      </label>
-      <input type="text" id="node-input-manufacturer" placeholder="e.g. Victron Energy">
-    </div>
-
-    <div class="form-row">
-      <label for="node-input-model">
-        <i class="fa fa-cube"></i> Model
-      </label>
-      <input type="text" id="node-input-model" placeholder="e.g. Virtual AC Load">
-    </div>
-
-    <div class="form-row">
-      <label for="node-input-firmwareVersion">
-        <i class="fa fa-code-fork"></i> Firmware Version
-      </label>
-      <input type="text" id="node-input-firmwareVersion" placeholder="e.g. 1.0.0">
-    </div>
-
   </div>
 </script>
 
@@ -186,24 +104,24 @@
 
 <script type="text/html" data-help-name="s2-rm">
   <p>Manages S2 protocol sessions for connected CEMs. Handles the S2 handshake, sends ResourceManagerDetails, and responds to SelectControlType.</p>
-  <p>Supported control types: <code>OPERATION_MODE_BASED_CONTROL</code> (sends SystemDescription + Status after selection), <code>NOT_CONTROLABLE</code> (ack only, no further messages required).</p>
+  <p>RM identity (resource ID, name, control types) is configured in the linked <b>s2-rm-config</b> node, shared with the transport node.</p>
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload <span class="property-type">object</span></dt>
-    <dd>Command from transport port 2: <code>{ command, cemId, ... }</code></dd>
+    <dd>Command from transport: <code>{ command, cemId, ... }</code></dd>
   </dl>
   <h3>Outputs</h3>
   <ol class="node-ports">
     <li>To transport
       <dl class="message-properties">
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>S2 message to send to the CEM: <code>{ s2Signal: 'Message', message: ... }</code></dd>
+        <dd>S2 signal for transport: <code>{ s2Signal: 'Message', message: ... }</code> or <code>{ s2Signal: 'PowerMeasurementStart', ... }</code></dd>
       </dl>
     </li>
     <li>From CEM
       <dl class="message-properties">
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>S2 protocol messages received from the CEM (Handshake, SelectControlType, ReceptionStatus, etc.).</dd>
+        <dd>S2 messages received from the CEM (HandshakeResponse, SelectControlType, ReceptionStatus, etc.).</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>ID of the CEM that sent the message.</dd>
       </dl>
@@ -211,7 +129,7 @@
     <li>Instructions
       <dl class="message-properties">
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>Control instructions from the CEM (OMBC.Instruction, PEBC.Instruction, etc.) - connect to device control logic.</dd>
+        <dd>Control instructions from the CEM (OMBC.Instruction, PEBC.Instruction, etc.).</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>ID of the CEM that sent the instruction.</dd>
       </dl>

@@ -10,6 +10,7 @@ import {
   makeOMBCSystemDescription,
   makeOMBCStatus,
   makePowerMeasurement,
+  makePEBCPowerConstraints,
   generateId
 } from '../../src/lib/s2/messages'
 
@@ -244,5 +245,59 @@ describe('MessageType', () => {
 describe('ControlType', () => {
   it('is frozen', () => {
     expect(Object.isFrozen(ControlType)).toBe(true)
+  })
+})
+
+describe('makePEBCPowerConstraints', () => {
+  const input = {
+    commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+    minPower: -3000,
+    maxPower: 3000
+  }
+
+  it('sets message_type to PEBC.PowerConstraints', () => {
+    const msg = makePEBCPowerConstraints(input) as Record<string, unknown>
+    expect(msg.message_type).toBe(MessageType.PEBC_POWER_CONSTRAINTS)
+  })
+
+  it('sets consequence_type to DEFER', () => {
+    const msg = makePEBCPowerConstraints(input) as Record<string, unknown>
+    expect(msg.consequence_type).toBe('DEFER')
+  })
+
+  it('includes a top-level id field', () => {
+    const msg = makePEBCPowerConstraints(input) as Record<string, unknown>
+    expect(typeof msg.id).toBe('string')
+    expect(msg.id).not.toBe(msg.message_id)
+  })
+
+  it('produces one LOWER_LIMIT and one UPPER_LIMIT entry at the top level', () => {
+    const msg = makePEBCPowerConstraints(input) as {
+      allowed_limit_ranges: Array<{ commodity_quantity: string, limit_type: string, range_boundary: { start_of_range: number, end_of_range: number } }>
+    }
+    expect(msg.allowed_limit_ranges).toHaveLength(2)
+    const lower = msg.allowed_limit_ranges.find(r => r.limit_type === 'LOWER_LIMIT')!
+    const upper = msg.allowed_limit_ranges.find(r => r.limit_type === 'UPPER_LIMIT')!
+    expect(lower.commodity_quantity).toBe('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
+    expect(lower.range_boundary).toEqual({ start_of_range: -3000, end_of_range: 3000 })
+    expect(upper.range_boundary).toEqual({ start_of_range: -3000, end_of_range: 3000 })
+  })
+
+  it('does not include a power_constraints field', () => {
+    const msg = makePEBCPowerConstraints(input) as Record<string, unknown>
+    expect(msg.power_constraints).toBeUndefined()
+  })
+
+  it('uses provided validFrom when supplied', () => {
+    const msg = makePEBCPowerConstraints({ ...input, validFrom: '2026-01-01T00:00:00.000Z' }) as Record<string, unknown>
+    expect(msg.valid_from).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('defaults validFrom to approximately now when not supplied', () => {
+    const before = new Date().toISOString()
+    const msg = makePEBCPowerConstraints(input) as Record<string, unknown>
+    const after = new Date().toISOString()
+    expect(msg.valid_from as string >= before).toBe(true)
+    expect(msg.valid_from as string <= after).toBe(true)
   })
 })

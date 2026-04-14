@@ -4,15 +4,18 @@
     color: '#4CAF50',
     defaults: {
       name: { value: '' },
-      url: { value: 'ws://localhost:8080/s2', required: true },
-      rmId: { value: '' },
-      reconnectInterval: { value: 5 }
+      cem: { value: '', type: 's2-cem-config', required: true },
+      rmConfig: { value: '', type: 's2-rm-config', required: true },
+      reconnectInterval: { value: 5 },
+      debug: { value: false }
     },
     inputs: 1,
     outputs: 1,
     icon: 'font-awesome/fa-plug',
+    outputLabels: ['to s2-rm'],
+    inputLabels: ['from s2-rm'],
     label: function () {
-      return this.name || this.url || 's2-websocket'
+      return this.name || 's2-websocket'
     },
     labelStyle: function () {
       return this.name ? 'node_label_italic' : ''
@@ -21,34 +24,65 @@
 </script>
 
 <script type="text/html" data-template-name="s2-websocket">
-  <div class="form-row">
-    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
-    <input type="text" id="node-input-name" placeholder="Name">
-  </div>
-  <div class="form-row">
-    <label for="node-input-url"><i class="fa fa-globe"></i> CEM URL</label>
-    <input type="text" id="node-input-url" placeholder="ws://cem.local:8080/s2">
-  </div>
-  <div class="form-row">
-    <label for="node-input-rmId"><i class="fa fa-id-card"></i> RM ID</label>
-    <input type="text" id="node-input-rmId" placeholder="(defaults to node ID)">
-  </div>
-  <div class="form-row">
-    <label for="node-input-reconnectInterval"><i class="fa fa-refresh"></i> Reconnect (s)</label>
-    <input type="number" id="node-input-reconnectInterval" min="1" max="300">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-cem">
+        <i class="fa fa-globe"></i> CEM
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="CEM connection: URL template and credentials"></i>
+      </label>
+      <input type="text" id="node-input-cem">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-rmConfig">
+        <i class="fa fa-id-card"></i> RM Config
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID (used in the CEM URL), name, control types. Must match the s2-rm node."></i>
+      </label>
+      <input type="text" id="node-input-rmConfig">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-reconnectInterval">
+        <i class="fa fa-refresh"></i> Reconnect (s)
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Seconds to wait before reconnecting after a lost connection"></i>
+      </label>
+      <input type="number" id="node-input-reconnectInterval" min="1" max="300">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-debug"><i class="fa fa-bug"></i> Debug</label>
+      <input type="checkbox" id="node-input-debug" style="width: auto; margin-top: 6px;">
+      <span style="margin-left: 6px;">Log messages to Node-RED log</span>
+    </div>
+
   </div>
 </script>
 
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
 <script type="text/html" data-help-name="s2-websocket">
-  <p>Connects to a CEM (Customer Energy Manager) as an S2 Resource Manager over WebSocket.</p>
+  <p>WebSocket transport for S2 protocol. The RM dials out to a CEM and speaks the same command interface as the victron-virtual acload node.</p>
+  <p>Wire port 1 of the paired <b>s2-rm</b> node to the input of this node, and the output of this node to the input of <b>s2-rm</b>.</p>
+  <p>Both this node and <b>s2-rm</b> must reference the same <b>s2-rm-config</b> node so the Resource ID is consistent between the URL and ResourceManagerDetails.</p>
   <h3>Input</h3>
   <dl class="message-properties">
-    <dt>payload <span class="property-type">object</span></dt>
-    <dd>An S2 message object to send to the CEM. Only valid when connected.</dd>
+    <dt>payload.s2Signal <span class="property-type">string</span></dt>
+    <dd><code>Message</code> - serialise and send the S2 message object to the CEM.<br>
+        <code>PowerMeasurementStart</code> - acknowledged, no WebSocket action.</dd>
   </dl>
   <h3>Output</h3>
   <dl class="message-properties">
-    <dt>payload <span class="property-type">object</span></dt>
-    <dd>An S2 message object received from the CEM.</dd>
+    <dt>payload.command <span class="property-type">string</span></dt>
+    <dd><code>Connect</code> when the WebSocket opens.<br>
+        <code>Message</code> when the CEM sends a message (raw JSON string in <code>payload.message</code>).<br>
+        <code>Disconnect</code> when the WebSocket closes.</dd>
+    <dt>payload.cemId <span class="property-type">string</span></dt>
+    <dd>Always <code>"cem"</code> - identifies the single CEM this node connects to.</dd>
   </dl>
 </script>

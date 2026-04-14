@@ -1,0 +1,106 @@
+<script type="text/javascript">
+  RED.nodes.registerType('s2-rm-config', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      resourceId: { value: '' },
+      rmName: { value: 'RM: Virtual' },
+      controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+      manufacturer: { value: 'Victron Energy' },
+      model: { value: 'Virtual RM' },
+      firmwareVersion: { value: '1.0.0' }
+    },
+    label: function () {
+      return this.name || this.rmName || 's2-rm-config'
+    },
+    oneditprepare: function () {
+      if (!this.resourceId) {
+        var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+        })
+        $('#node-config-input-resourceId').val(id)
+      }
+
+      var saved = ($('#node-config-input-controlTypes').val() || '').split(',').map(function (s) { return s.trim() })
+      $('.s2-rm-config-ct-checkbox').each(function () {
+        $(this).prop('checked', saved.indexOf($(this).val()) !== -1)
+      })
+
+      $('.s2-rm-config-ct-checkbox').on('change', function () {
+        if ($('.s2-rm-config-ct-checkbox:checked').length === 0) {
+          $(this).prop('checked', true)
+        }
+      })
+    },
+    oneditsave: function () {
+      var checked = []
+      $('.s2-rm-config-ct-checkbox:checked').each(function () {
+        checked.push($(this).val())
+      })
+      $('#node-config-input-controlTypes').val(checked.join(','))
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-rm-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-rmName">
+        <i class="fa fa-tag"></i> RM Name
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Human-readable name sent to the CEM in ResourceManagerDetails"></i>
+      </label>
+      <input type="text" id="node-config-input-rmName" placeholder="e.g. Victron Virtual RM">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-resourceId">
+        <i class="fa fa-id-card"></i> Resource ID
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Used in both the CEM URL and ResourceManagerDetails. Auto-generated on first use - do not change after deployment."></i>
+      </label>
+      <input type="text" id="node-config-input-resourceId" placeholder="Auto-generated UUID">
+    </div>
+
+    <div class="form-row">
+      <label class="s2-section-label">
+        <i class="fa fa-sliders"></i> Control Types
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
+      </label>
+    </div>
+    <div class="form-row s2-full-row">
+      <div class="s2-control-types-container">
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="OPERATION_MODE_BASED_CONTROL"> OMBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Operation Mode Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="FILL_RATE_BASED_CONTROL"> FRBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Fill-rate Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="DEMAND_DRIVEN_BASED_CONTROL"> DDBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Demand Driven Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="POWER_PROFILE_BASED_CONTROL"> PPBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Profile Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="POWER_ENVELOPE_BASED_CONTROL"> PEBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Envelope Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="NOT_CONTROLABLE"> Not Ctrl <i class="fa fa-info-circle tooltip-icon" data-tooltip="Not Controllable - device cannot be controlled by the CEM"></i></label>
+      </div>
+      <input type="hidden" id="node-config-input-controlTypes">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-manufacturer"><i class="fa fa-industry"></i> Manufacturer</label>
+      <input type="text" id="node-config-input-manufacturer" placeholder="e.g. Victron Energy">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-model"><i class="fa fa-cube"></i> Model</label>
+      <input type="text" id="node-config-input-model" placeholder="e.g. Virtual AC Load">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
+      <input type="text" id="node-config-input-firmwareVersion" placeholder="e.g. 1.0.0">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
