@@ -4,13 +4,14 @@ import WebSocket from 'ws'
 export interface S2WebSocketTransportOptions {
   url: string
   reconnectInterval?: number
+  maxReconnectInterval?: number
   headers?: Record<string, string>
 }
 
 /**
  * S2WebSocketTransport manages a single outbound WebSocket connection
  * from an RM to a CEM. It is a thin EventEmitter wrapper around `ws`
- * with automatic reconnection.
+ * with automatic reconnection, exponential backoff, and heartbeat.
  *
  * Events:
  *   'open'    - WS connection established
@@ -27,20 +28,30 @@ export interface S2WebSocketTransportOptions {
  */
 export class S2WebSocketTransport extends EventEmitter {
   private readonly _url: string
-  private readonly _reconnectInterval: number
+  private readonly _initialReconnectInterval: number
+  private readonly _maxReconnectInterval: number
   private readonly _headers: Record<string, string> | undefined
   private _ws: WebSocket | null
   private _reconnectTimer: ReturnType<typeof setTimeout> | null
+  private _heartbeatTimer: ReturnType<typeof setInterval> | null
   private _intentionalClose: boolean
+  private _currentReconnectInterval: number
+  private _isAlive: boolean
+  private _lastContact: Date | null
 
-  constructor ({ url, reconnectInterval = 5000, headers }: S2WebSocketTransportOptions) {
+  constructor ({ url, reconnectInterval = 5000, maxReconnectInterval = 30000, headers }: S2WebSocketTransportOptions) {
     super()
     this._url = url
-    this._reconnectInterval = reconnectInterval
+    this._initialReconnectInterval = reconnectInterval
+    this._maxReconnectInterval = maxReconnectInterval
     this._headers = headers
     this._ws = null
     this._reconnectTimer = null
+    this._heartbeatTimer = null
     this._intentionalClose = false
+    this._currentReconnectInterval = reconnectInterval
+    this._isAlive = false
+    this._lastContact = null
   }
 
   /**
@@ -56,6 +67,7 @@ export class S2WebSocketTransport extends EventEmitter {
    */
   disconnect (): void {
     this._intentionalClose = true
+    this._stopHeartbeat()
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer)
       this._reconnectTimer = null
@@ -80,7 +92,17 @@ export class S2WebSocketTransport extends EventEmitter {
     return this._url
   }
 
+  get lastContact (): Date | null {
+    return this._lastContact
+  }
+
   // -- private --
+
+  private _recordActivity (): void {
+    this._isAlive = true
+    this._lastContact = new Date()
+    this.emit('activity', this._lastContact)
+  }
 
   private _doConnect (): void {
     const ws = this._headers
@@ -89,15 +111,24 @@ export class S2WebSocketTransport extends EventEmitter {
     this._ws = ws
 
     ws.on('open', () => {
+      this._currentReconnectInterval = this._initialReconnectInterval
+      this._recordActivity()
+      this._startHeartbeat()
       this.emit('open')
     })
 
     ws.on('message', (data) => {
+      this._recordActivity()
       this.emit('message', data.toString())
+    })
+
+    ws.on('pong', () => {
+      this._recordActivity()
     })
 
     ws.on('close', () => {
       this._ws = null
+      this._stopHeartbeat()
       this.emit('close')
       if (!this._intentionalClose) {
         this._scheduleReconnect()
@@ -110,10 +141,41 @@ export class S2WebSocketTransport extends EventEmitter {
     })
   }
 
+  private _startHeartbeat (): void {
+    this._stopHeartbeat()
+    this._heartbeatTimer = setInterval(() => {
+      if (this._isAlive === false) {
+        if (this._ws) {
+          this._ws.terminate()
+        }
+        return
+      }
+      this._isAlive = false
+      if (this._ws) {
+        this._ws.ping()
+      }
+    }, 30000)
+  }
+
+  private _stopHeartbeat (): void {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer)
+      this._heartbeatTimer = null
+    }
+  }
+
   private _scheduleReconnect (): void {
+    if (this._reconnectTimer) return
+
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null
       this._doConnect()
-    }, this._reconnectInterval)
+    }, this._currentReconnectInterval)
+
+    // Increase interval for next time
+    this._currentReconnectInterval = Math.min(
+      this._currentReconnectInterval * 2,
+      this._maxReconnectInterval
+    )
   }
 }

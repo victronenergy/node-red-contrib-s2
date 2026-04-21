@@ -74,6 +74,11 @@ export = function (RED: NodeRedApp): void {
       node.send({ payload: { command: 'Connect', cemId: CEM_ID, keepAliveInterval: 0 } })
     })
 
+    transport.on('activity', (lastContact: Date) => {
+      const timeStr = lastContact.toLocaleTimeString()
+      node.status({ fill: 'green', shape: 'dot', text: `connected (${timeStr})` })
+    })
+
     transport.on('message', (raw: string) => {
       if (config.debug) node.log(`[s2-websocket] <- ${raw}`)
       node.send({ payload: { command: 'Message', cemId: CEM_ID, message: raw } })
@@ -95,6 +100,25 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('input', (msg, _send, done) => {
+      // Lifecycle control via msg.connection
+      if (msg.connection === 'Reconnect') {
+        node.log('[s2-websocket] manual reconnect triggered')
+        transport.disconnect()
+        transport.connect()
+        done()
+        return
+      } else if (msg.connection === 'Disconnect') {
+        node.log('[s2-websocket] manual disconnect triggered')
+        transport.disconnect()
+        done()
+        return
+      } else if (msg.connection === 'Connect') {
+        node.log('[s2-websocket] manual connect triggered')
+        transport.connect()
+        done()
+        return
+      }
+
       if (!msg.payload || typeof msg.payload !== 'object') {
         done()
         return

@@ -28,7 +28,6 @@ describe('S2WebSocketTransport Reconnection Logic', () => {
     expect(MockWebSocket).toHaveBeenCalledTimes(1)
 
     const wsInstance = MockWebSocket.mock.results[0].value
-    // @ts-ignore - access private method to simulate event if needed, or use the mock's emitter
     const closeHandler = (wsInstance.on as jest.Mock).mock.calls.find(call => call[0] === 'close')[1]
 
     // Simulate connection closure
