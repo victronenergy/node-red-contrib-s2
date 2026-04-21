@@ -12,7 +12,9 @@ import {
   makePowerMeasurement,
   makePEBCPowerConstraints,
   makePowerForecast,
-  generateId
+  generateId,
+  gridConnectionToWatts,
+  GRID_CONNECTIONS
 } from '../../src/lib/s2/messages'
 
 describe('generateId', () => {
@@ -334,5 +336,43 @@ describe('makePowerForecast', () => {
       duration: 900000,
       power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: 1500 }]
     })
+  })
+})
+
+describe('GRID_CONNECTIONS', () => {
+  it('has expected keys', () => {
+    expect(Object.keys(GRID_CONNECTIONS)).toEqual(['1x16A', '3x16A', '3x25A', '3x32A', '3x40A', '3x63A'])
+  })
+
+  it('3x25A has correct maxWatts', () => {
+    expect(GRID_CONNECTIONS['3x25A'].maxWatts).toBe(17250)
+  })
+})
+
+describe('gridConnectionToWatts', () => {
+  it('returns maxWatts for a known connection', () => {
+    expect(gridConnectionToWatts('3x25A')).toBe(17250)
+    expect(gridConnectionToWatts('1x16A')).toBe(3680)
+    expect(gridConnectionToWatts('3x63A')).toBe(43470)
+  })
+
+  it('returns null for undefined input', () => {
+    expect(gridConnectionToWatts(undefined)).toBeNull()
+  })
+
+  it('returns null for empty string', () => {
+    expect(gridConnectionToWatts('')).toBeNull()
+  })
+
+  it('returns null for unknown connection', () => {
+    expect(gridConnectionToWatts('2x20A')).toBeNull()
+  })
+
+  it('returns customMaxPowerW for custom connection', () => {
+    expect(gridConnectionToWatts('custom', 15000)).toBe(15000)
+  })
+
+  it('returns null for custom without customMaxPowerW', () => {
+    expect(gridConnectionToWatts('custom')).toBeNull()
   })
 })

@@ -1,4 +1,13 @@
 <script type="text/javascript">
+  var GRID_CONNECTIONS = {
+    '1x16A': 3680,
+    '3x16A': 11040,
+    '3x25A': 17250,
+    '3x32A': 22080,
+    '3x40A': 27600,
+    '3x63A': 43470
+  }
+
   RED.nodes.registerType('s2-rm-config', {
     category: 'config',
     defaults: {
@@ -12,7 +21,9 @@
       model: { value: 'Virtual RM' },
       firmwareVersion: { value: '1.0.0' },
       maxBatteryChargePower: { value: 0, validate: RED.validators.number() },
-      maxBatteryDischargePower: { value: 0, validate: RED.validators.number() }
+      maxBatteryDischargePower: { value: 0, validate: RED.validators.number() },
+      gridConnection: { value: '' },
+      customMaxPowerW: { value: '' }
     },
     label: function () {
       return this.name || this.rmName || 's2-rm-config'
@@ -60,6 +71,13 @@
         checkedRoles.push($(this).val())
       })
       $('#node-config-input-roles').val(checkedRoles.join(','))
+
+      function updateCustomPowerVisibility () {
+        var val = $('#node-config-input-gridConnection').val()
+        $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
+      }
+      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
+      updateCustomPowerVisibility()
     }
   })
 </script>
@@ -119,6 +137,31 @@
         <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="NOT_CONTROLABLE"> Not Ctrl <i class="fa fa-info-circle tooltip-icon" data-tooltip="Not Controllable - device cannot be controlled by the CEM"></i></label>
       </div>
       <input type="hidden" id="node-config-input-controlTypes">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-gridConnection">
+        <i class="fa fa-plug"></i> Grid Connection
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Sets the outer power limits for PEBC constraints. The CEM will receive [-max, +max] watts as the allowed power envelope."></i>
+      </label>
+      <select id="node-config-input-gridConnection">
+        <option value="">-- Not set --</option>
+        <option value="1x16A">1x16A (3.7 kW)</option>
+        <option value="3x16A">3x16A (11 kW)</option>
+        <option value="3x25A">3x25A (17.3 kW)</option>
+        <option value="3x32A">3x32A (22 kW)</option>
+        <option value="3x40A">3x40A (27.6 kW)</option>
+        <option value="3x63A">3x63A (43.5 kW)</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="s2-rm-config-custom-power-row" style="display:none">
+      <label for="node-config-input-customMaxPowerW">
+        <i class="fa fa-bolt"></i> Max Power (W)
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i>
+      </label>
+      <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
     </div>
 
     <div class="form-row">

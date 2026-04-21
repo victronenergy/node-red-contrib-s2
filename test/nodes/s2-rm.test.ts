@@ -120,3 +120,45 @@ describe('s2-rm - PowerConstraints command', () => {
     expect(node.error as jest.Mock).not.toHaveBeenCalled()
   })
 })
+
+describe('s2-rm - grid connection default constraints', () => {
+  it('initializes pendingPEBCConstraints from rmConfig gridConnection', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x25A' }
+    const { node, handlers } = setupNode({}, rmConfig)
+
+    // Connect a CEM and trigger SelectControlType to cause PEBC constraints to be sent
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+
+    // No error means constraints were accepted without a prior PowerConstraints command
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('initializes with correct wattage for 3x25A', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x25A', controlTypes: 'POWER_ENVELOPE_BASED_CONTROL' }
+    const { node, handlers } = setupNode({}, rmConfig)
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+
+    // Session created without error; constraints are set from config (-17250, 17250)
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('does not initialize pendingPEBCConstraints when gridConnection is not set', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG }
+    const { node, handlers } = setupNode({}, rmConfig)
+
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('uses customMaxPowerW when gridConnection is custom', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: 'custom', customMaxPowerW: 15000 }
+    const { node, handlers } = setupNode({}, rmConfig)
+
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+})

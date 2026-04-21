@@ -17,6 +17,8 @@ export interface S2RmConfigNode extends NodeRedNode {
   maxBatteryChargePower: number
   /** Hardware ceiling for battery discharge power in Watts. 0 = no limit configured. */
   maxBatteryDischargePower: number
+  gridConnection: string // e.g. '3x25A' or 'custom'
+  customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
 }
 
 /**

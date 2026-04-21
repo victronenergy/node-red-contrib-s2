@@ -81,6 +81,33 @@ export type ControlTypeValue = (typeof ControlType)[keyof typeof ControlType]
 /**
  * ReceptionStatus result values (matches s2python ReceptionStatusValues).
  */
+/**
+ * Standard European grid connection types with their max power capacity at 230V nominal.
+ * Used to set PEBC power constraint outer limits (bidirectional: [-maxWatts, +maxWatts]).
+ */
+export const GRID_CONNECTIONS = Object.freeze({
+  '1x16A': { phases: 1, ampsPerPhase: 16, maxWatts: 3680 },
+  '3x16A': { phases: 3, ampsPerPhase: 16, maxWatts: 11040 },
+  '3x25A': { phases: 3, ampsPerPhase: 25, maxWatts: 17250 },
+  '3x32A': { phases: 3, ampsPerPhase: 32, maxWatts: 22080 },
+  '3x40A': { phases: 3, ampsPerPhase: 40, maxWatts: 27600 },
+  '3x63A': { phases: 3, ampsPerPhase: 63, maxWatts: 43470 }
+} as const)
+
+export type GridConnectionKey = keyof typeof GRID_CONNECTIONS
+
+/**
+ * Returns the max power in watts for a given grid connection.
+ * For 'custom', returns customMaxPowerW if provided.
+ * Returns null if the connection is unknown or unset.
+ */
+export function gridConnectionToWatts (gridConnection: string | undefined, customMaxPowerW?: number): number | null {
+  if (!gridConnection) return null
+  if (gridConnection === 'custom') return customMaxPowerW ?? null
+  const conn = GRID_CONNECTIONS[gridConnection as GridConnectionKey]
+  return conn ? conn.maxWatts : null
+}
+
 export const ReceptionStatusResult = Object.freeze({
   OK: 'OK',
   INVALID_DATA: 'INVALID_DATA',

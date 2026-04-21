@@ -1,7 +1,7 @@
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode } from '../../types/config-nodes'
 import { S2Session, State } from '../../lib/s2/session'
-import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
+import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule } from '../../lib/s2/schedule'
 
 interface S2RmConfig extends NodeConfig {
@@ -95,8 +95,12 @@ export = function (RED: NodeRedApp): void {
 
     // One session per connected CEM
     const sessions = new Map<string, S2Session>()
-    // Stored at node level so they persist across reconnects and can be set before any CEM connects
-    let pendingPEBCConstraints: PEBCPowerConstraintsInput | null = null
+
+    // Derive default PEBC constraints from the grid connection config
+    const defaultMaxPowerW = gridConnectionToWatts(rmConfigNode.gridConnection, rmConfigNode.customMaxPowerW)
+    let pendingPEBCConstraints: PEBCPowerConstraintsInput | null = defaultMaxPowerW != null
+      ? { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -defaultMaxPowerW, maxPower: defaultMaxPowerW }
+      : null
 
     // PEBC schedule dispatch
     let scheduleTimer: ReturnType<typeof setTimeout> | null = null

@@ -12,6 +12,8 @@ export = function (RED: NodeRedApp): void {
     this.model = config.model as string
     this.firmwareVersion = config.firmwareVersion as string
     this.controlTypes = config.controlTypes as string
+    this.gridConnection = config.gridConnection as string
+    this.customMaxPowerW = config.customMaxPowerW != null ? Number(config.customMaxPowerW) : undefined
   }
 
   RED.nodes.registerType('s2-rm-config', S2RmConfigNodeConstructor)
