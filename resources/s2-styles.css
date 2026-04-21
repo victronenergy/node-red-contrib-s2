@@ -3,55 +3,82 @@
  *
  * All selectors MUST be scoped under .s2-form to prevent
  * affecting other Node-RED nodes.
+ *
+ * Label and input sizing intentionally defers to Node-RED defaults so that
+ * config node selectors (red-ui-search-container) lay out correctly inline.
  */
 
 /* ============================================================================
-   FORM LAYOUT - Labels and Inputs
+   FORM LAYOUT
    ============================================================================ */
 
 .s2-form {
   overflow-x: hidden;
 }
 
-.s2-form .form-row {
-  box-sizing: border-box;
-  max-width: 100%;
-}
-
+/* Keep icon + text vertically centred inside labels without overriding the
+   width - Node-RED's default ~110px label width is used instead. */
+/* Label width slightly wider than NR default (110px) to accommodate the
+   field icon + text. The tooltip icon is absolutely positioned inside the
+   label so it never pushes the input - all inputs align consistently. */
 .s2-form .form-row label {
-  width: 216px !important;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-}
-
-.s2-form .form-row input[type="text"],
-.s2-form .form-row input[type="number"],
-.s2-form .form-row select,
-.s2-form .form-row .red-ui-typedInput-container {
-  width: calc(100% - 232px) !important;
-  vertical-align: middle;
+  white-space: nowrap;
+  width: 120px !important;
+  position: relative;
+  padding-right: 20px;
+  box-sizing: border-box;
 }
 
 .s2-form .form-row input[type="checkbox"] {
   width: auto !important;
 }
 
+/* Tooltip icon - absolutely positioned at the right edge of the label. */
 .s2-form .tooltip-icon {
-  margin-left: 4px;
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8em;
+  color: #00BCFF;
+  cursor: help;
+}
+
+/* Tooltip container - appended to <body> by s2-common.js so it is never
+   clipped by a parent overflow or panel boundary. */
+.s2-tooltip-container {
+  position: absolute;
+  background: #fff;
+  color: #444;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.4;
+  max-width: 280px;
+  z-index: 10000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
 }
 
 /* ============================================================================
-   CONTROL TYPES - Checkbox Grid
+   CONTROL TYPES / ROLES - Checkbox Grid
    ============================================================================ */
 
+/* Section labels (Roles, Control Types) span the full row. */
 .s2-form .s2-section-label {
   width: 100% !important;
+  display: inline-block;
 }
 
+/* Indent checkbox grid to align with inputs (matches Node-RED default label width). */
 .s2-form .s2-full-row {
   display: block;
-  margin-left: 216px;
+  margin-left: 110px;
 }
 
 .s2-form .s2-control-types-container {

@@ -1,3 +1,4 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
   RED.nodes.registerType('s2-cem-config', {
     category: 'config',
@@ -11,6 +12,9 @@
     },
     label: function () {
       return this.name || this.url || 's2-cem-config'
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
     }
   })
 </script>
@@ -24,10 +28,7 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-url">
-        <i class="fa fa-globe"></i> CEM URL
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="WebSocket URL of the CEM. Either use {resourceId} as a placeholder (e.g. wss://cem.example.com/s2/{resourceId}) or end the URL with a trailing slash and the Resource ID will be appended automatically (e.g. wss://cem.example.com/s2/ws/)."></i>
-      </label>
+      <label for="node-config-input-url"><i class="fa fa-globe"></i> CEM URL<i class="fa fa-info-circle tooltip-icon" data-tooltip="WebSocket URL of the CEM. Either use {resourceId} as a placeholder (e.g. wss://cem.example.com/s2/{resourceId}) or end the URL with a trailing slash and the Resource ID will be appended automatically (e.g. wss://cem.example.com/s2/ws/)."></i></label>
       <input type="text" id="node-config-input-url" placeholder="wss://cem.example.com/s2/ws/">
     </div>
 

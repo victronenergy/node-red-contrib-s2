@@ -1,3 +1,4 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
   RED.nodes.registerType('s2-rm', {
     category: 's2',
@@ -31,6 +32,8 @@
       }
 
       $('#node-input-controlTypeConfig').typedInput({ types: ['json'] })
+
+      window.__s2Common.initializeTooltips()
 
       if (!this.controlTypeConfig) {
         var modeId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
@@ -66,9 +69,6 @@
         $('#node-input-controlTypeConfig').typedInput('value', JSON.stringify(defaultConfig, null, 2))
       }
 
-      if (window.__victronCommon && typeof window.__victronCommon.initializeTooltips === 'function') {
-        window.__victronCommon.initializeTooltips()
-      }
     }
   })
 </script>
@@ -84,26 +84,17 @@
     </div>
 
     <div class="form-row">
-      <label for="node-input-rmConfig">
-        <i class="fa fa-id-card"></i> RM Config
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID, name, control types, manufacturer. Shared with the transport node."></i>
-      </label>
+      <label for="node-input-rmConfig"><i class="fa fa-id-card"></i> RM Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID, name, control types, manufacturer. Shared with the transport node."></i></label>
       <input type="text" id="node-input-rmConfig">
     </div>
 
     <div class="form-row">
-      <label for="node-input-controlTypeConfig">
-        <i class="fa fa-code"></i> Control Type Config
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="JSON configuration per control type. For OMBC: operation modes, power ranges, transitions and timers. Keys: OMBC.systemDescription.operationModes, OMBC.status.activeOperationModeId"></i>
-      </label>
+      <label for="node-input-controlTypeConfig"><i class="fa fa-code"></i> CT Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="JSON configuration per control type. For OMBC: operation modes, power ranges, transitions and timers. Keys: OMBC.systemDescription.operationModes, OMBC.status.activeOperationModeId"></i></label>
       <input type="text" id="node-input-controlTypeConfig">
     </div>
 
     <div class="form-row">
-      <label for="node-input-providesPowerMeasurement">
-        <i class="fa fa-bolt"></i> Power Measurement
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i>
-      </label>
+      <label for="node-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i></label>
       <select id="node-input-providesPowerMeasurement" style="width: 70%;">
         <option value="">None</option>
         <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>

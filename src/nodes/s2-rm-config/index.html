@@ -1,3 +1,4 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
   var GRID_CONNECTIONS = {
     '1x16A': 3680,
@@ -72,6 +73,8 @@
       })
       $('#node-config-input-roles').val(checkedRoles.join(','))
 
+      window.__s2Common.initializeTooltips()
+
       function updateCustomPowerVisibility () {
         var val = $('#node-config-input-gridConnection').val()
         $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
@@ -91,26 +94,17 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-rmName">
-        <i class="fa fa-tag"></i> RM Name
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Human-readable name sent to the CEM in ResourceManagerDetails"></i>
-      </label>
+      <label for="node-config-input-rmName"><i class="fa fa-tag"></i> RM Name<i class="fa fa-info-circle tooltip-icon" data-tooltip="Human-readable name sent to the CEM in ResourceManagerDetails"></i></label>
       <input type="text" id="node-config-input-rmName" placeholder="e.g. Victron Virtual RM">
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-resourceId">
-        <i class="fa fa-id-card"></i> Resource ID
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Used in both the CEM URL and ResourceManagerDetails. Auto-generated on first use - do not change after deployment."></i>
-      </label>
+      <label for="node-config-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Used in both the CEM URL and ResourceManagerDetails. Auto-generated on first use - do not change after deployment."></i></label>
       <input type="text" id="node-config-input-resourceId" placeholder="Auto-generated UUID">
     </div>
 
     <div class="form-row">
-      <label class="s2-section-label">
-        <i class="fa fa-bolt"></i> Roles
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Energy roles advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
-      </label>
+      <label class="s2-section-label"><i class="fa fa-bolt"></i> Roles<i class="fa fa-info-circle tooltip-icon" data-tooltip="Energy roles advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i></label>
     </div>
     <div class="form-row s2-full-row">
       <div class="s2-control-types-container">
@@ -122,10 +116,7 @@
     </div>
 
     <div class="form-row">
-      <label class="s2-section-label">
-        <i class="fa fa-sliders"></i> Control Types
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i>
-      </label>
+      <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i></label>
     </div>
     <div class="form-row s2-full-row">
       <div class="s2-control-types-container">
@@ -140,10 +131,7 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-gridConnection">
-        <i class="fa fa-plug"></i> Grid Connection
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Sets the outer power limits for PEBC constraints. The CEM will receive [-max, +max] watts as the allowed power envelope."></i>
-      </label>
+      <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the outer PEBC power limits sent to the CEM as [-max, +max] watts."></i></label>
       <select id="node-config-input-gridConnection">
         <option value="">-- Not set --</option>
         <option value="1x16A">1x16A (3.7 kW)</option>
@@ -157,10 +145,7 @@
     </div>
 
     <div class="form-row" id="s2-rm-config-custom-power-row" style="display:none">
-      <label for="node-config-input-customMaxPowerW">
-        <i class="fa fa-bolt"></i> Max Power (W)
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i>
-      </label>
+      <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
       <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
     </div>
 
@@ -175,10 +160,7 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-serialNumber">
-        <i class="fa fa-barcode"></i> Serial Number
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Serial number sent in ResourceManagerDetails. Supports context variables: {{global.vrmId}}, {{flow.siteId}}. Defaults to the node ID if empty."></i>
-      </label>
+      <label for="node-config-input-serialNumber"><i class="fa fa-barcode"></i> Serial Number<i class="fa fa-info-circle tooltip-icon" data-tooltip="Serial number sent in ResourceManagerDetails. Supports context variables: {{global.vrmId}}, {{flow.siteId}}. Defaults to the node ID if empty."></i></label>
       <input type="text" id="node-config-input-serialNumber" placeholder="e.g. {{global.vrmId}} or leave empty for node ID">
     </div>
 

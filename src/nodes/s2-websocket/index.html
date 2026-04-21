@@ -1,3 +1,4 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
   RED.nodes.registerType('s2-websocket', {
     category: 's2',
@@ -19,6 +20,9 @@
     },
     labelStyle: function () {
       return this.name ? 'node_label_italic' : ''
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
     }
   })
 </script>
@@ -32,26 +36,17 @@
     </div>
 
     <div class="form-row">
-      <label for="node-input-cem">
-        <i class="fa fa-globe"></i> CEM
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="CEM connection: URL template and credentials"></i>
-      </label>
+      <label for="node-input-cem"><i class="fa fa-globe"></i> CEM<i class="fa fa-info-circle tooltip-icon" data-tooltip="CEM connection: URL template and credentials"></i></label>
       <input type="text" id="node-input-cem">
     </div>
 
     <div class="form-row">
-      <label for="node-input-rmConfig">
-        <i class="fa fa-id-card"></i> RM Config
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID (used in the CEM URL), name, control types. Must match the s2-rm node."></i>
-      </label>
+      <label for="node-input-rmConfig"><i class="fa fa-id-card"></i> RM Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID (used in the CEM URL), name, control types. Must match the s2-rm node."></i></label>
       <input type="text" id="node-input-rmConfig">
     </div>
 
     <div class="form-row">
-      <label for="node-input-reconnectInterval">
-        <i class="fa fa-refresh"></i> Reconnect (s)
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Seconds to wait before reconnecting after a lost connection"></i>
-      </label>
+      <label for="node-input-reconnectInterval"><i class="fa fa-refresh"></i> Reconnect (s)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Seconds to wait before reconnecting after a lost connection"></i></label>
       <input type="number" id="node-input-reconnectInterval" min="1" max="300">
     </div>
 
