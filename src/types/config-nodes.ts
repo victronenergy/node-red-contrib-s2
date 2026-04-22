@@ -13,6 +13,10 @@ export interface S2RmConfigNode extends NodeRedNode {
   model: string
   firmwareVersion: string
   controlTypes: string // comma-separated list of control type values
+  /** Hardware ceiling for battery charge power in Watts. 0 = no limit configured. */
+  maxBatteryChargePower: number
+  /** Hardware ceiling for battery discharge power in Watts. 0 = no limit configured. */
+  maxBatteryDischargePower: number
 }
 
 /**

@@ -10,7 +10,9 @@
       serialNumber: { value: '' },
       manufacturer: { value: 'Victron Energy' },
       model: { value: 'Virtual RM' },
-      firmwareVersion: { value: '1.0.0' }
+      firmwareVersion: { value: '1.0.0' },
+      maxBatteryChargePower: { value: 0, validate: RED.validators.number() },
+      maxBatteryDischargePower: { value: 0, validate: RED.validators.number() }
     },
     label: function () {
       return this.name || this.rmName || 's2-rm-config'
@@ -140,6 +142,31 @@
     <div class="form-row">
       <label for="node-config-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
       <input type="text" id="node-config-input-firmwareVersion" placeholder="e.g. 1.0.0">
+    </div>
+
+    <div class="form-row">
+      <label class="s2-section-label">
+        <i class="fa fa-battery-three-quarters"></i> Battery Limits
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Hardware ceiling for battery power. CEM instructions are clamped to these values. Set to 0 for no limit."></i>
+      </label>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-maxBatteryChargePower">
+        <i class="fa fa-arrow-circle-down"></i> Max charge power
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery charge power in Watts. Never exceeded when writing DESS limits."></i>
+      </label>
+      <input type="number" id="node-config-input-maxBatteryChargePower" placeholder="0 = no limit" min="0" step="1">
+      <span style="margin-left:4px">W</span>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-maxBatteryDischargePower">
+        <i class="fa fa-arrow-circle-up"></i> Max discharge power
+        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery discharge power in Watts. Never exceeded when writing DESS limits."></i>
+      </label>
+      <input type="number" id="node-config-input-maxBatteryDischargePower" placeholder="0 = no limit" min="0" step="1">
+      <span style="margin-left:4px">W</span>
     </div>
 
   </div>
