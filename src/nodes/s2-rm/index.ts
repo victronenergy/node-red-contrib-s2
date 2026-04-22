@@ -2,6 +2,7 @@ import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode } from '../../types/config-nodes'
 import { S2Session, State } from '../../lib/s2/session'
 import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
+import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule } from '../../lib/s2/schedule'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
@@ -97,6 +98,46 @@ export = function (RED: NodeRedApp): void {
     // Stored at node level so they persist across reconnects and can be set before any CEM connects
     let pendingPEBCConstraints: PEBCPowerConstraintsInput | null = null
 
+    // PEBC schedule dispatch
+    let scheduleTimer: ReturnType<typeof setTimeout> | null = null
+    const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
+
+    function emitActiveElement (schedule: PebcSchedule): void {
+      const el = getActiveElement(schedule, Date.now())
+      if (!el) return
+      node.send([null, null, {
+        cemId: schedule.cemId,
+        payload: {
+          startTime: new Date(el.startMs).toISOString(),
+          endTime: new Date(el.endMs).toISOString(),
+          duration: el.duration,
+          lowerBound: el.lowerBound,
+          upperBound: el.upperBound
+        }
+      }])
+    }
+
+    function scheduleNextDispatch (schedule: PebcSchedule): void {
+      if (scheduleTimer) {
+        clearTimeout(scheduleTimer)
+        scheduleTimer = null
+      }
+      const nextStart = getNextElementStart(schedule, Date.now())
+      if (nextStart === null) return
+      const delay = Math.max(0, nextStart - Date.now())
+      scheduleTimer = setTimeout(() => {
+        scheduleTimer = null
+        emitActiveElement(schedule)
+        scheduleNextDispatch(schedule)
+      }, delay)
+    }
+
+    function applySchedule (schedule: PebcSchedule): void {
+      node.context().flow.set(SCHEDULE_CONTEXT_KEY, schedule)
+      emitActiveElement(schedule)
+      scheduleNextDispatch(schedule)
+    }
+
     node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
 
     function updateStatus (): void {
@@ -150,6 +191,13 @@ export = function (RED: NodeRedApp): void {
         },
 
         onInstruction: (msg) => {
+          if (msg.message_type === MessageType.PEBC_INSTRUCTION) {
+            const schedule = parsePebcInstruction(msg as Record<string, unknown>, Date.now(), cemId)
+            if (schedule) {
+              applySchedule(schedule)
+              return
+            }
+          }
           node.send([null, null, { payload: msg, cemId }])
         },
 
@@ -290,6 +338,10 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
+      if (scheduleTimer) {
+        clearTimeout(scheduleTimer)
+        scheduleTimer = null
+      }
       sessions.clear()
       node.status({})
       done()
