@@ -2,16 +2,17 @@ import { parsePebcInstruction, getActiveElement, getNextElementStart } from '../
 
 const SLOT = 900_000 // 15 min in ms
 
-function makeInstruction (elements: Array<{ duration: number, upper_limit?: number | null, lower_limit?: number | null }>, id = 'instr-1') {
+function makeInstruction (elements: Array<{ duration: number, upper_limit?: number | null, lower_limit?: number | null }>, id = 'instr-1', execution_time?: string) {
   return {
     message_type: 'PEBC.Instruction',
     message_id: 'msg-1',
     id,
+    ...(execution_time ? { execution_time } : {}),
     power_envelopes: [
       {
         id: 'env-1',
         commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-        elements
+        power_envelope_elements: elements
       }
     ]
   }
@@ -58,14 +59,28 @@ describe('parsePebcInstruction', () => {
     expect(schedule.commodityQuantity).toBe('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
   })
 
+  it('uses execution_time as the slot anchor when present', () => {
+    const execTime = base + 5_000_000
+    const msg = makeInstruction([{ duration: SLOT }], 'instr-et', new Date(execTime).toISOString())
+    const schedule = parsePebcInstruction(msg, base)!
+    expect(schedule.elements[0].startMs).toBe(execTime)
+    expect(schedule.elements[0].endMs).toBe(execTime + SLOT)
+  })
+
+  it('falls back to receivedAt when execution_time is absent', () => {
+    const msg = makeInstruction([{ duration: SLOT }])
+    const schedule = parsePebcInstruction(msg, base)!
+    expect(schedule.elements[0].startMs).toBe(base)
+  })
+
   it('uses first power_envelope when multiple are present', () => {
     const msg = {
       message_type: 'PEBC.Instruction',
       message_id: 'msg-1',
       id: 'instr-1',
       power_envelopes: [
-        { id: 'env-a', commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', elements: [{ duration: SLOT, upper_limit: 100, lower_limit: 0 }] },
-        { id: 'env-b', commodity_quantity: 'ELECTRIC.POWER.L1', elements: [{ duration: SLOT, upper_limit: 200, lower_limit: 0 }] }
+        { id: 'env-a', commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', power_envelope_elements: [{ duration: SLOT, upper_limit: 100, lower_limit: 0 }] },
+        { id: 'env-b', commodity_quantity: 'ELECTRIC.POWER.L1', power_envelope_elements: [{ duration: SLOT, upper_limit: 200, lower_limit: 0 }] }
       ]
     }
     const schedule = parsePebcInstruction(msg, base)!

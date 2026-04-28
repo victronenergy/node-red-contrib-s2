@@ -72,4 +72,5 @@ export interface NodeRedNodes {
 
 export interface NodeRedApp {
   nodes: NodeRedNodes
+  settings?: { userDir?: string }
 }

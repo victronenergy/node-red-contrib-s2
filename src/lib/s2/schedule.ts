@@ -25,7 +25,7 @@ interface RawEnvelopeElement {
 interface RawPowerEnvelope {
   id: string
   commodity_quantity: string
-  elements: RawEnvelopeElement[]
+  power_envelope_elements: RawEnvelopeElement[]
 }
 
 /**
@@ -37,9 +37,12 @@ export function parsePebcInstruction (msg: Record<string, unknown>, receivedAt: 
   if (!Array.isArray(envelopes) || envelopes.length === 0) return null
 
   const envelope = envelopes[0]
-  const rawElements = envelope.elements ?? []
+  const rawElements = envelope.power_envelope_elements ?? []
 
-  let cursor = receivedAt
+  const executionTimeMs = msg.execution_time
+    ? new Date(msg.execution_time as string).getTime()
+    : receivedAt
+  let cursor = executionTimeMs
   const elements: ScheduleElement[] = rawElements.map((el) => {
     const startMs = cursor
     const endMs = cursor + el.duration

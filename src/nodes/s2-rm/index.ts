@@ -1,8 +1,11 @@
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode } from '../../types/config-nodes'
 import { S2Session, State } from '../../lib/s2/session'
 import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts } from '../../lib/s2/messages'
-import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule } from '../../lib/s2/schedule'
+import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
@@ -93,6 +96,35 @@ export = function (RED: NodeRedApp): void {
       }
     }
 
+    // Persist/restore schedule across restarts
+    const scheduleDir = path.join(RED.settings?.userDir || path.join(os.homedir(), '.node-red'), '.s2')
+    const scheduleFile = path.join(scheduleDir, `${node.id}-schedule.json`)
+
+    function saveSchedule (schedule: PebcSchedule): void {
+      try {
+        fs.mkdirSync(scheduleDir, { recursive: true })
+        fs.writeFileSync(scheduleFile, JSON.stringify(schedule, null, 2))
+      } catch (e) {
+        node.warn('Failed to persist S2 schedule: ' + (e as Error).message)
+      }
+    }
+
+    function loadPersistedSchedule (): void {
+      try {
+        const raw = fs.readFileSync(scheduleFile, 'utf8')
+        const schedule = JSON.parse(raw) as PebcSchedule
+        const now = Date.now()
+        const validElements = schedule.elements.filter(el => el.endMs > now)
+        if (validElements.length === 0) return
+        applySchedule({ ...schedule, elements: validElements })
+        node.log(`Restored S2 schedule for CEM ${schedule.cemId} with ${validElements.length} future element(s)`)
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+          node.warn('Failed to load persisted S2 schedule: ' + (e as Error).message)
+        }
+      }
+    }
+
     // One session per connected CEM
     const sessions = new Map<string, S2Session>()
 
@@ -102,9 +134,16 @@ export = function (RED: NodeRedApp): void {
       ? { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -defaultMaxPowerW, maxPower: defaultMaxPowerW }
       : null
 
+    let statusTimer: ReturnType<typeof setTimeout> | null = null
+
     // PEBC schedule dispatch
     let scheduleTimer: ReturnType<typeof setTimeout> | null = null
     const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
+
+    // Accumulated PEBC slots: keyed by slot start time (ms).
+    // Cleared when power_constraints_id changes (new planning period).
+    let pebcConstraintsId: string | null = null
+    const pebcSlots = new Map<number, { element: ScheduleElement, commodityQuantity: string, cemId: string }>()
 
     function emitActiveElement (schedule: PebcSchedule): void {
       const el = getActiveElement(schedule, Date.now())
@@ -116,7 +155,8 @@ export = function (RED: NodeRedApp): void {
           endTime: new Date(el.endMs).toISOString(),
           duration: el.duration,
           lowerBound: el.lowerBound,
-          upperBound: el.upperBound
+          upperBound: el.upperBound,
+          commodityQuantity: schedule.commodityQuantity
         }
       }])
     }
@@ -138,6 +178,7 @@ export = function (RED: NodeRedApp): void {
 
     function applySchedule (schedule: PebcSchedule): void {
       node.context().flow.set(SCHEDULE_CONTEXT_KEY, schedule)
+      saveSchedule(schedule)
       emitActiveElement(schedule)
       scheduleNextDispatch(schedule)
     }
@@ -179,7 +220,9 @@ export = function (RED: NodeRedApp): void {
               msg.status && msg.status !== ReceptionStatusResult.OK) {
             const diag = msg.diagnostic_label ? `: ${msg.diagnostic_label}` : ''
             node.warn(`CEM ${cemId} rejected message ${msg.subject_message_id || '?'} with ${msg.status}${diag}`)
-            node.status({ fill: 'yellow', shape: 'dot', text: `${msg.status}` })
+            if (statusTimer) clearTimeout(statusTimer)
+            node.status({ fill: 'yellow', shape: 'dot', text: `CEM rejection: ${msg.status}` })
+            statusTimer = setTimeout(() => { statusTimer = null; updateStatus() }, 5000)
           }
           node.send([null, { payload: msg, cemId }, null])
           if (msg.message_type === MessageType.SELECT_CONTROL_TYPE &&
@@ -196,9 +239,26 @@ export = function (RED: NodeRedApp): void {
 
         onInstruction: (msg) => {
           if (msg.message_type === MessageType.PEBC_INSTRUCTION) {
-            const schedule = parsePebcInstruction(msg as Record<string, unknown>, Date.now(), cemId)
-            if (schedule) {
-              applySchedule(schedule)
+            const rawMsg = msg as Record<string, unknown>
+            const parsed = parsePebcInstruction(rawMsg, Date.now(), cemId)
+            if (parsed && parsed.elements.length > 0) {
+              const constraintsId = rawMsg.power_constraints_id as string | undefined
+              if (constraintsId && constraintsId !== pebcConstraintsId) {
+                pebcSlots.clear()
+                pebcConstraintsId = constraintsId
+              }
+              for (const el of parsed.elements) {
+                pebcSlots.set(el.startMs, { element: el, commodityQuantity: parsed.commodityQuantity, cemId })
+              }
+              const sorted = [...pebcSlots.values()].sort((a, b) => a.element.startMs - b.element.startMs)
+              const combined: PebcSchedule = {
+                receivedAt: Date.now(),
+                cemId: sorted[0].cemId,
+                instructionId: parsed.instructionId,
+                commodityQuantity: sorted[0].commodityQuantity,
+                elements: sorted.map(s => s.element)
+              }
+              applySchedule(combined)
               return
             }
           }
@@ -342,6 +402,10 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
+      if (statusTimer) {
+        clearTimeout(statusTimer)
+        statusTimer = null
+      }
       if (scheduleTimer) {
         clearTimeout(scheduleTimer)
         scheduleTimer = null
@@ -350,6 +414,8 @@ export = function (RED: NodeRedApp): void {
       node.status({})
       done()
     })
+
+    loadPersistedSchedule()
   }
 
   RED.nodes.registerType('s2-rm', S2RmNode)
