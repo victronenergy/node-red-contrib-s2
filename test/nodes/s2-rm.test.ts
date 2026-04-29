@@ -303,6 +303,24 @@ describe('s2-rm - PEBC instruction accumulation', () => {
     expect(port3Calls.length).toBe(1)
   })
 
+  it('emits full schedule on port 4 when schedule is updated', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    const now = Date.now()
+    sendPebcInstruction(handlers, now, 'cem-1')
+    sendPebcInstruction(handlers, now + SLOT, 'cem-1')
+
+    const port4Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[3] !== null
+    )
+    expect(port4Calls.length).toBeGreaterThan(0)
+    const last = (port4Calls[port4Calls.length - 1][0] as unknown[])[3] as { cemId: string, payload: { elements: unknown[] } }
+    expect(last.cemId).toBe('cem-1')
+    expect(last.payload.elements).toHaveLength(2)
+  })
+
   it('clears accumulated slots when power_constraints_id changes', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
@@ -388,7 +406,8 @@ describe('s2-rm - schedule persistence', () => {
     expect(node2.send as jest.Mock).toHaveBeenCalledWith([
       null,
       null,
-      expect.objectContaining({ cemId: 'cem-1', payload: expect.objectContaining({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }) })
+      expect.objectContaining({ cemId: 'cem-1', payload: expect.objectContaining({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }) }),
+      null
     ])
   })
 
@@ -410,7 +429,7 @@ describe('s2-rm - schedule persistence', () => {
     const { node } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
 
     expect(node.log as jest.Mock).not.toHaveBeenCalledWith(expect.stringContaining('Restored'))
-    expect(node.send as jest.Mock).not.toHaveBeenCalledWith([null, null, expect.anything()])
+    expect(node.send as jest.Mock).not.toHaveBeenCalledWith([null, null, expect.anything(), null])
   })
 
   it('silently ignores a missing schedule file on startup', () => {

@@ -11,9 +11,9 @@
       providesForecast: { value: false }
     },
     inputs: 1,
-    outputs: 3,
+    outputs: 4,
     icon: 'font-awesome/fa-exchange',
-    outputLabels: ['to transport', 'from CEM', 'instructions'],
+    outputLabels: ['to transport', 'from CEM', 'instructions', 'schedule'],
     inputLabels: ['from transport'],
     label: function () {
       return this.name || 'S2 Resource Manager'
@@ -145,6 +145,16 @@
         <dd>Control instructions from the CEM (OMBC.Instruction, PEBC.Instruction, etc.).</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>ID of the CEM that sent the instruction.</dd>
+      </dl>
+    </li>
+    <li>Schedule
+      <dl class="message-properties">
+        <dt>payload.commodityQuantity <span class="property-type">string</span></dt>
+        <dd>Commodity quantity for all elements (e.g. <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>).</dd>
+        <dt>payload.elements <span class="property-type">array</span></dt>
+        <dd>Full accumulated PEBC schedule as an array of <code>{ startTime, endTime, durationSec, lowerBound, upperBound }</code>. Emitted each time the schedule is updated. Use this to program DESS schedule slots or similar downstream consumers.</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>ID of the CEM that issued the schedule.</dd>
       </dl>
     </li>
   </ol>

@@ -158,7 +158,7 @@ export = function (RED: NodeRedApp): void {
           upperBound: el.upperBound,
           commodityQuantity: schedule.commodityQuantity
         }
-      }])
+      }, null])
     }
 
     function scheduleNextDispatch (schedule: PebcSchedule): void {
@@ -181,6 +181,19 @@ export = function (RED: NodeRedApp): void {
       saveSchedule(schedule)
       emitActiveElement(schedule)
       scheduleNextDispatch(schedule)
+      node.send([null, null, null, {
+        cemId: schedule.cemId,
+        payload: {
+          commodityQuantity: schedule.commodityQuantity,
+          elements: schedule.elements.map(el => ({
+            startTime: new Date(el.startMs).toISOString(),
+            endTime: new Date(el.endMs).toISOString(),
+            durationSec: Math.round(el.duration / 1000),
+            lowerBound: el.lowerBound,
+            upperBound: el.upperBound
+          }))
+        }
+      }])
     }
 
     node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
@@ -262,7 +275,7 @@ export = function (RED: NodeRedApp): void {
               return
             }
           }
-          node.send([null, null, { payload: msg, cemId }])
+          node.send([null, null, { payload: msg, cemId }, null])
         },
 
         onError: (err) => {
