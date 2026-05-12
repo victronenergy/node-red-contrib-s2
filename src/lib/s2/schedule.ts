@@ -1,5 +1,7 @@
 'use strict'
 
+import type { PowerForecastInput, PowerForecastValue } from './messages'
+
 export interface ScheduleElement {
   startMs: number
   endMs: number
@@ -85,4 +87,53 @@ export function getNextElementStart (schedule: PebcSchedule, nowMs: number): num
     if (nowMs >= el.startMs && nowMs < el.endMs) return schedule.elements[i + 1].startMs
   }
   return null
+}
+
+/**
+ * Return a copy of forecast with value_expected (and value_upper/lower_limit when present)
+ * clamped to the tightest PEBC bounds overlapping each forecast element's time window.
+ * Elements with no overlapping PEBC bound are passed through unchanged.
+ */
+export function capForecastToSchedule (forecast: PowerForecastInput, schedule: PebcSchedule): PowerForecastInput {
+  let cursor = new Date(forecast.startTime).getTime()
+
+  const elements = forecast.elements.map(el => {
+    const elStart = cursor
+    const elEnd = cursor + el.duration
+    cursor = elEnd
+
+    let effectiveUpper: number | null = null
+    let effectiveLower: number | null = null
+
+    for (const schedEl of schedule.elements) {
+      if (elEnd <= schedEl.startMs || elStart >= schedEl.endMs) continue
+      if (schedEl.upperBound !== null) {
+        effectiveUpper = effectiveUpper === null ? schedEl.upperBound : Math.min(effectiveUpper, schedEl.upperBound)
+      }
+      if (schedEl.lowerBound !== null) {
+        effectiveLower = effectiveLower === null ? schedEl.lowerBound : Math.max(effectiveLower, schedEl.lowerBound)
+      }
+    }
+
+    if (effectiveUpper === null && effectiveLower === null) return el
+
+    const power_values: PowerForecastValue[] = el.power_values.map(pv => {
+      let expected = pv.value_expected
+      if (effectiveUpper !== null) expected = Math.min(expected, effectiveUpper)
+      if (effectiveLower !== null) expected = Math.max(expected, effectiveLower)
+
+      const capped: PowerForecastValue = { ...pv, value_expected: expected }
+      if (pv.value_upper_limit !== undefined && effectiveUpper !== null) {
+        capped.value_upper_limit = Math.min(pv.value_upper_limit, effectiveUpper)
+      }
+      if (pv.value_lower_limit !== undefined && effectiveLower !== null) {
+        capped.value_lower_limit = Math.max(pv.value_lower_limit, effectiveLower)
+      }
+      return capped
+    })
+
+    return { ...el, power_values }
+  })
+
+  return { ...forecast, elements }
 }

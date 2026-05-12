@@ -1,4 +1,5 @@
-import { parsePebcInstruction, getActiveElement, getNextElementStart } from '../../src/lib/s2/schedule'
+import { parsePebcInstruction, getActiveElement, getNextElementStart, capForecastToSchedule } from '../../src/lib/s2/schedule'
+import type { PowerForecastInput } from '../../src/lib/s2/messages'
 
 const SLOT = 900_000 // 15 min in ms
 
@@ -157,5 +158,104 @@ describe('getNextElementStart', () => {
 
   it('returns null when schedule has ended', () => {
     expect(getNextElementStart(schedule!, base + 2 * SLOT)).toBeNull()
+  })
+})
+
+describe('capForecastToSchedule', () => {
+  const base = 1_000_000_000_000
+
+  function makeSchedule (elements: Array<{ startMs: number, endMs: number, upper: number | null, lower: number | null }>): ReturnType<typeof parsePebcInstruction> {
+    return {
+      receivedAt: base,
+      cemId: 'cem-1',
+      instructionId: 'instr-1',
+      commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+      elements: elements.map(e => ({
+        startMs: e.startMs,
+        endMs: e.endMs,
+        duration: e.endMs - e.startMs,
+        upperBound: e.upper,
+        lowerBound: e.lower
+      }))
+    }
+  }
+
+  function makeForecast (startMs: number, slots: number[]): PowerForecastInput {
+    return {
+      startTime: new Date(startMs).toISOString(),
+      elements: slots.map(v => ({
+        duration: SLOT,
+        power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: v }]
+      }))
+    }
+  }
+
+  it('caps value_expected at upperBound when forecast exceeds it', () => {
+    const schedule = makeSchedule([{ startMs: base, endMs: base + SLOT, upper: 4000, lower: -4000 }])!
+    const forecast = makeForecast(base, [6000])
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(4000)
+  })
+
+  it('caps value_expected at lowerBound when forecast is below it', () => {
+    const schedule = makeSchedule([{ startMs: base, endMs: base + SLOT, upper: 4000, lower: -4000 }])!
+    const forecast = makeForecast(base, [-6000])
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(-4000)
+  })
+
+  it('leaves value_expected unchanged when within bounds', () => {
+    const schedule = makeSchedule([{ startMs: base, endMs: base + SLOT, upper: 4000, lower: -4000 }])!
+    const forecast = makeForecast(base, [2000])
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(2000)
+  })
+
+  it('leaves forecast elements unchanged when no PEBC element overlaps', () => {
+    const schedule = makeSchedule([{ startMs: base + 2 * SLOT, endMs: base + 3 * SLOT, upper: 1000, lower: -1000 }])!
+    const forecast = makeForecast(base, [8000])
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(8000)
+  })
+
+  it('applies tightest bound when forecast element overlaps multiple PEBC elements', () => {
+    const schedule = makeSchedule([
+      { startMs: base, endMs: base + SLOT, upper: 4000, lower: -4000 },
+      { startMs: base + SLOT, endMs: base + 2 * SLOT, upper: 2000, lower: -2000 }
+    ])!
+    // 2-hour forecast slot spanning both 15-min PEBC slots
+    const forecast: PowerForecastInput = {
+      startTime: new Date(base).toISOString(),
+      elements: [{ duration: 2 * SLOT, power_values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value_expected: 5000 }] }]
+    }
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(2000)
+  })
+
+  it('caps value_upper_limit and value_lower_limit when present', () => {
+    const schedule = makeSchedule([{ startMs: base, endMs: base + SLOT, upper: 4000, lower: -4000 }])!
+    const forecast: PowerForecastInput = {
+      startTime: new Date(base).toISOString(),
+      elements: [{
+        duration: SLOT,
+        power_values: [{
+          commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+          value_expected: 3000,
+          value_upper_limit: 6000,
+          value_lower_limit: -6000
+        }]
+      }]
+    }
+    const result = capForecastToSchedule(forecast, schedule)
+    const pv = result.elements[0].power_values[0]
+    expect(pv.value_upper_limit).toBe(4000)
+    expect(pv.value_lower_limit).toBe(-4000)
+  })
+
+  it('handles null PEBC bounds by not capping that direction', () => {
+    const schedule = makeSchedule([{ startMs: base, endMs: base + SLOT, upper: 3000, lower: null }])!
+    const forecast = makeForecast(base, [-9000])
+    const result = capForecastToSchedule(forecast, schedule)
+    expect(result.elements[0].power_values[0].value_expected).toBe(-9000)
   })
 })

@@ -27,6 +27,7 @@ export interface S2RmConfigNode extends NodeRedNode {
  */
 export interface S2CemConfigNode extends NodeRedNode {
   url: string
+  apiPrefix: string | undefined // optional path prefix for the CEM REST API, e.g. '/s2-message-handler'
   credentials: {
     username: string
     password: string

@@ -13,7 +13,7 @@ const DEFAULT_RM_CONFIG = {
   controlTypes: 'OPERATION_MODE_BASED_CONTROL'
 }
 
-function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEFAULT_RM_CONFIG, settings: Record<string, unknown> = {}) {
+function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEFAULT_RM_CONFIG, settings: Record<string, unknown> = {}, cemConfigNode: unknown = null) {
   const handlers: Record<string, (...args: unknown[]) => void> = {}
   const flowContext: Record<string, unknown> = {}
   const node: Record<string, unknown> = {
@@ -23,6 +23,7 @@ function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEF
     error: jest.fn(),
     warn: jest.fn(),
     log: jest.fn(),
+    debug: jest.fn(),
     status: jest.fn(),
     on: jest.fn((event: string, handler: (...args: unknown[]) => void) => { handlers[event] = handler }),
     context: jest.fn(() => ({
@@ -40,7 +41,7 @@ function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEF
     nodes: {
       createNode: jest.fn((n: Record<string, unknown>) => { Object.assign(n, node) }),
       registerType: jest.fn(),
-      getNode: jest.fn().mockReturnValue(rmConfigNode)
+      getNode: jest.fn((id: string) => id === 'cem-cfg-id' ? cemConfigNode : rmConfigNode)
     },
     settings
   }
@@ -53,7 +54,7 @@ function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEF
   registerNode(RED as never)
   Constructor!.call(node, { rmConfig: 'rm-cfg-id', ...config, id: 'node-test-id' } as never)
 
-  return { node, RED, handlers }
+  return { node, RED, handlers, flowContext }
 }
 
 describe('s2-rm - config node reference', () => {
@@ -343,6 +344,106 @@ describe('s2-rm - PEBC instruction accumulation', () => {
   })
 })
 
+describe('s2-rm - duplicate active element deduplication', () => {
+  beforeEach(() => { jest.useFakeTimers() })
+  afterEach(() => { jest.useRealTimers() })
+
+  const SLOT = 900_000
+
+  function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  function sendPebcInstruction (handlers: Record<string, (...args: unknown[]) => void>, opts: { executionTimeMs: number, upper?: number, lower?: number, constraintsId?: string }): void {
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: 'PEBC.Instruction',
+          message_id: 'pi-' + Math.random(),
+          id: 'instr-' + Math.random(),
+          power_constraints_id: opts.constraintsId ?? 'cid-1',
+          execution_time: new Date(opts.executionTimeMs).toISOString(),
+          power_envelopes: [{
+            id: 'pe-1',
+            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+            power_envelope_elements: [{ duration: SLOT, upper_limit: opts.upper ?? 11040, lower_limit: opts.lower ?? -11040 }]
+          }]
+        })
+      }
+    }, jest.fn(), jest.fn())
+  }
+
+  function countPort3 (node: Record<string, unknown>): number {
+    return (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    ).length
+  }
+
+  it('emits port 3 only once when the same active element is received repeatedly', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    const now = Date.now()
+    ;(node.send as jest.Mock).mockClear()
+
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+
+    expect(countPort3(node)).toBe(1)
+  })
+
+  it('emits port 3 again when bounds change for the same time slot', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    const now = Date.now()
+    ;(node.send as jest.Mock).mockClear()
+
+    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 5000 })
+    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 8000 })
+
+    expect(countPort3(node)).toBe(2)
+  })
+
+  it('shows duplicate count in node status when duplicates are received', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    const now = Date.now()
+
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow', text: expect.stringContaining('dup') })
+    )
+  })
+
+  it('resets duplicate count and restores green status when a new instruction arrives', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    const now = Date.now()
+
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    sendPebcInstruction(handlers, { executionTimeMs: now })
+    ;(node.status as jest.Mock).mockClear()
+
+    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 8000 })
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'green' })
+    )
+    expect(node.status as jest.Mock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ fill: 'yellow' })
+    )
+  })
+})
+
 describe('s2-rm - schedule persistence', () => {
   let tmpDir: string
 
@@ -437,5 +538,99 @@ describe('s2-rm - schedule persistence', () => {
 
     expect(node.warn as jest.Mock).not.toHaveBeenCalled()
     expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+})
+
+describe('s2-rm - flow context tracking', () => {
+  const PEBC_CONTROL_TYPE = 'POWER_ENVELOPE_BASED_CONTROL'
+
+  function connectAndSelectPebc (handlers: Record<string, (...args: unknown[]) => void>): void {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: PEBC_CONTROL_TYPE }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  it('sets pebcConstraintsId in flow context when PEBC.PowerConstraints is sent', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x16A', controlTypes: PEBC_CONTROL_TYPE }
+    const { handlers, flowContext } = setupNode({}, rmConfig)
+
+    connectAndSelectPebc(handlers)
+
+    expect(typeof flowContext.pebcConstraintsId).toBe('string')
+    expect((flowContext.pebcConstraintsId as string).length).toBeGreaterThan(0)
+  })
+
+  it('updates pebcConstraintsId when new constraints are sent via PowerConstraints command', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x16A', controlTypes: PEBC_CONTROL_TYPE }
+    const { handlers, flowContext } = setupNode({}, rmConfig)
+
+    connectAndSelectPebc(handlers)
+    const firstId = flowContext.pebcConstraintsId as string
+
+    handlers.input({
+      payload: {
+        command: 'PowerConstraints',
+        cemId: 'cem-1',
+        constraints: { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -5000, maxPower: 5000 }
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(typeof flowContext.pebcConstraintsId).toBe('string')
+    expect(flowContext.pebcConstraintsId).not.toBe(firstId)
+  })
+
+  it('sets cemFlexInstructionUrl from s2-cem-config when cem reference is configured', () => {
+    const cemConfig = { url: 'wss://cem-host:8080/s2/ws/', credentials: { username: 'user', password: 'pass' } }
+    const { flowContext } = setupNode({ cem: 'cem-cfg-id' }, DEFAULT_RM_CONFIG, {}, cemConfig)
+
+    expect(flowContext.cemFlexInstructionUrl).toBe(
+      `https://cem-host:8080/resource_managers/${DEFAULT_RM_CONFIG.resourceId}/flex_instructions`
+    )
+  })
+
+  it('includes apiPrefix in cemFlexInstructionUrl when configured', () => {
+    const cemConfig = { url: 'wss://cem-host:8080/s2/ws/', apiPrefix: '/s2-message-handler', credentials: { username: 'user', password: 'pass' } }
+    const { flowContext } = setupNode({ cem: 'cem-cfg-id' }, DEFAULT_RM_CONFIG, {}, cemConfig)
+
+    expect(flowContext.cemFlexInstructionUrl).toBe(
+      `https://cem-host:8080/s2-message-handler/resource_managers/${DEFAULT_RM_CONFIG.resourceId}/flex_instructions`
+    )
+  })
+
+  it('converts ws:// to http:// for non-TLS CEM connections', () => {
+    const cemConfig = { url: 'ws://cem-host:8080/s2/ws/', credentials: {} }
+    const { flowContext } = setupNode({ cem: 'cem-cfg-id' }, DEFAULT_RM_CONFIG, {}, cemConfig)
+
+    expect(flowContext.cemFlexInstructionUrl).toBe(
+      `http://cem-host:8080/resource_managers/${DEFAULT_RM_CONFIG.resourceId}/flex_instructions`
+    )
+  })
+
+  it('does not set cemFlexInstructionUrl when cem reference is not configured', () => {
+    const { flowContext } = setupNode({}, DEFAULT_RM_CONFIG)
+
+    expect(flowContext.cemFlexInstructionUrl).toBeUndefined()
+  })
+
+  it('sets cemApiAuth as a Basic auth header from s2-cem-config credentials', () => {
+    const cemConfig = { url: 'wss://cem-host:8080/s2/ws/', credentials: { username: 'user', password: 'secret' } }
+    const { flowContext } = setupNode({ cem: 'cem-cfg-id' }, DEFAULT_RM_CONFIG, {}, cemConfig)
+
+    const expected = 'Basic ' + Buffer.from('user:secret').toString('base64')
+    expect(flowContext.cemApiAuth).toBe(expected)
+  })
+
+  it('does not set cemApiAuth when username is not configured', () => {
+    const cemConfig = { url: 'wss://cem-host:8080/s2/ws/', credentials: { username: '', password: '' } }
+    const { flowContext } = setupNode({ cem: 'cem-cfg-id' }, DEFAULT_RM_CONFIG, {}, cemConfig)
+
+    expect(flowContext.cemFlexInstructionUrl).toBeDefined()
+    expect(flowContext.cemApiAuth).toBeUndefined()
   })
 })

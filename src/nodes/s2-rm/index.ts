@@ -2,13 +2,14 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
-import { S2RmConfigNode } from '../../types/config-nodes'
+import { S2RmConfigNode, S2CemConfigNode } from '../../types/config-nodes'
 import { S2Session, State } from '../../lib/s2/session'
 import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
+  cem?: string // optional reference to s2-cem-config for CEM REST API access
   controlTypeConfig?: string
   providesPowerMeasurement?: string
   providesForecast?: boolean
@@ -125,6 +126,25 @@ export = function (RED: NodeRedApp): void {
       }
     }
 
+    // Publish CEM REST API endpoint and auth header to flow context for use in downstream function nodes.
+    // Derived from the optional s2-cem-config reference: strips the WebSocket path and converts
+    // the protocol (wss->https, ws->http) to get the REST API base URL.
+    if (config.cem) {
+      const cemConfig = RED.nodes.getNode(config.cem) as S2CemConfigNode | null
+      if (cemConfig && cemConfig.url) {
+        const wsUrl = new URL(cemConfig.url)
+        const restProtocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:'
+        const apiPrefix = cemConfig.apiPrefix || ''
+        const baseUrl = `${restProtocol}//${wsUrl.host}${apiPrefix}`
+        node.context().flow.set('cemFlexInstructionUrl', `${baseUrl}/resource_managers/${rmDetails.resourceId}/flex_instructions`)
+        const { username, password } = cemConfig.credentials || {}
+        if (username) {
+          const encoded = Buffer.from(`${username}:${password || ''}`).toString('base64')
+          node.context().flow.set('cemApiAuth', `Basic ${encoded}`)
+        }
+      }
+    }
+
     // One session per connected CEM
     const sessions = new Map<string, S2Session>()
 
@@ -139,15 +159,36 @@ export = function (RED: NodeRedApp): void {
     // PEBC schedule dispatch
     let scheduleTimer: ReturnType<typeof setTimeout> | null = null
     const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
-
     // Accumulated PEBC slots: keyed by slot start time (ms).
     // Cleared when power_constraints_id changes (new planning period).
     let pebcConstraintsId: string | null = null
     const pebcSlots = new Map<number, { element: ScheduleElement, commodityQuantity: string, cemId: string }>()
 
+    // Deduplication: track last emitted active element to suppress identical re-emits from the CEM.
+    let lastEmittedActive: { startMs: number, lowerBound: number | null, upperBound: number | null, commodityQuantity: string } | null = null
+    let duplicateActiveCount = 0
+
     function emitActiveElement (schedule: PebcSchedule): void {
       const el = getActiveElement(schedule, Date.now())
       if (!el) return
+
+      const isDuplicate = lastEmittedActive !== null &&
+        lastEmittedActive.startMs === el.startMs &&
+        lastEmittedActive.lowerBound === el.lowerBound &&
+        lastEmittedActive.upperBound === el.upperBound &&
+        lastEmittedActive.commodityQuantity === schedule.commodityQuantity
+
+      if (isDuplicate) {
+        duplicateActiveCount++
+        node.debug(`duplicate active element from CEM (${duplicateActiveCount} total) - suppressing port 3 emit`)
+        const count = sessions.size
+        node.status({ fill: 'yellow', shape: 'ring', text: `${count} CEM${count > 1 ? 's' : ''} connected · ${duplicateActiveCount} dup.` })
+        return
+      }
+
+      lastEmittedActive = { startMs: el.startMs, lowerBound: el.lowerBound, upperBound: el.upperBound, commodityQuantity: schedule.commodityQuantity }
+      duplicateActiveCount = 0
+      updateStatus()
       node.send([null, null, {
         cemId: schedule.cemId,
         payload: {
@@ -218,6 +259,10 @@ export = function (RED: NodeRedApp): void {
         controlTypeConfig,
 
         onSend: (msg) => {
+          const m = msg as Record<string, unknown>
+          if (m.message_type === MessageType.PEBC_POWER_CONSTRAINTS && typeof m.id === 'string') {
+            node.context().flow.set('pebcConstraintsId', m.id)
+          }
           node.send([{ payload: { s2Signal: 'Message', message: msg }, cemId }, null, null])
         },
 

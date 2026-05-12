@@ -6,6 +6,7 @@
     defaults: {
       name: { value: '' },
       rmConfig: { value: '', type: 's2-rm-config', required: true },
+      cem: { value: '', type: 's2-cem-config', required: false },
       controlTypeConfig: { value: '' },
       providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
       providesForecast: { value: false }
@@ -86,6 +87,11 @@
     <div class="form-row">
       <label for="node-input-rmConfig"><i class="fa fa-id-card"></i> RM Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID, name, control types, manufacturer. Shared with the transport node."></i></label>
       <input type="text" id="node-input-rmConfig">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-cem"><i class="fa fa-globe"></i> CEM<i class="fa fa-info-circle tooltip-icon" data-tooltip="Optional. Link to the same s2-cem-config used by the transport node. When set, populates flow.cemFlexInstructionUrl and flow.cemApiAuth so function nodes can POST flex instructions to the CEM REST API without duplicating credentials."></i></label>
+      <input type="text" id="node-input-cem">
     </div>
 
     <div class="form-row">

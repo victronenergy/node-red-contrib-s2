@@ -4,7 +4,8 @@
     category: 'config',
     defaults: {
       name: { value: '' },
-      url: { value: '', required: true }
+      url: { value: '', required: true },
+      apiPrefix: { value: '' }
     },
     credentials: {
       username: { type: 'text' },
@@ -30,6 +31,11 @@
     <div class="form-row">
       <label for="node-config-input-url"><i class="fa fa-globe"></i> CEM URL<i class="fa fa-info-circle tooltip-icon" data-tooltip="WebSocket URL of the CEM. Either use {resourceId} as a placeholder (e.g. wss://cem.example.com/s2/{resourceId}) or end the URL with a trailing slash and the Resource ID will be appended automatically (e.g. wss://cem.example.com/s2/ws/)."></i></label>
       <input type="text" id="node-config-input-url" placeholder="wss://cem.example.com/s2/ws/">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-apiPrefix"><i class="fa fa-folder"></i> API Prefix<i class="fa fa-info-circle tooltip-icon" data-tooltip="Optional path prefix for the CEM REST API (e.g. /s2-message-handler). Used to build flex instruction URLs. Leave empty if the REST API is at the root."></i></label>
+      <input type="text" id="node-config-input-apiPrefix" placeholder="/s2-message-handler (optional)">
     </div>
 
     <div class="form-row">

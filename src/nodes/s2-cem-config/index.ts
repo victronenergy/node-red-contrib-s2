@@ -5,6 +5,7 @@ export = function (RED: NodeRedApp): void {
   function S2CemConfigNodeConstructor (this: S2CemConfigNode, config: NodeConfig): void {
     RED.nodes.createNode(this, config)
     this.url = config.url as string
+    this.apiPrefix = config.apiPrefix as string | undefined
     // credentials are populated automatically by Node-RED
   }
 
