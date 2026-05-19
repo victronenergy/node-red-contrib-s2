@@ -361,6 +361,7 @@ export = function (RED: NodeRedApp): void {
         case 'Connect': {
           if (sessions.has(cemId)) {
             node.warn(`CEM ${cemId} connected again without prior Disconnect - replacing session`)
+            sessions.get(cemId)!.dispose()
             sessions.delete(cemId)
           }
           const session = createSession(cemId)
@@ -447,6 +448,7 @@ export = function (RED: NodeRedApp): void {
         }
 
         case 'Disconnect': {
+          sessions.get(cemId)?.dispose()
           sessions.delete(cemId)
           node.log(`CEM ${cemId} disconnected`)
           updateStatus()
@@ -467,6 +469,9 @@ export = function (RED: NodeRedApp): void {
       if (scheduleTimer) {
         clearTimeout(scheduleTimer)
         scheduleTimer = null
+      }
+      for (const session of sessions.values()) {
+        session.dispose()
       }
       sessions.clear()
       node.status({})

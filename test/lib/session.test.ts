@@ -509,3 +509,99 @@ describe('S2Session PEBC.PowerConstraints - auto-send on SelectControlType', () 
     expect(pcCall).toBeUndefined()
   })
 })
+
+describe('S2Session TEMPORARY_ERROR retry', () => {
+  beforeEach(() => jest.useFakeTimers())
+  afterEach(() => jest.useRealTimers())
+
+  function connectedPebcSession () {
+    const mocks = makeSession({ retryDelayMs: 1000 })
+    connectSession(mocks.session, mocks.onSend)
+    selectPEBC(mocks.session, mocks.onSend)
+    return mocks
+  }
+
+  it('retries the rejected message once after retryDelayMs', () => {
+    const { session, onSend } = connectedPebcSession()
+    session.setPEBCPowerConstraints(pebcInput)
+    const sentMsg = onSend.mock.calls[0][0] as Record<string, unknown>
+    const msgId = sentMsg.message_id as string
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+
+    expect(onSend).not.toHaveBeenCalled()
+    jest.advanceTimersByTime(1000)
+    expect(onSend).toHaveBeenCalledWith(sentMsg)
+  })
+
+  it('still calls onMessage for TEMPORARY_ERROR', () => {
+    const { session, onSend, onMessage } = connectedPebcSession()
+    session.setPEBCPowerConstraints(pebcInput)
+    const msgId = (onSend.mock.calls[0][0] as Record<string, unknown>).message_id as string
+    onMessage.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+      message_type: MessageType.RECEPTION_STATUS,
+      status: 'TEMPORARY_ERROR'
+    }))
+  })
+
+  it('calls onError when TEMPORARY_ERROR is received a second time for the same message', () => {
+    const { session, onSend, onError } = connectedPebcSession()
+    session.setPEBCPowerConstraints(pebcInput)
+    const msgId = (onSend.mock.calls[0][0] as Record<string, unknown>).message_id as string
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+    jest.advanceTimersByTime(1000)
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining(msgId) }))
+    jest.advanceTimersByTime(5000)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('clears the buffer on OK so no further retry occurs', () => {
+    const { session, onSend, onError } = connectedPebcSession()
+    session.setPEBCPowerConstraints(pebcInput)
+    const msgId = (onSend.mock.calls[0][0] as Record<string, unknown>).message_id as string
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+    jest.advanceTimersByTime(1000)
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'OK' }))
+
+    expect(onError).not.toHaveBeenCalled()
+    jest.advanceTimersByTime(5000)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('dispose cancels a pending retry timer', () => {
+    const { session, onSend } = connectedPebcSession()
+    session.setPEBCPowerConstraints(pebcInput)
+    const msgId = (onSend.mock.calls[0][0] as Record<string, unknown>).message_id as string
+    onSend.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: msgId, status: 'TEMPORARY_ERROR' }))
+    session.dispose()
+
+    jest.advanceTimersByTime(5000)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does nothing special for TEMPORARY_ERROR on an unknown message_id', () => {
+    const { session, onMessage, onError } = connectedPebcSession()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'unknown-id', status: 'TEMPORARY_ERROR' }))
+
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'TEMPORARY_ERROR' }))
+    expect(onError).not.toHaveBeenCalled()
+  })
+})

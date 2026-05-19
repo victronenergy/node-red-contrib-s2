@@ -46,6 +46,7 @@ export interface S2SessionOptions {
   onMessage?: (msg: S2IncomingMessage) => void
   onInstruction?: (msg: S2IncomingMessage) => void
   onError?: (err: Error) => void
+  retryDelayMs?: number
 }
 
 /**
@@ -85,12 +86,15 @@ export class S2Session {
   private readonly _onMessage: (msg: S2IncomingMessage) => void
   private readonly _onInstruction: (msg: S2IncomingMessage) => void
   private readonly _onError: (err: Error) => void
+  private readonly _retryDelayMs: number
+  private readonly _sentMessages: Map<string, { msg: object, retryCount: number }>
+  private readonly _retryTimers: Map<string, ReturnType<typeof setTimeout>>
   private _state: StateValue
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
   private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
 
-  constructor ({ cemId, rmDetails, controlTypeConfig, onSend, onStateChange, onMessage, onInstruction, onError }: S2SessionOptions) {
+  constructor ({ cemId, rmDetails, controlTypeConfig, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs }: S2SessionOptions) {
     this._cemId = cemId
     this._rmDetails = rmDetails
     this._controlTypeConfig = controlTypeConfig || {}
@@ -99,6 +103,9 @@ export class S2Session {
     this._onMessage = onMessage || (() => {})
     this._onInstruction = onInstruction || this._onMessage
     this._onError = onError || ((err) => console.error(err))
+    this._retryDelayMs = retryDelayMs ?? 5000
+    this._sentMessages = new Map()
+    this._retryTimers = new Map()
 
     this._state = State.HANDSHAKING
     this._selectedControlType = ControlType.NO_SELECTION
@@ -112,6 +119,18 @@ export class S2Session {
   get lastKeepAlive (): Date | null { return this._lastKeepAlive }
 
   /**
+   * Cancel pending retry timers and clear the sent-message buffer.
+   * Call when the session is no longer needed (disconnect, node close).
+   */
+  dispose (): void {
+    for (const timer of this._retryTimers.values()) {
+      clearTimeout(timer)
+    }
+    this._retryTimers.clear()
+    this._sentMessages.clear()
+  }
+
+  /**
    * Record that a keepalive was received from the CEM.
    */
   keepAlive (): void {
@@ -122,7 +141,7 @@ export class S2Session {
    * Send the initial Handshake to the CEM. Call once after the CEM connects.
    */
   start (): void {
-    this._onSend(makeHandshake(this._cemId))
+    this._send(makeHandshake(this._cemId))
   }
 
   /**
@@ -145,7 +164,7 @@ export class S2Session {
     switch (msg.message_type) {
       case MessageType.HANDSHAKE:
         // CEM's own Handshake (role: CEM) - ack and forward as a regular message
-        this._onSend(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+        this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
         this._onMessage(msg)
         break
 
@@ -157,10 +176,31 @@ export class S2Session {
         this._handleSelectControlType(msg)
         break
 
-      case MessageType.RECEPTION_STATUS:
-        // CEM is acking one of our messages - forward for optional logging
+      case MessageType.RECEPTION_STATUS: {
+        const statusResult = (msg as { status?: string }).status
+        const subjectId = (msg as { subject_message_id?: string }).subject_message_id
+        if (subjectId && statusResult === ReceptionStatusResult.OK) {
+          const pendingTimer = this._retryTimers.get(subjectId)
+          if (pendingTimer) { clearTimeout(pendingTimer); this._retryTimers.delete(subjectId) }
+          this._sentMessages.delete(subjectId)
+        } else if (subjectId && statusResult === ReceptionStatusResult.TEMPORARY_ERROR) {
+          const entry = this._sentMessages.get(subjectId)
+          if (entry && entry.retryCount < 1) {
+            entry.retryCount++
+            const timer = setTimeout(() => {
+              this._retryTimers.delete(subjectId)
+              const e = this._sentMessages.get(subjectId)
+              if (e) this._onSend(e.msg)
+            }, this._retryDelayMs)
+            this._retryTimers.set(subjectId, timer)
+          } else if (entry) {
+            this._sentMessages.delete(subjectId)
+            this._onError(new Error(`Message ${subjectId} rejected with TEMPORARY_ERROR after retry`))
+          }
+        }
         this._onMessage(msg)
         break
+      }
 
       case MessageType.INSTRUCTION:
       case MessageType.FRBC_INSTRUCTION:
@@ -187,7 +227,7 @@ export class S2Session {
       this._onError(new Error(`Cannot send in state ${this._state} for CEM ${this._cemId}`))
       return
     }
-    this._onSend(msg)
+    this._send(msg)
   }
 
   /**
@@ -199,11 +239,23 @@ export class S2Session {
     this._pebcPowerConstraints = input
     if (this._state === State.CONNECTED &&
         this._selectedControlType === ControlType.PEBC) {
-      this._onSend(makePEBCPowerConstraints(input))
+      this._send(makePEBCPowerConstraints(input))
     }
   }
 
   // -- private --
+
+  /**
+   * Buffer the message by its message_id (if present) and forward to onSend.
+   * Buffered messages can be retried when the CEM responds with TEMPORARY_ERROR.
+   */
+  private _send (msg: object): void {
+    const m = msg as Record<string, unknown>
+    if (typeof m.message_id === 'string') {
+      this._sentMessages.set(m.message_id, { msg, retryCount: 0 })
+    }
+    this._onSend(msg)
+  }
 
   private _setState (newState: StateValue): void {
     if (newState !== this._state) {
@@ -217,11 +269,11 @@ export class S2Session {
       this._onError(new Error(`Unexpected HandshakeResponse in state ${this._state} for CEM ${this._cemId}`))
       return
     }
-    this._onSend(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+    this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
     this._setState(State.CONNECTED)
     this._onMessage(msg)
     if (this._rmDetails) {
-      this._onSend(makeResourceManagerDetails(this._rmDetails))
+      this._send(makeResourceManagerDetails(this._rmDetails))
     } else {
       this._onError(new Error(`No rmDetails configured - cannot send ResourceManagerDetails for CEM ${this._cemId}`))
     }
@@ -229,7 +281,7 @@ export class S2Session {
 
   private _handleSelectControlType (msg: S2IncomingMessage): void {
     this._selectedControlType = (msg.control_type as string) || ControlType.NO_SELECTION
-    this._onSend(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+    this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
     this._onMessage(msg)
 
     // After SelectControlType, send the appropriate SystemDescription and Status
@@ -238,7 +290,7 @@ export class S2Session {
       this._sendOMBCSystemDescriptionAndStatus()
     } else if (controlType === ControlType.PEBC) {
       if (this._pebcPowerConstraints) {
-        this._onSend(makePEBCPowerConstraints(this._pebcPowerConstraints))
+        this._send(makePEBCPowerConstraints(this._pebcPowerConstraints))
       }
     }
   }
@@ -250,15 +302,15 @@ export class S2Session {
       return
     }
     if (config.systemDescription) {
-      this._onSend(makeOMBCSystemDescription(config.systemDescription))
+      this._send(makeOMBCSystemDescription(config.systemDescription))
     }
     if (config.status) {
-      this._onSend(makeOMBCStatus(config.status))
+      this._send(makeOMBCStatus(config.status))
     }
   }
 
   private _ackAndForward (msg: S2IncomingMessage): void {
-    this._onSend(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+    this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
     this._onInstruction(msg)
   }
 }
