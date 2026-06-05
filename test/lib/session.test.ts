@@ -1,5 +1,5 @@
 import { S2Session, State, S2SessionOptions } from '../../src/lib/s2/session'
-import { MessageType, ControlType, serialize } from '../../src/lib/s2/messages'
+import { MessageType, ControlType, InstructionStatus, serialize } from '../../src/lib/s2/messages'
 
 const defaultRmDetails = {
   resourceId: 'resource-uuid-1',
@@ -322,6 +322,98 @@ describe('S2Session SelectControlType', () => {
   })
 })
 
+describe('S2Session updateOMBCStatus', () => {
+  const ombcConfig = {
+    OMBC: {
+      systemDescription: {
+        operationModes: [
+          {
+            id: 'mode-on',
+            power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 2500 }],
+            abnormal_condition_only: false
+          },
+          {
+            id: 'mode-off',
+            power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }],
+            abnormal_condition_only: false
+          }
+        ],
+        transitions: [],
+        timers: []
+      },
+      status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
+    }
+  }
+
+  function connectedWithOmbc () {
+    const mocks = makeSession({ controlTypeConfig: ombcConfig })
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  it('sends OMBC.Status to CEM when called while CONNECTED', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.updateOMBCStatus({ activeOperationModeId: 'mode-on', operationModeFactor: 1 })
+
+    expect(onSend).toHaveBeenCalledTimes(1)
+    const msg = onSend.mock.calls[0][0]
+    expect(msg.message_type).toBe(MessageType.OMBC_STATUS)
+    expect(msg.active_operation_mode_id).toBe('mode-on')
+    expect(msg.operation_mode_factor).toBe(1)
+  })
+
+  it('includes previousOperationModeId when mode changes', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.updateOMBCStatus({ activeOperationModeId: 'mode-on', operationModeFactor: 1 })
+
+    const msg = onSend.mock.calls[0][0]
+    expect(msg.previous_operation_mode_id).toBe('mode-off')
+    expect(msg.transition_timestamp).toBeDefined()
+  })
+
+  it('does not include previousOperationModeId when mode stays the same', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.updateOMBCStatus({ activeOperationModeId: 'mode-off', operationModeFactor: 1 })
+
+    const msg = onSend.mock.calls[0][0]
+    expect(msg.previous_operation_mode_id).toBeUndefined()
+  })
+
+  it('uses updated mode when SELECT_CONTROL_TYPE OMBC is received again', () => {
+    const { session, onSend } = connectedWithOmbc()
+    session.updateOMBCStatus({ activeOperationModeId: 'mode-on', operationModeFactor: 0.5 })
+    onSend.mockClear()
+
+    session.handleMessage(raw({
+      message_type: MessageType.SELECT_CONTROL_TYPE,
+      message_id: 'sc-reselect',
+      control_type: 'OPERATION_MODE_BASED_CONTROL'
+    }))
+
+    // ReceptionStatus, SystemDescription, Status
+    const statusMsg = onSend.mock.calls[2][0]
+    expect(statusMsg.message_type).toBe(MessageType.OMBC_STATUS)
+    expect(statusMsg.active_operation_mode_id).toBe('mode-on')
+    expect(statusMsg.operation_mode_factor).toBe(0.5)
+  })
+
+  it('does not send when not CONNECTED', () => {
+    const mocks = makeSession({ controlTypeConfig: ombcConfig })
+    mocks.session.start()
+
+    mocks.session.updateOMBCStatus({ activeOperationModeId: 'mode-on', operationModeFactor: 1 })
+
+    // Only the Handshake was sent, updateOMBCStatus should not have sent anything
+    expect(mocks.onSend).toHaveBeenCalledTimes(1)
+    expect(mocks.onSend.mock.calls[0][0].message_type).toBe(MessageType.HANDSHAKE)
+  })
+})
+
 describe('S2Session instruction handling', () => {
   const instructionTypes = [
     MessageType.FRBC_INSTRUCTION,
@@ -603,5 +695,88 @@ describe('S2Session TEMPORARY_ERROR retry', () => {
 
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ status: 'TEMPORARY_ERROR' }))
     expect(onError).not.toHaveBeenCalled()
+  })
+})
+
+describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
+  function connectedSession () {
+    const mocks = makeSession()
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  it('sends InstructionStatusUpdate(ACCEPTED) after ReceptionStatus when instruction has id field', () => {
+    const { session, onSend } = connectedSession()
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+
+    const statusUpdate = onSend.mock.calls[1][0]
+    expect(statusUpdate.message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
+    expect(statusUpdate.instruction_id).toBe('instr-1')
+    expect(statusUpdate.status_type).toBe(InstructionStatus.ACCEPTED)
+  })
+
+  it('sends ReceptionStatus before InstructionStatusUpdate', () => {
+    const { session, onSend } = connectedSession()
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+
+    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
+    expect(onSend.mock.calls[1][0].message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
+  })
+
+  it('does not send InstructionStatusUpdate when instruction has no id field', () => {
+    const { session, onSend } = connectedSession()
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1' }))
+
+    expect(onSend).toHaveBeenCalledTimes(1)
+    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
+  })
+
+  it('sends ACCEPTED for all instruction types that have an id field', () => {
+    const types = [
+      MessageType.FRBC_INSTRUCTION,
+      MessageType.DDBC_INSTRUCTION,
+      MessageType.PEBC_INSTRUCTION,
+      MessageType.PPBC_SCHEDULE_INSTRUCTION
+    ]
+    for (const type of types) {
+      const { session, onSend } = connectedSession()
+      session.handleMessage(raw({ message_type: type, message_id: 'msg-x', id: 'instr-x' }))
+      const hasStatusUpdate = onSend.mock.calls.some(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE
+      )
+      expect(hasStatusUpdate).toBe(true)
+    }
+  })
+})
+
+describe('S2Session sendInstructionStatus', () => {
+  function connectedSession () {
+    const mocks = makeSession()
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  it('sends InstructionStatusUpdate with the given status', () => {
+    const { session, onSend } = connectedSession()
+    session.sendInstructionStatus('instr-42', InstructionStatus.STARTED)
+
+    expect(onSend).toHaveBeenCalledTimes(1)
+    const msg = onSend.mock.calls[0][0]
+    expect(msg.message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
+    expect(msg.instruction_id).toBe('instr-42')
+    expect(msg.status_type).toBe(InstructionStatus.STARTED)
+  })
+
+  it('sends InstructionStatusUpdate with ABORTED status', () => {
+    const { session, onSend } = connectedSession()
+    session.sendInstructionStatus('instr-5', InstructionStatus.ABORTED)
+
+    const msg = onSend.mock.calls[0][0]
+    expect(msg.status_type).toBe(InstructionStatus.ABORTED)
+    expect(msg.instruction_id).toBe('instr-5')
   })
 })

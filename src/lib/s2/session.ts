@@ -3,6 +3,8 @@ import {
   ControlType,
   ControlTypeValue,
   ReceptionStatusResult,
+  InstructionStatus,
+  InstructionStatusValue,
   S2IncomingMessage,
   RmDetails,
   OMBCSystemDescriptionConfig,
@@ -14,6 +16,7 @@ import {
   makeOMBCSystemDescription,
   makeOMBCStatus,
   makePEBCPowerConstraints,
+  makeInstructionStatusUpdate,
   parse
 } from './messages'
 
@@ -93,6 +96,7 @@ export class S2Session {
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
   private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
+  private _currentOMBCStatus: OMBCStatusConfig | null
 
   constructor ({ cemId, rmDetails, controlTypeConfig, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs }: S2SessionOptions) {
     this._cemId = cemId
@@ -111,6 +115,7 @@ export class S2Session {
     this._selectedControlType = ControlType.NO_SELECTION
     this._lastKeepAlive = null
     this._pebcPowerConstraints = null
+    this._currentOMBCStatus = this._controlTypeConfig.OMBC?.status ?? null
   }
 
   get cemId (): string { return this._cemId }
@@ -243,6 +248,38 @@ export class S2Session {
     }
   }
 
+  /**
+   * Update the tracked OMBC status and send OMBC.Status to the CEM.
+   * Call after an OMBC.Instruction is dispatched to inform the CEM of the new
+   * active operation mode. Also updates the status used when SELECT_CONTROL_TYPE
+   * is received again (e.g. after a CEM reconnect).
+   */
+  updateOMBCStatus (status: OMBCStatusConfig): void {
+    if (this._currentOMBCStatus &&
+        this._currentOMBCStatus.activeOperationModeId !== status.activeOperationModeId) {
+      status = {
+        ...status,
+        previousOperationModeId: this._currentOMBCStatus.activeOperationModeId,
+        transitionTimestamp: new Date().toISOString()
+      }
+    }
+    this._currentOMBCStatus = status
+    if (this._state === State.CONNECTED) {
+      this._send(makeOMBCStatus(status))
+    }
+  }
+
+  /**
+   * Send an InstructionStatusUpdate for an instruction previously received from the CEM.
+   * Use this to report STARTED, SUCCEEDED, ABORTED, etc. after ACCEPTED was auto-sent.
+   *
+   * @param instructionId - the `id` field of the instruction (not its message_id)
+   * @param status - one of InstructionStatus values
+   */
+  sendInstructionStatus (instructionId: string, status: InstructionStatusValue): void {
+    this._send(makeInstructionStatusUpdate(instructionId, status))
+  }
+
   // -- private --
 
   /**
@@ -304,13 +341,17 @@ export class S2Session {
     if (config.systemDescription) {
       this._send(makeOMBCSystemDescription(config.systemDescription))
     }
-    if (config.status) {
-      this._send(makeOMBCStatus(config.status))
+    if (this._currentOMBCStatus) {
+      this._send(makeOMBCStatus(this._currentOMBCStatus))
     }
   }
 
   private _ackAndForward (msg: S2IncomingMessage): void {
     this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+    const instructionId = (msg as Record<string, unknown>).id
+    if (typeof instructionId === 'string') {
+      this._send(makeInstructionStatusUpdate(instructionId, InstructionStatus.ACCEPTED))
+    }
     this._onInstruction(msg)
   }
 }
