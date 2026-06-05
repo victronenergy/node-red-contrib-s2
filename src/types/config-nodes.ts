@@ -19,6 +19,8 @@ export interface S2RmConfigNode extends NodeRedNode {
   maxBatteryDischargePower: number
   gridConnection: string // e.g. '3x25A' or 'custom'
   customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
+  /** How often (ms) to poll for due pending instructions. Defaults to 2000 if not set. */
+  instructionPollIntervalMs: number
 }
 
 /**

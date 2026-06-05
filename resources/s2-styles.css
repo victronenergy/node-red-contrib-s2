@@ -101,3 +101,64 @@
   margin: 0;
   flex-shrink: 0;
 }
+
+/* ============================================================================
+   UNIT LABELS AND BATTERY LIMIT ROWS
+   ============================================================================ */
+
+/* Unit suffix (W, ms) displayed after a number input */
+.s2-form .s2-unit-label {
+  margin-left: 6px;
+  white-space: nowrap;
+  color: #555;
+  flex-shrink: 0;
+}
+
+/* Battery limit rows use flex so the unit label stays on the same line as
+   the input, and are indented to visually nest them under the section header. */
+.s2-form .s2-battery-row {
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+}
+
+.s2-form .s2-battery-row label {
+  flex-shrink: 0;
+}
+
+.s2-form .s2-battery-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+}
+
+/* Advanced section rows use flex to keep unit labels inline. */
+.s2-form .s2-advanced-row {
+  display: flex;
+  align-items: center;
+}
+
+.s2-form .s2-advanced-row label {
+  flex-shrink: 0;
+}
+
+.s2-form .s2-advanced-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+}
+
+/* Advanced toggle link */
+.s2-form .s2-advanced-toggle {
+  color: #666;
+  font-size: 0.9em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.s2-form .s2-advanced-toggle:hover {
+  color: #333;
+  text-decoration: none;
+}

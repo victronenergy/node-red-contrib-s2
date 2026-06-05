@@ -24,7 +24,8 @@
       maxBatteryChargePower: { value: 0, validate: RED.validators.number() },
       maxBatteryDischargePower: { value: 0, validate: RED.validators.number() },
       gridConnection: { value: '' },
-      customMaxPowerW: { value: '' }
+      customMaxPowerW: { value: '' },
+      instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() }
     },
     label: function () {
       return this.name || this.rmName || 's2-rm-config'
@@ -54,11 +55,41 @@
         $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
       })
 
+      function updateBatteryLimitsVisibility () {
+        var hasStorage = $('.s2-rm-config-role-checkbox[value="ENERGY_STORAGE"]').is(':checked')
+        $('#s2-rm-config-battery-section').toggle(hasStorage)
+      }
+
       $('.s2-rm-config-role-checkbox').on('change', function () {
         if ($('.s2-rm-config-role-checkbox:checked').length === 0) {
           $(this).prop('checked', true)
         }
+        updateBatteryLimitsVisibility()
       })
+
+      updateBatteryLimitsVisibility()
+
+      function updateCustomPowerVisibility () {
+        var val = $('#node-config-input-gridConnection').val()
+        $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
+      }
+      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
+      updateCustomPowerVisibility()
+
+      var DEFAULT_POLL_INTERVAL = 2000
+      if (this.instructionPollIntervalMs && this.instructionPollIntervalMs !== DEFAULT_POLL_INTERVAL) {
+        $('#s2-rm-config-advanced-section').show()
+        $('#s2-rm-config-advanced-toggle .s2-advanced-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-up')
+      }
+
+      $('#s2-rm-config-advanced-toggle').on('click', function (e) {
+        e.preventDefault()
+        var $section = $('#s2-rm-config-advanced-section')
+        $section.toggle()
+        $(this).find('.s2-advanced-chevron').toggleClass('fa-chevron-down fa-chevron-up')
+      })
+
+      window.__s2Common.initializeTooltips()
     },
     oneditsave: function () {
       var checked = []
@@ -72,15 +103,6 @@
         checkedRoles.push($(this).val())
       })
       $('#node-config-input-roles').val(checkedRoles.join(','))
-
-      window.__s2Common.initializeTooltips()
-
-      function updateCustomPowerVisibility () {
-        var val = $('#node-config-input-gridConnection').val()
-        $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
-      }
-      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
-      updateCustomPowerVisibility()
     }
   })
 </script>
@@ -169,29 +191,49 @@
       <input type="text" id="node-config-input-firmwareVersion" placeholder="e.g. 1.0.0">
     </div>
 
-    <div class="form-row">
-      <label class="s2-section-label">
-        <i class="fa fa-battery-three-quarters"></i> Battery Limits
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Hardware ceiling for battery power. CEM instructions are clamped to these values. Set to 0 for no limit."></i>
-      </label>
+    <div id="s2-rm-config-battery-section">
+      <div class="form-row">
+        <label class="s2-section-label">
+          <i class="fa fa-battery-three-quarters"></i> Battery Limits
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Hardware ceiling for battery power. CEM instructions are clamped to these values. Set to 0 for no limit."></i>
+        </label>
+      </div>
+
+      <div class="form-row s2-battery-row">
+        <label for="node-config-input-maxBatteryChargePower">
+          <i class="fa fa-arrow-circle-down"></i> Charge
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery charge power in Watts. Never exceeded when writing DESS limits."></i>
+        </label>
+        <input type="number" id="node-config-input-maxBatteryChargePower" placeholder="0 = no limit" min="0" step="1">
+        <span class="s2-unit-label">W</span>
+      </div>
+
+      <div class="form-row s2-battery-row">
+        <label for="node-config-input-maxBatteryDischargePower">
+          <i class="fa fa-arrow-circle-up"></i> Discharge
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery discharge power in Watts. Never exceeded when writing DESS limits."></i>
+        </label>
+        <input type="number" id="node-config-input-maxBatteryDischargePower" placeholder="0 = no limit" min="0" step="1">
+        <span class="s2-unit-label">W</span>
+      </div>
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-maxBatteryChargePower">
-        <i class="fa fa-arrow-circle-down"></i> Max charge power
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery charge power in Watts. Never exceeded when writing DESS limits."></i>
-      </label>
-      <input type="number" id="node-config-input-maxBatteryChargePower" placeholder="0 = no limit" min="0" step="1">
-      <span style="margin-left:4px">W</span>
+      <a href="#" class="s2-advanced-toggle" id="s2-rm-config-advanced-toggle">
+        <i class="fa fa-cog"></i> Advanced
+        <i class="fa fa-chevron-down s2-advanced-chevron"></i>
+      </a>
     </div>
 
-    <div class="form-row">
-      <label for="node-config-input-maxBatteryDischargePower">
-        <i class="fa fa-arrow-circle-up"></i> Max discharge power
-        <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery discharge power in Watts. Never exceeded when writing DESS limits."></i>
-      </label>
-      <input type="number" id="node-config-input-maxBatteryDischargePower" placeholder="0 = no limit" min="0" step="1">
-      <span style="margin-left:4px">W</span>
+    <div id="s2-rm-config-advanced-section" style="display:none">
+      <div class="form-row s2-advanced-row">
+        <label for="node-config-input-instructionPollIntervalMs">
+          <i class="fa fa-clock-o"></i> Poll interval
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="How often (ms) the RM checks for pending future instructions that are now due. Default: 2000."></i>
+        </label>
+        <input type="number" id="node-config-input-instructionPollIntervalMs" placeholder="2000" min="100" step="100">
+        <span class="s2-unit-label">ms</span>
+      </div>
     </div>
 
   </div>

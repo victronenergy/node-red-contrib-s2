@@ -2,6 +2,7 @@ import {
   MessageType,
   ControlType,
   ReceptionStatusResult,
+  InstructionStatus,
   parse,
   serialize,
   makeReceptionStatus,
@@ -12,6 +13,7 @@ import {
   makePowerMeasurement,
   makePEBCPowerConstraints,
   makePowerForecast,
+  makeInstructionStatusUpdate,
   generateId,
   gridConnectionToWatts,
   GRID_CONNECTIONS
@@ -374,5 +376,56 @@ describe('gridConnectionToWatts', () => {
 
   it('returns null for custom without customMaxPowerW', () => {
     expect(gridConnectionToWatts('custom')).toBeNull()
+  })
+})
+
+describe('InstructionStatus', () => {
+  it('is frozen', () => {
+    expect(Object.isFrozen(InstructionStatus)).toBe(true)
+  })
+
+  it('contains expected status values', () => {
+    expect(InstructionStatus.NEW).toBe('NEW')
+    expect(InstructionStatus.ACCEPTED).toBe('ACCEPTED')
+    expect(InstructionStatus.REJECTED).toBe('REJECTED')
+    expect(InstructionStatus.REVOKED).toBe('REVOKED')
+    expect(InstructionStatus.STARTED).toBe('STARTED')
+    expect(InstructionStatus.SUCCEEDED).toBe('SUCCEEDED')
+    expect(InstructionStatus.ABORTED).toBe('ABORTED')
+  })
+})
+
+describe('makeInstructionStatusUpdate', () => {
+  it('sets message_type to InstructionStatusUpdate', () => {
+    const msg = makeInstructionStatusUpdate('instr-1', InstructionStatus.ACCEPTED)
+    expect(msg.message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
+  })
+
+  it('sets instruction_id to the provided instructionId', () => {
+    const msg = makeInstructionStatusUpdate('instr-42', InstructionStatus.STARTED)
+    expect(msg.instruction_id).toBe('instr-42')
+  })
+
+  it('sets status_type to the provided status', () => {
+    const msg = makeInstructionStatusUpdate('instr-1', InstructionStatus.ABORTED)
+    expect(msg.status_type).toBe(InstructionStatus.ABORTED)
+  })
+
+  it('includes a message_id UUID', () => {
+    const msg = makeInstructionStatusUpdate('instr-1', InstructionStatus.ACCEPTED)
+    expect(typeof msg.message_id).toBe('string')
+    expect(msg.message_id.length).toBeGreaterThan(0)
+  })
+
+  it('includes a valid ISO timestamp', () => {
+    const msg = makeInstructionStatusUpdate('instr-1', InstructionStatus.ACCEPTED)
+    expect(typeof msg.timestamp).toBe('string')
+    expect(new Date(msg.timestamp).getTime()).not.toBeNaN()
+  })
+
+  it('generates unique message_ids', () => {
+    const a = makeInstructionStatusUpdate('instr-1', InstructionStatus.ACCEPTED)
+    const b = makeInstructionStatusUpdate('instr-1', InstructionStatus.ACCEPTED)
+    expect(a.message_id).not.toBe(b.message_id)
   })
 })

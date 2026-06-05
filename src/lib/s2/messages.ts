@@ -58,7 +58,8 @@ export const MessageType = Object.freeze({
   PEBC_INSTRUCTION: 'PEBC.Instruction',
 
   // Common
-  POWER_FORECAST: 'PowerForecast'
+  POWER_FORECAST: 'PowerForecast',
+  INSTRUCTION_STATUS_UPDATE: 'InstructionStatusUpdate'
 } as const)
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType]
@@ -119,6 +120,18 @@ export const ReceptionStatusResult = Object.freeze({
 
 export type ReceptionStatusResultValue = (typeof ReceptionStatusResult)[keyof typeof ReceptionStatusResult]
 
+export const InstructionStatus = Object.freeze({
+  NEW: 'NEW',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  REVOKED: 'REVOKED',
+  STARTED: 'STARTED',
+  SUCCEEDED: 'SUCCEEDED',
+  ABORTED: 'ABORTED'
+} as const)
+
+export type InstructionStatusValue = (typeof InstructionStatus)[keyof typeof InstructionStatus]
+
 // -- Message interfaces --
 
 /** Base shape for any S2 message parsed from JSON. */
@@ -150,6 +163,14 @@ export interface S2ReceptionStatusMessage {
   subject_message_id: string
   status: ReceptionStatusResultValue
   diagnostic_label?: string
+}
+
+export interface InstructionStatusUpdateMessage {
+  message_type: typeof MessageType.INSTRUCTION_STATUS_UPDATE
+  message_id: string
+  instruction_id: string
+  status_type: InstructionStatusValue
+  timestamp: string
 }
 
 export interface S2ResourceManagerDetailsMessage {
@@ -426,6 +447,25 @@ export function makePowerForecast (input: PowerForecastInput): object {
     message_id: generateId(),
     start_time: input.startTime,
     elements: input.elements
+  }
+}
+
+/**
+ * Create an InstructionStatusUpdate message reporting the current lifecycle state of an instruction.
+ *
+ * @param instructionId - the `id` field of the instruction (not its message_id)
+ * @param status - one of InstructionStatus values
+ */
+export function makeInstructionStatusUpdate (
+  instructionId: string,
+  status: InstructionStatusValue
+): InstructionStatusUpdateMessage {
+  return {
+    message_type: MessageType.INSTRUCTION_STATUS_UPDATE,
+    message_id: generateId(),
+    instruction_id: instructionId,
+    status_type: status,
+    timestamp: new Date().toISOString()
   }
 }
 
