@@ -2,7 +2,7 @@
 <script type="text/javascript">
   RED.nodes.registerType('s2-websocket', {
     category: 's2',
-    color: '#4CAF50',
+    color: '#5A8EC2',
     defaults: {
       name: { value: '' },
       cem: { value: '', type: 's2-cem-config', required: true },
@@ -12,7 +12,7 @@
     },
     inputs: 1,
     outputs: 1,
-    icon: 'font-awesome/fa-plug',
+    icon: 's2-logo.svg',
     outputLabels: ['to s2-rm'],
     inputLabels: ['from s2-rm'],
     label: function () {

@@ -2,7 +2,7 @@
 <script type="text/javascript">
   RED.nodes.registerType('s2-rm', {
     category: 's2',
-    color: '#4CAF50',
+    color: '#5A8EC2',
     defaults: {
       name: { value: '' },
       rmConfig: { value: '', type: 's2-rm-config', required: true },
@@ -13,7 +13,7 @@
     },
     inputs: 1,
     outputs: 4,
-    icon: 'font-awesome/fa-exchange',
+    icon: 's2-logo.svg',
     outputLabels: ['to transport', 'from CEM', 'instructions', 'schedule'],
     inputLabels: ['from transport'],
     label: function () {
