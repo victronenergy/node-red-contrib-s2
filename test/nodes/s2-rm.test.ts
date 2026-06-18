@@ -986,7 +986,7 @@ describe('s2-rm - pending instructions context', () => {
     expect(statusMsg.payload.message.active_operation_mode_id).toBe('mode-on')
   })
 
-  it('sends OMBC.Status on port 1 when a future OMBC instruction is dispatched', () => {
+  it('sends OMBC.Status on port 1 immediately when a future OMBC instruction is accepted', () => {
     const ombcConfig = JSON.stringify({
       OMBC: {
         systemDescription: {
@@ -1013,7 +1013,9 @@ describe('s2-rm - pending instructions context', () => {
         })
       }
     }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
 
+    // OMBC.Status is sent at accept time (inside _ackAndForward), not at execution time.
     handlers.input({
       payload: {
         command: 'Message',
@@ -1029,9 +1031,6 @@ describe('s2-rm - pending instructions context', () => {
         })
       }
     }, jest.fn(), jest.fn())
-    ;(node.send as jest.Mock).mockClear()
-
-    jest.advanceTimersByTime(7000)
 
     const ombcStatusCall = (node.send as jest.Mock).mock.calls.find(
       (c: unknown[]) => {
@@ -1042,6 +1041,57 @@ describe('s2-rm - pending instructions context', () => {
     expect(ombcStatusCall).toBeDefined()
     const statusMsg = ((ombcStatusCall as unknown[][])[0][0] as { payload: { message: { active_operation_mode_id: string } } })
     expect(statusMsg.payload.message.active_operation_mode_id).toBe('mode-on')
+  })
+
+  it('does not send OMBC.Status again when a future OMBC instruction is dispatched at execution time', () => {
+    const ombcConfig = JSON.stringify({
+      OMBC: {
+        systemDescription: {
+          operationModes: [
+            { id: 'mode-off', power_ranges: [], abnormal_condition_only: false },
+            { id: 'mode-on', power_ranges: [], abnormal_condition_only: false }
+          ],
+          transitions: [],
+          timers: []
+        },
+        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
+      }
+    })
+    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
+    connectCem(handlers)
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-2', control_type: 'OPERATION_MODE_BASED_CONTROL' })
+      }
+    }, jest.fn(), jest.fn())
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION,
+          message_id: 'msg-ombc-fut2',
+          id: 'instr-ombc-fut2',
+          execution_time: new Date(Date.now() + 5000).toISOString(),
+          operation_mode_id: 'mode-on',
+          operation_mode_factor: 1,
+          abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    jest.advanceTimersByTime(7000)
+
+    const ombcStatusCalls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => {
+        const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
+        return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === MessageType.OMBC_STATUS
+      }
+    )
+    expect(ombcStatusCalls.length).toBe(0)
   })
 
   it('persists OMBC status to flow context when an OMBC instruction is dispatched', () => {

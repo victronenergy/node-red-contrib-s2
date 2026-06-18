@@ -122,6 +122,7 @@ export class S2Session {
   get state (): StateValue { return this._state }
   get selectedControlType (): ControlTypeValue | string { return this._selectedControlType }
   get lastKeepAlive (): Date | null { return this._lastKeepAlive }
+  get currentOMBCStatus (): OMBCStatusConfig | null { return this._currentOMBCStatus }
 
   /**
    * Cancel pending retry timers and clear the sent-message buffer.
@@ -351,6 +352,18 @@ export class S2Session {
     const instructionId = (msg as Record<string, unknown>).id
     if (typeof instructionId === 'string') {
       this._send(makeInstructionStatusUpdate(instructionId, InstructionStatus.ACCEPTED))
+    }
+    // For OMBC instructions: send OMBC.Status immediately at accept time.
+    // transition_timestamp is set to now (initiation time) by updateOMBCStatus when the mode changes.
+    if (msg.message_type === MessageType.OMBC_INSTRUCTION) {
+      const modeId = (msg as Record<string, unknown>).operation_mode_id as string | undefined
+      const factor = (msg as Record<string, unknown>).operation_mode_factor
+      if (modeId) {
+        this.updateOMBCStatus({
+          activeOperationModeId: modeId,
+          operationModeFactor: typeof factor === 'number' ? factor : 1
+        })
+      }
     }
     this._onInstruction(msg)
   }

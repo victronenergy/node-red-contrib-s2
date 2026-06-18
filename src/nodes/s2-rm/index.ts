@@ -217,9 +217,6 @@ export = function (RED: NodeRedApp): void {
             session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
           }
           const rawItem = item.instruction as Record<string, unknown>
-          if (session) {
-            sendOMBCStatusIfInstruction(session, rawItem)
-          }
           const resolvedItemMode = resolveOMBCMode(rawItem)
           const itemOutMsg: Record<string, unknown> = { payload: item.instruction, cemId: item.cemId }
           if (resolvedItemMode) {
@@ -335,15 +332,15 @@ export = function (RED: NodeRedApp): void {
       }
     }
 
-    function sendOMBCStatusIfInstruction (session: S2Session, rawInstr: Record<string, unknown>): void {
+    // Persist the committed OMBC mode to flow context so reconnecting CEMs see the correct status.
+    // Called at instruction accept time (in onInstruction, which runs inside _ackAndForward).
+    // The session has already updated _currentOMBCStatus and sent OMBC.Status by this point.
+    function persistOMBCStatusIfInstruction (session: S2Session, rawInstr: Record<string, unknown>): void {
       if (rawInstr.message_type !== MessageType.OMBC_INSTRUCTION) return
-      const modeId = (rawInstr.operation_mode_id || rawInstr.operation_mode) as string | undefined
-      if (!modeId) return
-      const factor = typeof rawInstr.operation_mode_factor === 'number' ? rawInstr.operation_mode_factor : 1
-      const status: OMBCStatusConfig = { activeOperationModeId: modeId, operationModeFactor: factor }
-      session.updateOMBCStatus(status)
-      // Persist so the next CEM session (reconnect or new connection) starts with the correct mode
-      node.context().flow.set(OMBC_STATUS_KEY, status)
+      const status = session.currentOMBCStatus
+      if (status) {
+        node.context().flow.set(OMBC_STATUS_KEY, status)
+      }
     }
 
     node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
@@ -411,6 +408,14 @@ export = function (RED: NodeRedApp): void {
           const executionTimeStr = rawMsg.execution_time as string | undefined
           const executionTimeMs = executionTimeStr ? new Date(executionTimeStr).getTime() : Date.now()
 
+          // Persist the OMBC status committed by the session in _ackAndForward.
+          // Done at accept time so reconnecting CEMs always see the correct mode,
+          // even if the CEM disconnects before the instruction's execution_time.
+          const sess = sessions.get(cemId)
+          if (sess) {
+            persistOMBCStatusIfInstruction(sess, rawMsg)
+          }
+
           if (msg.message_type === MessageType.PEBC_INSTRUCTION) {
             const parsed = parsePebcInstruction(rawMsg, Date.now(), cemId)
             if (parsed && parsed.elements.length > 0) {
@@ -452,9 +457,6 @@ export = function (RED: NodeRedApp): void {
             const session = sessions.get(cemId)
             if (session && instructionId) {
               session.sendInstructionStatus(instructionId, InstructionStatus.STARTED)
-            }
-            if (session) {
-              sendOMBCStatusIfInstruction(session, rawMsg)
             }
             const resolvedMode = resolveOMBCMode(rawMsg)
             const outMsg: Record<string, unknown> = { payload: msg, cemId }

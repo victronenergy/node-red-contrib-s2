@@ -751,6 +751,127 @@ describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
   })
 })
 
+describe('S2Session OMBC.Status on instruction accept', () => {
+  const ombcConfig = {
+    OMBC: {
+      systemDescription: {
+        operationModes: [
+          { id: 'mode-off', power_ranges: [], abnormal_condition_only: false },
+          { id: 'mode-on', power_ranges: [], abnormal_condition_only: false }
+        ],
+        transitions: [],
+        timers: []
+      },
+      status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
+    }
+  }
+
+  function connectedWithOmbc () {
+    const mocks = makeSession({ controlTypeConfig: ombcConfig })
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  it('sends OMBC.Status when OMBC instruction with operation_mode_id is received', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 0.5,
+      abnormal_condition: false
+    }))
+
+    const ombcStatus = onSend.mock.calls.find((c: unknown[]) => (c[0] as { message_type?: string }).message_type === MessageType.OMBC_STATUS)
+    expect(ombcStatus).toBeDefined()
+    const msg = ombcStatus![0] as { active_operation_mode_id: string, operation_mode_factor: number }
+    expect(msg.active_operation_mode_id).toBe('mode-on')
+    expect(msg.operation_mode_factor).toBe(0.5)
+  })
+
+  it('sends OMBC.Status after ACCEPTED in the same _ackAndForward call', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-2',
+      id: 'instr-2',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }))
+
+    // ReceptionStatus(OK), InstructionStatusUpdate(ACCEPTED), OMBC.Status - in that order
+    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
+    expect(onSend.mock.calls[1][0].message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
+    expect(onSend.mock.calls[2][0].message_type).toBe(MessageType.OMBC_STATUS)
+  })
+
+  it('includes previous_operation_mode_id and transition_timestamp when mode changes', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-3',
+      id: 'instr-3',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }))
+
+    const statusMsg = onSend.mock.calls[2][0] as { previous_operation_mode_id?: string, transition_timestamp?: string }
+    expect(statusMsg.previous_operation_mode_id).toBe('mode-off')
+    expect(statusMsg.transition_timestamp).toBeDefined()
+  })
+
+  it('does not send OMBC.Status when OMBC instruction has no operation_mode_id', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-4',
+      id: 'instr-4',
+      abnormal_condition: false
+    }))
+
+    const ombcStatus = onSend.mock.calls.find((c: unknown[]) => (c[0] as { message_type?: string }).message_type === MessageType.OMBC_STATUS)
+    expect(ombcStatus).toBeUndefined()
+  })
+
+  it('does not send OMBC.Status for non-OMBC instruction types', () => {
+    const { session, onSend } = connectedWithOmbc()
+
+    for (const type of [MessageType.PEBC_INSTRUCTION, MessageType.FRBC_INSTRUCTION, MessageType.DDBC_INSTRUCTION]) {
+      onSend.mockClear()
+      session.handleMessage(raw({ message_type: type, message_id: 'msg-x', id: 'instr-x', operation_mode_id: 'mode-on' }))
+      const ombcStatus = onSend.mock.calls.find((c: unknown[]) => (c[0] as { message_type?: string }).message_type === MessageType.OMBC_STATUS)
+      expect(ombcStatus).toBeUndefined()
+    }
+  })
+
+  it('exposes currentOMBCStatus reflecting the committed mode after instruction accept', () => {
+    const { session } = connectedWithOmbc()
+
+    expect(session.currentOMBCStatus?.activeOperationModeId).toBe('mode-off')
+
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-5',
+      id: 'instr-5',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 0.8,
+      abnormal_condition: false
+    }))
+
+    expect(session.currentOMBCStatus?.activeOperationModeId).toBe('mode-on')
+    expect(session.currentOMBCStatus?.operationModeFactor).toBe(0.8)
+  })
+})
+
 describe('S2Session sendInstructionStatus', () => {
   function connectedSession () {
     const mocks = makeSession()
