@@ -132,6 +132,28 @@ export const InstructionStatus = Object.freeze({
 
 export type InstructionStatusValue = (typeof InstructionStatus)[keyof typeof InstructionStatus]
 
+export const RevokableObjects = Object.freeze({
+  DDBC_AVERAGE_DEMAND_RATE_FORECAST: 'DDBC.AverageDemandRateForecast',
+  DDBC_INSTRUCTION: 'DDBC.Instruction',
+  DDBC_SYSTEM_DESCRIPTION: 'DDBC.SystemDescription',
+  FRBC_FILL_LEVEL_TARGET_PROFILE: 'FRBC.FillLevelTargetProfile',
+  FRBC_INSTRUCTION: 'FRBC.Instruction',
+  FRBC_LEAKAGE_BEHAVIOUR: 'FRBC.LeakageBehaviour',
+  FRBC_SYSTEM_DESCRIPTION: 'FRBC.SystemDescription',
+  FRBC_USAGE_FORECAST: 'FRBC.UsageForecast',
+  OMBC_INSTRUCTION: 'OMBC.Instruction',
+  OMBC_SYSTEM_DESCRIPTION: 'OMBC.SystemDescription',
+  PEBC_ENERGY_CONSTRAINT: 'PEBC.EnergyConstraint',
+  PEBC_INSTRUCTION: 'PEBC.Instruction',
+  PEBC_POWER_CONSTRAINTS: 'PEBC.PowerConstraints',
+  PPBC_END_INTERRUPTION_INSTRUCTION: 'PPBC.EndInterruptionInstruction',
+  PPBC_POWER_PROFILE_DEFINITION: 'PPBC.PowerProfileDefinition',
+  PPBC_SCHEDULE_INSTRUCTION: 'PPBC.ScheduleInstruction',
+  PPBC_START_INTERRUPTION_INSTRUCTION: 'PPBC.StartInterruptionInstruction'
+} as const)
+
+export type RevokableObjectsValue = (typeof RevokableObjects)[keyof typeof RevokableObjects]
+
 // -- Message interfaces --
 
 /** Base shape for any S2 message parsed from JSON. */
@@ -163,6 +185,13 @@ export interface S2ReceptionStatusMessage {
   subject_message_id: string
   status: ReceptionStatusResultValue
   diagnostic_label?: string
+}
+
+export interface S2RevokeObjectMessage {
+  message_type: typeof MessageType.REVOKE_OBJECT
+  message_id: string
+  object_id: string
+  object_type: RevokableObjectsValue
 }
 
 export interface InstructionStatusUpdateMessage {

@@ -1237,6 +1237,142 @@ describe('s2-rm - pending instructions context', () => {
   })
 })
 
+describe('s2-rm - RevokeObject handling', () => {
+  beforeEach(() => { jest.useFakeTimers() })
+  afterEach(() => { jest.useRealTimers() })
+
+  const PENDING_KEY = 's2PendingInstructions'
+  const SCHEDULE_KEY = 's2PebcSchedule'
+
+  function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
+    handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  function sendRevokeObject (handlers: Record<string, (...args: unknown[]) => void>, objectId: string, objectType: string): void {
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.REVOKE_OBJECT,
+          message_id: 'rv-' + objectId,
+          object_id: objectId,
+          object_type: objectType
+        })
+      }
+    }, jest.fn(), jest.fn())
+  }
+
+  it('removes a pending OMBC instruction when it is revoked', () => {
+    const { handlers, flowContext } = setupNode({})
+    connectCem(handlers)
+
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION,
+          message_id: 'msg-1',
+          id: 'instr-ombc-1',
+          execution_time: new Date(Date.now() + 60000).toISOString(),
+          operation_mode_id: 'mode-1',
+          operation_mode_factor: 1,
+          abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    expect((flowContext[PENDING_KEY] as unknown[]).length).toBe(1)
+
+    sendRevokeObject(handlers, 'instr-ombc-1', 'OMBC.Instruction')
+
+    expect(((flowContext[PENDING_KEY] as unknown[]) || []).length).toBe(0)
+  })
+
+  it('forwards RevokeObject on port 2', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    sendRevokeObject(handlers, 'instr-unknown', 'OMBC.Instruction')
+
+    const port2Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(port2Calls.length).toBeGreaterThan(0)
+    const payload = ((port2Calls[0][0] as unknown[])[1] as { payload: Record<string, unknown> }).payload
+    expect(payload.message_type).toBe(MessageType.REVOKE_OBJECT)
+    expect(payload.object_id).toBe('instr-unknown')
+  })
+
+  it('is harmless when revoked object_id does not match any pending instruction', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+
+    const done = jest.fn()
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.REVOKE_OBJECT,
+          message_id: 'rv-noop',
+          object_id: 'no-such-id',
+          object_type: 'OMBC.Instruction'
+        })
+      }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('clears the PEBC schedule when a PEBC instruction is revoked', () => {
+    const SLOT = 900_000
+    const { node, handlers, flowContext } = setupNode({})
+    connectCem(handlers)
+
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: 'PEBC.Instruction',
+          message_id: 'pi-1',
+          id: 'pebc-instr-1',
+          power_constraints_id: 'cid-1',
+          execution_time: new Date(Date.now()).toISOString(),
+          power_envelopes: [{
+            id: 'pe-1',
+            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+            power_envelope_elements: [{ duration: SLOT, upper_limit: 11040, lower_limit: -11040 }]
+          }]
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(flowContext[SCHEDULE_KEY]).toBeDefined()
+    ;(node.send as jest.Mock).mockClear()
+
+    sendRevokeObject(handlers, 'pebc-instr-1', 'PEBC.Instruction')
+
+    expect(flowContext[SCHEDULE_KEY]).toBeNull()
+
+    jest.advanceTimersByTime(SLOT * 2)
+
+    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    )
+    // Only the port 2 forward of the revoke itself, no schedule dispatch
+    expect(port3Calls.length).toBe(0)
+  })
+})
+
 describe('s2-rm - InstructionStatus command', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())

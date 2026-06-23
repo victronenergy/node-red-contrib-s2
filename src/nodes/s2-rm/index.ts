@@ -388,6 +388,35 @@ export = function (RED: NodeRedApp): void {
             node.status({ fill: 'yellow', shape: 'dot', text: `CEM rejection: ${msg.status}` })
             statusTimer = setTimeout(() => { statusTimer = null; updateStatus() }, 5000)
           }
+          if (msg.message_type === MessageType.REVOKE_OBJECT) {
+            const revokedId = (msg as { object_id?: string }).object_id
+            if (revokedId) {
+              const pending = getPending()
+              const revokedItem = pending.find(p => p.instructionId === revokedId)
+              if (revokedItem) {
+                setPending(pending.filter(p => p.instructionId !== revokedId))
+                if (revokedItem.isPebc) {
+                  for (const [key, slot] of pebcSlots.entries()) {
+                    if (slot.instructionId === revokedId) pebcSlots.delete(key)
+                  }
+                  if (pebcSlots.size === 0) {
+                    if (scheduleTimer) { clearTimeout(scheduleTimer); scheduleTimer = null }
+                    node.context().flow.set(SCHEDULE_CONTEXT_KEY, null)
+                  } else {
+                    const sorted = [...pebcSlots.values()].sort((a, b) => a.element.startMs - b.element.startMs)
+                    const rebuilt: PebcSchedule = {
+                      receivedAt: Date.now(),
+                      cemId: sorted[0].cemId,
+                      instructionId: sorted[0].instructionId,
+                      commodityQuantity: sorted[0].commodityQuantity,
+                      elements: sorted.map(s => s.element)
+                    }
+                    applySchedule(rebuilt)
+                  }
+                }
+              }
+            }
+          }
           node.send([null, { payload: msg, cemId }, null])
           if (msg.message_type === MessageType.SELECT_CONTROL_TYPE &&
               rmDetails.providesPowerMeasurementTypes.length > 0) {

@@ -208,6 +208,11 @@ export class S2Session {
         break
       }
 
+      case MessageType.REVOKE_OBJECT:
+        this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+        this._onMessage(msg)
+        break
+
       case MessageType.INSTRUCTION:
       case MessageType.FRBC_INSTRUCTION:
       case MessageType.DDBC_INSTRUCTION:

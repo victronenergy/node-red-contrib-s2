@@ -872,6 +872,68 @@ describe('S2Session OMBC.Status on instruction accept', () => {
   })
 })
 
+describe('S2Session RevokeObject', () => {
+  function connectedSession () {
+    const mocks = makeSession()
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    mocks.onMessage.mockClear()
+    return mocks
+  }
+
+  it('acks RevokeObject with ReceptionStatus OK', () => {
+    const { session, onSend } = connectedSession()
+
+    session.handleMessage(raw({
+      message_type: MessageType.REVOKE_OBJECT,
+      message_id: 'rv1',
+      object_id: 'instr-1',
+      object_type: 'OMBC.Instruction'
+    }))
+
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+      message_type: MessageType.RECEPTION_STATUS,
+      subject_message_id: 'rv1',
+      status: 'OK'
+    }))
+  })
+
+  it('forwards RevokeObject via onMessage', () => {
+    const onInstruction = jest.fn()
+    const { session, onMessage } = connectedSession()
+
+    session.handleMessage(raw({
+      message_type: MessageType.REVOKE_OBJECT,
+      message_id: 'rv2',
+      object_id: 'instr-2',
+      object_type: 'PEBC.Instruction'
+    }))
+
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+      message_type: MessageType.REVOKE_OBJECT,
+      object_id: 'instr-2'
+    }))
+    expect(onInstruction).not.toHaveBeenCalled()
+  })
+
+  it('does not send InstructionStatusUpdate for RevokeObject', () => {
+    const { session, onSend } = connectedSession()
+
+    session.handleMessage(raw({
+      message_type: MessageType.REVOKE_OBJECT,
+      message_id: 'rv3',
+      object_id: 'instr-3',
+      object_type: 'OMBC.Instruction'
+    }))
+
+    const hasStatusUpdate = onSend.mock.calls.some(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE
+    )
+    expect(hasStatusUpdate).toBe(false)
+  })
+})
+
 describe('S2Session sendInstructionStatus', () => {
   function connectedSession () {
     const mocks = makeSession()
