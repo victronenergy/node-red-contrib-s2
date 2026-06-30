@@ -25,7 +25,8 @@
       maxBatteryDischargePower: { value: 0, validate: RED.validators.number() },
       gridConnection: { value: '' },
       customMaxPowerW: { value: '' },
-      instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() }
+      instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() },
+      skipInstructionStatus: { value: false }
     },
     label: function () {
       return this.name || this.rmName || 's2-rm-config'
@@ -76,8 +77,12 @@
       $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
       updateCustomPowerVisibility()
 
+      $('#node-config-input-skipInstructionStatus').prop('checked', this.skipInstructionStatus === true)
+
       var DEFAULT_POLL_INTERVAL = 2000
-      if (this.instructionPollIntervalMs && this.instructionPollIntervalMs !== DEFAULT_POLL_INTERVAL) {
+      var hasNonDefaultAdvanced = (this.instructionPollIntervalMs && this.instructionPollIntervalMs !== DEFAULT_POLL_INTERVAL) ||
+        this.skipInstructionStatus === true
+      if (hasNonDefaultAdvanced) {
         $('#s2-rm-config-advanced-section').show()
         $('#s2-rm-config-advanced-toggle .s2-advanced-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-up')
       }
@@ -233,6 +238,13 @@
         </label>
         <input type="number" id="node-config-input-instructionPollIntervalMs" placeholder="2000" min="100" step="100">
         <span class="s2-unit-label">ms</span>
+      </div>
+      <div class="form-row s2-full-row">
+        <label class="s2-checkbox-label">
+          <input type="checkbox" id="node-config-input-skipInstructionStatus">
+          Skip instruction status updates
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="When enabled, InstructionStatusUpdate(ACCEPTED/STARTED) messages are not sent automatically. ReceptionStatus and OMBC.Status are still sent. Use when the CEM generates high CPU load from frequent instructions." style="position:static;transform:none;"></i>
+        </label>
       </div>
     </div>
 

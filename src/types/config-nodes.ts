@@ -21,6 +21,10 @@ export interface S2RmConfigNode extends NodeRedNode {
   customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
   /** How often (ms) to poll for due pending instructions. Defaults to 2000 if not set. */
   instructionPollIntervalMs: number
+  /** When true, skip sending InstructionStatusUpdate(ACCEPTED/STARTED) automatically.
+   * ReceptionStatus and OMBC.Status are still sent. Use when the CEM does not require
+   * acknowledgment messages and the extra D-Bus traffic causes CPU load. */
+  skipInstructionStatus: boolean
 }
 
 /**

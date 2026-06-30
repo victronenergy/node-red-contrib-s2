@@ -15,6 +15,7 @@ export = function (RED: NodeRedApp): void {
     this.gridConnection = config.gridConnection as string
     this.customMaxPowerW = config.customMaxPowerW != null ? Number(config.customMaxPowerW) : undefined
     this.instructionPollIntervalMs = config.instructionPollIntervalMs != null ? Number(config.instructionPollIntervalMs) : 2000
+    this.skipInstructionStatus = config.skipInstructionStatus === true
   }
 
   RED.nodes.registerType('s2-rm-config', S2RmConfigNodeConstructor)

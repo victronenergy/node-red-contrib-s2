@@ -751,6 +751,75 @@ describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
   })
 })
 
+describe('S2Session skipInstructionStatus option', () => {
+  function connectedSession (skipInstructionStatus: boolean) {
+    const mocks = makeSession({ skipInstructionStatus })
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  it('still sends ReceptionStatus when skipInstructionStatus is true', () => {
+    const { session, onSend } = connectedSession(true)
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+
+    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
+  })
+
+  it('does not send InstructionStatusUpdate(ACCEPTED) when skipInstructionStatus is true', () => {
+    const { session, onSend } = connectedSession(true)
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+
+    const hasAccepted = onSend.mock.calls.some(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE &&
+        (c[0] as Record<string, unknown>).status_type === InstructionStatus.ACCEPTED
+    )
+    expect(hasAccepted).toBe(false)
+  })
+
+  it('still sends InstructionStatusUpdate(ACCEPTED) when skipInstructionStatus is false', () => {
+    const { session, onSend } = connectedSession(false)
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+
+    const hasAccepted = onSend.mock.calls.some(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE &&
+        (c[0] as Record<string, unknown>).status_type === InstructionStatus.ACCEPTED
+    )
+    expect(hasAccepted).toBe(true)
+  })
+
+  it('still sends OMBC.Status when skipInstructionStatus is true and OMBC config is present', () => {
+    const ombcConfig = {
+      OMBC: {
+        systemDescription: {
+          operationModes: [{ id: 'mode-off', power_ranges: [], abnormal_condition_only: false }],
+          transitions: [],
+          timers: []
+        },
+        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
+      }
+    }
+    const mocks = makeSession({ skipInstructionStatus: true, controlTypeConfig: ombcConfig })
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.onSend.mockClear()
+
+    mocks.session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      operation_mode_id: 'mode-off',
+      operation_mode_factor: 1
+    }))
+
+    const hasOmbcStatus = mocks.onSend.mock.calls.some(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.OMBC_STATUS
+    )
+    expect(hasOmbcStatus).toBe(true)
+  })
+})
+
 describe('S2Session OMBC.Status on instruction accept', () => {
   const ombcConfig = {
     OMBC: {

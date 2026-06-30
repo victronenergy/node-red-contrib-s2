@@ -201,6 +201,7 @@ export = function (RED: NodeRedApp): void {
     }
 
     const pollIntervalMs = rmConfigNode.instructionPollIntervalMs || 2000
+    const isSkipInstructionStatus = rmConfigNode.skipInstructionStatus === true
 
     // Poll at the configured interval: dispatch due non-PEBC instructions, prune expired entries.
     const pollTimer = setInterval(() => {
@@ -216,7 +217,7 @@ export = function (RED: NodeRedApp): void {
         if (expired) { changed = true; continue }
         if (!item.isPebc && item.executionTimeMs <= now) {
           const session = sessions.get(item.cemId)
-          if (session && item.instructionId) {
+          if (session && item.instructionId && !isSkipInstructionStatus) {
             session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
           }
           const rawItem = item.instruction as Record<string, unknown>
@@ -261,7 +262,7 @@ export = function (RED: NodeRedApp): void {
       duplicateActiveCount = 0
       updateStatus()
       const slot = pebcSlots.get(el.startMs)
-      if (slot) {
+      if (slot && !isSkipInstructionStatus) {
         const session = sessions.get(slot.cemId)
         if (session) session.sendInstructionStatus(slot.instructionId, InstructionStatus.STARTED)
       }
@@ -366,6 +367,7 @@ export = function (RED: NodeRedApp): void {
         cemId,
         rmDetails: resolvedDetails,
         controlTypeConfig,
+        skipInstructionStatus: isSkipInstructionStatus,
 
         onSend: (msg) => {
           const m = msg as Record<string, unknown>
@@ -487,7 +489,7 @@ export = function (RED: NodeRedApp): void {
           const now = Date.now()
           if (executionTimeMs <= now) {
             const session = sessions.get(cemId)
-            if (session && instructionId) {
+            if (session && instructionId && !isSkipInstructionStatus) {
               session.sendInstructionStatus(instructionId, InstructionStatus.STARTED)
             }
             const resolvedMode = resolveOMBCMode(rawMsg)
