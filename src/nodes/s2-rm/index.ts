@@ -52,7 +52,10 @@ const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before a non-PEBC instruction i
  *   { payload: { s2Signal: 'PowerMeasurementStart', commodityQuantities: [...] }, cemId }
  *
  * Output port 2 - S2 messages received from CEM, forwarded for downstream processing:
- *   { payload: <S2 message object>, cemId: <string> }
+ *   { payload: <S2 message object>, cemId: <string>, topic: <message_type string> }
+ *   Also emits lifecycle events (route via Switch node on msg.topic):
+ *   { topic: 'Connected',    cemId: <string> }
+ *   { topic: 'Disconnected', cemId: <string>, reason: 'cem_initiated' | 'keepalive_timeout' }
  *
  * Output port 3 - S2 instructions from CEM:
  *   { payload: <S2 instruction object>, cemId: <string> }
@@ -417,7 +420,7 @@ export = function (RED: NodeRedApp): void {
               }
             }
           }
-          node.send([null, { payload: msg, cemId }, null])
+          node.send([null, { payload: msg, cemId, topic: msg.message_type }, null])
           if (msg.message_type === MessageType.SELECT_CONTROL_TYPE &&
               rmDetails.providesPowerMeasurementTypes.length > 0) {
             node.send([{
@@ -558,6 +561,7 @@ export = function (RED: NodeRedApp): void {
             session.updateOMBCStatus(savedOmbcStatus)
           }
           session.start()
+          node.send([null, { topic: 'Connected', cemId }, null])
           node.log(`CEM ${cemId} connected (keepAliveInterval: ${keepAliveInterval}s)`)
           updateStatus()
           done()
@@ -642,6 +646,7 @@ export = function (RED: NodeRedApp): void {
         case 'Disconnect': {
           sessions.get(cemId)?.dispose()
           sessions.delete(cemId)
+          node.send([null, { topic: 'Disconnected', cemId, reason: 'cem_initiated' }, null])
           node.log(`CEM ${cemId} disconnected`)
           updateStatus()
           done()

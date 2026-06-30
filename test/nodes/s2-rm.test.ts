@@ -1439,3 +1439,54 @@ describe('s2-rm - InstructionStatus command', () => {
     expect(node.warn as jest.Mock).toHaveBeenCalled()
   })
 })
+
+describe('s2-rm - lifecycle events and msg.topic', () => {
+  type Port2Msg = { payload: Record<string, unknown>, cemId: string, topic: string }
+
+  function getPort2Calls (node: Record<string, unknown>): Port2Msg[] {
+    return (node.send as jest.Mock).mock.calls
+      .map((c: unknown[]) => c[0] as unknown[])
+      .filter((args) => Array.isArray(args) && args[0] === null && args[1] !== null)
+      .map((args) => args[1] as Port2Msg)
+  }
+
+  it('emits a Connected lifecycle event on port 2 when a CEM connects', () => {
+    const { node, handlers } = setupNode({})
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 30 } }, jest.fn(), jest.fn())
+
+    const port2 = getPort2Calls(node)
+    const connectEvent = port2.find((m) => m.topic === 'Connected')
+    expect(connectEvent).toBeDefined()
+    expect(connectEvent!.cemId).toBe('cem-1')
+  })
+
+  it('emits a Disconnected lifecycle event with reason on port 2 when a CEM disconnects', () => {
+    const { node, handlers } = setupNode({})
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn(), jest.fn())
+
+    const port2 = getPort2Calls(node)
+    const disconnectEvent = port2.find((m) => m.topic === 'Disconnected')
+    expect(disconnectEvent).toBeDefined()
+    expect(disconnectEvent!.cemId).toBe('cem-1')
+    expect((disconnectEvent as unknown as Record<string, unknown>).reason).toBe('cem_initiated')
+  })
+
+  it('sets msg.topic to message_type on port 2 S2 messages', () => {
+    const { node, handlers } = setupNode({})
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+
+    const port2 = getPort2Calls(node)
+    const handshakeMsg = port2.find((m) => m.payload.message_type === MessageType.HANDSHAKE_RESPONSE)
+    expect(handshakeMsg).toBeDefined()
+    expect(handshakeMsg!.topic).toBe(MessageType.HANDSHAKE_RESPONSE)
+  })
+})
