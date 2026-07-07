@@ -1,0 +1,164 @@
+/**
+ * S2 Node-RED Nodes - Stylesheet
+ *
+ * All selectors MUST be scoped under .s2-form to prevent
+ * affecting other Node-RED nodes.
+ *
+ * Label and input sizing intentionally defers to Node-RED defaults so that
+ * config node selectors (red-ui-search-container) lay out correctly inline.
+ */
+
+/* ============================================================================
+   FORM LAYOUT
+   ============================================================================ */
+
+.s2-form {
+  overflow-x: hidden;
+}
+
+/* Keep icon + text vertically centred inside labels without overriding the
+   width - Node-RED's default ~110px label width is used instead. */
+/* Label width slightly wider than NR default (110px) to accommodate the
+   field icon + text. The tooltip icon is absolutely positioned inside the
+   label so it never pushes the input - all inputs align consistently. */
+.s2-form .form-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  width: 120px !important;
+  position: relative;
+  padding-right: 20px;
+  box-sizing: border-box;
+}
+
+.s2-form .form-row input[type="checkbox"] {
+  width: auto !important;
+}
+
+/* Tooltip icon - absolutely positioned at the right edge of the label. */
+.s2-form .tooltip-icon {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8em;
+  color: #00BCFF;
+  cursor: help;
+}
+
+/* Tooltip container - appended to <body> by s2-common.js so it is never
+   clipped by a parent overflow or panel boundary. */
+.s2-tooltip-container {
+  position: absolute;
+  background: #fff;
+  color: #444;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.4;
+  max-width: 280px;
+  z-index: 10000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+/* ============================================================================
+   CONTROL TYPES / ROLES - Checkbox Grid
+   ============================================================================ */
+
+/* Section labels (Roles, Control Types) span the full row. */
+.s2-form .s2-section-label {
+  width: 100% !important;
+  display: inline-block;
+}
+
+/* Indent checkbox grid to align with inputs (matches Node-RED default label width). */
+.s2-form .s2-full-row {
+  display: block;
+  margin-left: 110px;
+}
+
+.s2-form .s2-control-types-container {
+  display: grid;
+  grid-template-columns: 116px 116px;
+  gap: 6px 8px;
+}
+
+.s2-form .s2-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto !important;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.s2-form .s2-checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* ============================================================================
+   UNIT LABELS AND BATTERY LIMIT ROWS
+   ============================================================================ */
+
+/* Unit suffix (W, ms) displayed after a number input */
+.s2-form .s2-unit-label {
+  margin-left: 6px;
+  white-space: nowrap;
+  color: #555;
+  flex-shrink: 0;
+}
+
+/* Battery limit rows use flex so the unit label stays on the same line as
+   the input, and are indented to visually nest them under the section header. */
+.s2-form .s2-battery-row {
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+}
+
+.s2-form .s2-battery-row label {
+  flex-shrink: 0;
+}
+
+.s2-form .s2-battery-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+}
+
+/* Advanced section rows use flex to keep unit labels inline. */
+.s2-form .s2-advanced-row {
+  display: flex;
+  align-items: center;
+}
+
+.s2-form .s2-advanced-row label {
+  flex-shrink: 0;
+}
+
+.s2-form .s2-advanced-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+}
+
+/* Advanced toggle link */
+.s2-form .s2-advanced-toggle {
+  color: #666;
+  font-size: 0.9em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.s2-form .s2-advanced-toggle:hover {
+  color: #333;
+  text-decoration: none;
+}

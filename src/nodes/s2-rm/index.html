@@ -1,0 +1,167 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-rm', {
+    category: 's2',
+    color: '#5A8EC2',
+    defaults: {
+      name: { value: '' },
+      rmConfig: { value: '', type: 's2-rm-config', required: true },
+      cem: { value: '', type: 's2-cem-config', required: false },
+      controlTypeConfig: { value: '' },
+      providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
+      providesForecast: { value: false }
+    },
+    inputs: 1,
+    outputs: 4,
+    icon: 's2-logo.svg',
+    outputLabels: ['to transport', 'from CEM', 'instructions', 'schedule'],
+    inputLabels: ['from transport'],
+    label: function () {
+      return this.name || 'S2 Resource Manager'
+    },
+    labelStyle: function () {
+      return this.name ? 'node_label_italic' : ''
+    },
+    oneditprepare: function () {
+      // Migrate legacy boolean to string value
+      if (this.providesPowerMeasurement === true) {
+        this.providesPowerMeasurement = '3_PHASE_SYMMETRIC'
+        $('#node-input-providesPowerMeasurement').val('3_PHASE_SYMMETRIC')
+      } else if (this.providesPowerMeasurement === false) {
+        this.providesPowerMeasurement = ''
+        $('#node-input-providesPowerMeasurement').val('')
+      }
+
+      $('#node-input-controlTypeConfig').typedInput({ types: ['json'] })
+
+      window.__s2Common.initializeTooltips()
+
+      if (!this.controlTypeConfig) {
+        var modeId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+        })
+        var defaultConfig = {
+          OMBC: {
+            systemDescription: {
+              operationModes: [
+                {
+                  id: modeId,
+                  diagnostic_label: 'Normal operation',
+                  power_ranges: [
+                    {
+                      commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+                      start_of_range: 0,
+                      end_of_range: 2500
+                    }
+                  ],
+                  abnormal_condition_only: false
+                }
+              ],
+              transitions: [],
+              timers: []
+            },
+            status: {
+              activeOperationModeId: modeId,
+              operationModeFactor: 1
+            }
+          }
+        }
+        $('#node-input-controlTypeConfig').typedInput('value', JSON.stringify(defaultConfig, null, 2))
+      }
+
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-rm">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name">
+        <i class="fa fa-tag"></i> Name
+      </label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-rmConfig"><i class="fa fa-id-card"></i> RM Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="Resource Manager identity: UUID, name, control types, manufacturer. Shared with the transport node."></i></label>
+      <input type="text" id="node-input-rmConfig">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-cem"><i class="fa fa-globe"></i> CEM<i class="fa fa-info-circle tooltip-icon" data-tooltip="Optional. Link to the same s2-cem-config used by the transport node. When set, populates flow.cemFlexInstructionUrl and flow.cemApiAuth so function nodes can POST flex instructions to the CEM REST API without duplicating credentials."></i></label>
+      <input type="text" id="node-input-cem">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-controlTypeConfig"><i class="fa fa-code"></i> Control Type<i class="fa fa-info-circle tooltip-icon" data-tooltip="JSON configuration per control type. For OMBC: operation modes, power ranges, transitions and timers. Keys: OMBC.systemDescription.operationModes, OMBC.status.activeOperationModeId"></i></label>
+      <input type="text" id="node-input-controlTypeConfig">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i></label>
+      <select id="node-input-providesPowerMeasurement" style="width: 70%;">
+        <option value="">None</option>
+        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-providesForecast">
+        <i class="fa fa-line-chart"></i> Forecast
+      </label>
+      <input type="checkbox" id="node-input-providesForecast" style="width: auto; margin-top: 6px;">
+      <span style="margin-left: 6px;">Provides power forecast</span>
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-rm">
+  <p>Manages S2 protocol sessions for connected CEMs. Handles the S2 handshake, sends ResourceManagerDetails, and responds to SelectControlType.</p>
+  <p>RM identity (resource ID, name, control types) is configured in the linked <b>s2-rm-config</b> node, shared with the transport node.</p>
+  <h3>Input</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>Command from transport: <code>{ command, cemId, ... }</code></dd>
+  </dl>
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>To transport
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>S2 signal for transport: <code>{ s2Signal: 'Message', message: ... }</code> or <code>{ s2Signal: 'PowerMeasurementStart', ... }</code></dd>
+      </dl>
+    </li>
+    <li>From CEM
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>S2 messages received from the CEM (HandshakeResponse, SelectControlType, ReceptionStatus, etc.).</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>ID of the CEM that sent the message.</dd>
+      </dl>
+    </li>
+    <li>Instructions
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Control instructions from the CEM (OMBC.Instruction, PEBC.Instruction, etc.).</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>ID of the CEM that sent the instruction.</dd>
+      </dl>
+    </li>
+    <li>Schedule
+      <dl class="message-properties">
+        <dt>payload.commodityQuantity <span class="property-type">string</span></dt>
+        <dd>Commodity quantity for all elements (e.g. <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>).</dd>
+        <dt>payload.elements <span class="property-type">array</span></dt>
+        <dd>Full accumulated PEBC schedule as an array of <code>{ startTime, endTime, durationSec, lowerBound, upperBound }</code>. Emitted each time the schedule is updated. Use this to program DESS schedule slots or similar downstream consumers.</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>ID of the CEM that issued the schedule.</dd>
+      </dl>
+    </li>
+  </ol>
+</script>

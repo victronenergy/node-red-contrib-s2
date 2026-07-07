@@ -1,0 +1,254 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  var GRID_CONNECTIONS = {
+    '1x16A': 3680,
+    '3x16A': 11040,
+    '3x25A': 17250,
+    '3x32A': 22080,
+    '3x40A': 27600,
+    '3x63A': 43470
+  }
+
+  RED.nodes.registerType('s2-rm-config', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      resourceId: { value: '' },
+      rmName: { value: 'RM: Virtual' },
+      roles: { value: 'ENERGY_CONSUMER' },
+      controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+      serialNumber: { value: '' },
+      manufacturer: { value: 'Victron Energy' },
+      model: { value: 'Virtual RM' },
+      firmwareVersion: { value: '1.0.0' },
+      maxBatteryChargePower: { value: 0, validate: RED.validators.number() },
+      maxBatteryDischargePower: { value: 0, validate: RED.validators.number() },
+      gridConnection: { value: '' },
+      customMaxPowerW: { value: '' },
+      instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() },
+      skipInstructionStatus: { value: false }
+    },
+    label: function () {
+      return this.name || this.rmName || 's2-rm-config'
+    },
+    oneditprepare: function () {
+      if (!this.resourceId) {
+        var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+        })
+        $('#node-config-input-resourceId').val(id)
+      }
+
+      var saved = ($('#node-config-input-controlTypes').val() || '').split(',').map(function (s) { return s.trim() })
+      $('.s2-rm-config-ct-checkbox').each(function () {
+        $(this).prop('checked', saved.indexOf($(this).val()) !== -1)
+      })
+
+      $('.s2-rm-config-ct-checkbox').on('change', function () {
+        if ($('.s2-rm-config-ct-checkbox:checked').length === 0) {
+          $(this).prop('checked', true)
+        }
+      })
+
+      var savedRoles = ($('#node-config-input-roles').val() || '').split(',').map(function (s) { return s.trim() })
+      $('.s2-rm-config-role-checkbox').each(function () {
+        $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
+      })
+
+      function updateBatteryLimitsVisibility () {
+        var hasStorage = $('.s2-rm-config-role-checkbox[value="ENERGY_STORAGE"]').is(':checked')
+        $('#s2-rm-config-battery-section').toggle(hasStorage)
+      }
+
+      $('.s2-rm-config-role-checkbox').on('change', function () {
+        if ($('.s2-rm-config-role-checkbox:checked').length === 0) {
+          $(this).prop('checked', true)
+        }
+        updateBatteryLimitsVisibility()
+      })
+
+      updateBatteryLimitsVisibility()
+
+      function updateCustomPowerVisibility () {
+        var val = $('#node-config-input-gridConnection').val()
+        $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
+      }
+      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
+      updateCustomPowerVisibility()
+
+      $('#node-config-input-skipInstructionStatus').prop('checked', this.skipInstructionStatus === true)
+
+      var DEFAULT_POLL_INTERVAL = 2000
+      var hasNonDefaultAdvanced = (this.instructionPollIntervalMs && this.instructionPollIntervalMs !== DEFAULT_POLL_INTERVAL) ||
+        this.skipInstructionStatus === true
+      if (hasNonDefaultAdvanced) {
+        $('#s2-rm-config-advanced-section').show()
+        $('#s2-rm-config-advanced-toggle .s2-advanced-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-up')
+      }
+
+      $('#s2-rm-config-advanced-toggle').on('click', function (e) {
+        e.preventDefault()
+        var $section = $('#s2-rm-config-advanced-section')
+        $section.toggle()
+        $(this).find('.s2-advanced-chevron').toggleClass('fa-chevron-down fa-chevron-up')
+      })
+
+      window.__s2Common.initializeTooltips()
+    },
+    oneditsave: function () {
+      var checked = []
+      $('.s2-rm-config-ct-checkbox:checked').each(function () {
+        checked.push($(this).val())
+      })
+      $('#node-config-input-controlTypes').val(checked.join(','))
+
+      var checkedRoles = []
+      $('.s2-rm-config-role-checkbox:checked').each(function () {
+        checkedRoles.push($(this).val())
+      })
+      $('#node-config-input-roles').val(checkedRoles.join(','))
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-rm-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-rmName"><i class="fa fa-tag"></i> RM Name<i class="fa fa-info-circle tooltip-icon" data-tooltip="Human-readable name sent to the CEM in ResourceManagerDetails"></i></label>
+      <input type="text" id="node-config-input-rmName" placeholder="e.g. Victron Virtual RM">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Used in both the CEM URL and ResourceManagerDetails. Auto-generated on first use - do not change after deployment."></i></label>
+      <input type="text" id="node-config-input-resourceId" placeholder="Auto-generated UUID">
+    </div>
+
+    <div class="form-row">
+      <label class="s2-section-label"><i class="fa fa-bolt"></i> Roles<i class="fa fa-info-circle tooltip-icon" data-tooltip="Energy roles advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i></label>
+    </div>
+    <div class="form-row s2-full-row">
+      <div class="s2-control-types-container">
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_CONSUMER"> Consumer <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site consumes energy from the grid"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_PRODUCER"> Producer <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site produces energy (battery, solar)"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-role-checkbox" value="ENERGY_STORAGE"> Storage <i class="fa fa-info-circle tooltip-icon" data-tooltip="Site has energy storage (battery)"></i></label>
+      </div>
+      <input type="hidden" id="node-config-input-roles">
+    </div>
+
+    <div class="form-row">
+      <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM in ResourceManagerDetails. At least one must be selected."></i></label>
+    </div>
+    <div class="form-row s2-full-row">
+      <div class="s2-control-types-container">
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="OPERATION_MODE_BASED_CONTROL"> OMBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Operation Mode Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="FILL_RATE_BASED_CONTROL"> FRBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Fill-rate Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="DEMAND_DRIVEN_BASED_CONTROL"> DDBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Demand Driven Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="POWER_PROFILE_BASED_CONTROL"> PPBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Profile Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="POWER_ENVELOPE_BASED_CONTROL"> PEBC <i class="fa fa-info-circle tooltip-icon" data-tooltip="Power Envelope Based Control"></i></label>
+        <label class="s2-checkbox-label"><input type="checkbox" class="s2-rm-config-ct-checkbox" value="NOT_CONTROLABLE"> Not Ctrl <i class="fa fa-info-circle tooltip-icon" data-tooltip="Not Controllable - device cannot be controlled by the CEM"></i></label>
+      </div>
+      <input type="hidden" id="node-config-input-controlTypes">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the outer PEBC power limits sent to the CEM as [-max, +max] watts."></i></label>
+      <select id="node-config-input-gridConnection">
+        <option value="">-- Not set --</option>
+        <option value="1x16A">1x16A (3.7 kW)</option>
+        <option value="3x16A">3x16A (11 kW)</option>
+        <option value="3x25A">3x25A (17.3 kW)</option>
+        <option value="3x32A">3x32A (22 kW)</option>
+        <option value="3x40A">3x40A (27.6 kW)</option>
+        <option value="3x63A">3x63A (43.5 kW)</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="s2-rm-config-custom-power-row" style="display:none">
+      <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
+      <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-manufacturer"><i class="fa fa-industry"></i> Manufacturer</label>
+      <input type="text" id="node-config-input-manufacturer" placeholder="e.g. Victron Energy">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-model"><i class="fa fa-cube"></i> Model</label>
+      <input type="text" id="node-config-input-model" placeholder="e.g. Virtual AC Load">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-serialNumber"><i class="fa fa-barcode"></i> Serial Number<i class="fa fa-info-circle tooltip-icon" data-tooltip="Serial number sent in ResourceManagerDetails. Supports context variables: {{global.vrmId}}, {{flow.siteId}}. Defaults to the node ID if empty."></i></label>
+      <input type="text" id="node-config-input-serialNumber" placeholder="e.g. {{global.vrmId}} or leave empty for node ID">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
+      <input type="text" id="node-config-input-firmwareVersion" placeholder="e.g. 1.0.0">
+    </div>
+
+    <div id="s2-rm-config-battery-section">
+      <div class="form-row">
+        <label class="s2-section-label">
+          <i class="fa fa-battery-three-quarters"></i> Battery Limits
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Hardware ceiling for battery power. CEM instructions are clamped to these values. Set to 0 for no limit."></i>
+        </label>
+      </div>
+
+      <div class="form-row s2-battery-row">
+        <label for="node-config-input-maxBatteryChargePower">
+          <i class="fa fa-arrow-circle-down"></i> Charge
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery charge power in Watts. Never exceeded when writing DESS limits."></i>
+        </label>
+        <input type="number" id="node-config-input-maxBatteryChargePower" placeholder="0 = no limit" min="0" step="1">
+        <span class="s2-unit-label">W</span>
+      </div>
+
+      <div class="form-row s2-battery-row">
+        <label for="node-config-input-maxBatteryDischargePower">
+          <i class="fa fa-arrow-circle-up"></i> Discharge
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery discharge power in Watts. Never exceeded when writing DESS limits."></i>
+        </label>
+        <input type="number" id="node-config-input-maxBatteryDischargePower" placeholder="0 = no limit" min="0" step="1">
+        <span class="s2-unit-label">W</span>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <a href="#" class="s2-advanced-toggle" id="s2-rm-config-advanced-toggle">
+        <i class="fa fa-cog"></i> Advanced
+        <i class="fa fa-chevron-down s2-advanced-chevron"></i>
+      </a>
+    </div>
+
+    <div id="s2-rm-config-advanced-section" style="display:none">
+      <div class="form-row s2-advanced-row">
+        <label for="node-config-input-instructionPollIntervalMs">
+          <i class="fa fa-clock-o"></i> Poll interval
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="How often (ms) the RM checks for pending future instructions that are now due. Default: 2000."></i>
+        </label>
+        <input type="number" id="node-config-input-instructionPollIntervalMs" placeholder="2000" min="100" step="100">
+        <span class="s2-unit-label">ms</span>
+      </div>
+      <div class="form-row s2-full-row">
+        <label class="s2-checkbox-label">
+          <input type="checkbox" id="node-config-input-skipInstructionStatus">
+          Skip instruction status updates
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="When enabled, InstructionStatusUpdate(ACCEPTED/STARTED) messages are not sent automatically. ReceptionStatus and OMBC.Status are still sent. Use when the CEM generates high CPU load from frequent instructions." style="position:static;transform:none;"></i>
+        </label>
+      </div>
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
