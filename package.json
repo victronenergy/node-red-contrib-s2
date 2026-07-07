@@ -2,9 +2,16 @@
   "name": "node-red-contrib-s2",
   "version": "0.1.0",
   "description": "Node-RED nodes for S2 energy management protocol (EN 50491-12-2)",
+  "author": "Victron Energy BV",
   "main": "dist/lib/index.js",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "node-red": {
-    "version": ">=3.0.2",
+    "version": ">=4.1.0",
     "nodes": {
       "s2-rm-config": "./dist/nodes/s2-rm-config/index.js",
       "s2-cem-config": "./dist/nodes/s2-cem-config/index.js",
@@ -13,6 +20,7 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc && npm run copy-html",
     "clean": "rm -rf dist",
     "copy-html": "mkdir -p dist/nodes/s2-rm dist/nodes/s2-websocket dist/nodes/s2-rm-config dist/nodes/s2-cem-config dist/nodes/s2-rm/icons dist/nodes/s2-websocket/icons && cp src/nodes/s2-rm/index.html dist/nodes/s2-rm/ && cp src/nodes/s2-websocket/index.html dist/nodes/s2-websocket/ && cp src/nodes/s2-rm-config/index.html dist/nodes/s2-rm-config/ && cp src/nodes/s2-cem-config/index.html dist/nodes/s2-cem-config/ && cp icons/s2-logo.svg dist/nodes/s2-rm/icons/ && cp icons/s2-logo.svg dist/nodes/s2-websocket/icons/",
@@ -29,7 +37,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@node-red/runtime": ">=3.0.2"
+    "node-red": ">=4.1.0"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -62,10 +70,11 @@
     "coverageDirectory": "coverage",
     "coverageReporters": [
       "text",
-      "lcov"
+      "lcov",
+      "json-summary"
     ]
   },
   "engines": {
-    "node": ">=14.17.4"
+    "node": ">=24.0.0"
   }
 }

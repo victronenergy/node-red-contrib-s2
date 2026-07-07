@@ -4,6 +4,11 @@ Node-RED nodes for the [S2 energy management protocol](https://s2standard.org/) 
 
 S2 is a European standard for demand-side energy flexibility. It defines how a Customer Energy Manager (CEM) communicates with Resource Managers (RMs) to coordinate energy consumption, production, and storage.
 
+## Requirements
+
+- Node-RED >= 4.1.0
+- Node.js >= 24
+
 ## Nodes
 
 | Node | Description |

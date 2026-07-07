@@ -1,0 +1,100 @@
+name: Release Checklist
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  checklist:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Check package.json version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "package.json version matches tag: $PKG_VERSION"
+
+      - name: Check CHANGELOG.md mentions this version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! grep -q "$VERSION" CHANGELOG.md; then
+            echo "CHANGELOG.md does not mention version $VERSION"
+            exit 1
+          fi
+          echo "CHANGELOG.md mentions version $VERSION"
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install, build, and test
+        run: |
+          npm install
+          npm run build
+          npm run lint
+          npm run test:unit -- --coverage
+
+      - name: Coverage gate
+        run: |
+          node -e "
+            const s = require('./coverage/coverage-summary.json').total;
+            const failed = [];
+            if (s.statements.pct < 60) failed.push('Statements: ' + s.statements.pct + '% (min 60%)');
+            if (s.branches.pct   < 60) failed.push('Branches: '   + s.branches.pct   + '% (min 60%)');
+            if (s.functions.pct  < 60) failed.push('Functions: '  + s.functions.pct  + '% (min 60%)');
+            if (s.lines.pct      < 60) failed.push('Lines: '      + s.lines.pct      + '% (min 60%)');
+            if (failed.length) {
+              console.error('Coverage below threshold:\n  ' + failed.join('\n  '));
+              process.exit(1);
+            }
+            console.log('Coverage above 60% on all metrics');
+          "
+
+      - name: Coverage report in summary
+        run: |
+          node -e "
+            const s = require('./coverage/coverage-summary.json').total;
+            const row = (label, key) => '| ' + label + ' | ' + s[key].pct + '% |';
+            const lines = [
+              '## Release Coverage',
+              '',
+              '| Metric | Coverage |',
+              '|--------|----------|',
+              row('Statements', 'statements'),
+              row('Branches',   'branches'),
+              row('Functions',  'functions'),
+              row('Lines',      'lines'),
+            ];
+            console.log(lines.join('\n'));
+          " >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for open release-blocking issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BLOCKERS=$(gh issue list \
+            --repo ${{ github.repository }} \
+            --label "release-blocker" \
+            --state open \
+            --json number,title \
+            --jq '.[] | "  #\(.number) \(.title)"' 2>/dev/null || echo "")
+          if [ -n "$BLOCKERS" ]; then
+            echo "Open release-blocking issues:" >&2
+            echo "$BLOCKERS" >&2
+            exit 1
+          fi
+          echo "No open release-blocking issues"

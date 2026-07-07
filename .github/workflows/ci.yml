@@ -1,0 +1,51 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - run: npm install
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run test:unit -- --coverage
+
+      - name: Coverage summary
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const s = require('./coverage/coverage-summary.json').total;
+              const row = (label, key) => '| ' + label + ' | ' + s[key].pct + '% | ' + s[key].covered + '/' + s[key].total + ' |';
+              const lines = [
+                '## Test Coverage',
+                '',
+                '| Metric | Coverage | Covered/Total |',
+                '|--------|----------|---------------|',
+                row('Statements', 'statements'),
+                row('Branches',   'branches'),
+                row('Functions',  'functions'),
+                row('Lines',      'lines'),
+              ];
+              console.log(lines.join('\n'));
+            " >> \$GITHUB_STEP_SUMMARY
+          fi
