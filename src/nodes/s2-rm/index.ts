@@ -395,7 +395,8 @@ export = function (RED: NodeRedApp): void {
           }
           if (msg.message_type === MessageType.REVOKE_OBJECT) {
             const revokedId = (msg as { object_id?: string }).object_id
-            if (revokedId) {
+            const revokedObjectType = (msg as { object_type?: string }).object_type
+            if (revokedId && revokedObjectType && revokedObjectType.endsWith('.Instruction')) {
               const pending = getPending()
               const revokedItem = pending.find(p => p.instructionId === revokedId)
               if (revokedItem) {
