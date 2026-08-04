@@ -1294,6 +1294,103 @@ describe('s2-rm - RevokeObject handling', () => {
     expect(((flowContext[PENDING_KEY] as unknown[]) || []).length).toBe(0)
   })
 
+  it('ignores a RevokeObject whose object_type is not an instruction, even if object_id collides with a pending instruction', () => {
+    const { node, handlers, flowContext } = setupNode({})
+    connectCem(handlers)
+
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION,
+          message_id: 'msg-1',
+          id: 'instr-ombc-1',
+          execution_time: new Date(Date.now() + 60000).toISOString(),
+          operation_mode_id: 'mode-1',
+          operation_mode_factor: 1,
+          abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    expect((flowContext[PENDING_KEY] as unknown[]).length).toBe(1)
+    ;(node.send as jest.Mock).mockClear()
+
+    // object_id collides with the pending instruction's id, but object_type is not an instruction type
+    sendRevokeObject(handlers, 'instr-ombc-1', 'PEBC.PowerConstraints')
+
+    expect((flowContext[PENDING_KEY] as unknown[]).length).toBe(1)
+
+    const port1Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const revoked = port1Calls.find(
+      (c: unknown[]) => {
+        const msg = ((c[0] as unknown[])[0] as { payload?: { message?: Record<string, unknown> } })?.payload?.message
+        return msg?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE && msg?.status_type === 'REVOKED'
+      }
+    )
+    expect(revoked).toBeUndefined()
+  })
+
+  it('sends InstructionStatusUpdate(REVOKED) to the CEM when a pending instruction is revoked', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+
+    handlers.input({
+      payload: {
+        command: 'Message',
+        cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION,
+          message_id: 'msg-1',
+          id: 'instr-ombc-1',
+          execution_time: new Date(Date.now() + 60000).toISOString(),
+          operation_mode_id: 'mode-1',
+          operation_mode_factor: 1,
+          abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    ;(node.send as jest.Mock).mockClear()
+
+    sendRevokeObject(handlers, 'instr-ombc-1', 'OMBC.Instruction')
+
+    const port1Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const revoked = port1Calls.find(
+      (c: unknown[]) => {
+        const msg = ((c[0] as unknown[])[0] as { payload?: { message?: Record<string, unknown> } })?.payload?.message
+        return msg?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE &&
+          msg?.instruction_id === 'instr-ombc-1' &&
+          msg?.status_type === 'REVOKED'
+      }
+    )
+    expect(revoked).toBeDefined()
+  })
+
+  it('does not send InstructionStatusUpdate(REVOKED) for an unknown/already-cleared instruction', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    sendRevokeObject(handlers, 'instr-unknown', 'OMBC.Instruction')
+
+    const port1Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const revoked = port1Calls.find(
+      (c: unknown[]) => {
+        const msg = ((c[0] as unknown[])[0] as { payload?: { message?: Record<string, unknown> } })?.payload?.message
+        return msg?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE && msg?.status_type === 'REVOKED'
+      }
+    )
+    expect(revoked).toBeUndefined()
+  })
+
   it('forwards RevokeObject on port 2', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
