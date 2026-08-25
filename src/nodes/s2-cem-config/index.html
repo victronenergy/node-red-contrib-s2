@@ -51,4 +51,14 @@
   </div>
 </script>
 
+<script type="text/html" data-help-name="s2-cem-config">
+  <p>Configuration for connecting to a CEM: the WebSocket URL and (optional) credentials used by <b>s2-websocket</b>, plus the REST API location <b>s2-rm</b> derives flex-instruction URLs from.</p>
+
+  <p><b>CEM URL</b> is the WebSocket endpoint. Either include <code>{resourceId}</code> as a placeholder in the URL, or end it with a trailing slash and the Resource ID (from the paired <b>s2-rm-config</b>) is appended automatically.</p>
+
+  <p><b>API Prefix</b> is used only to build the CEM's REST API base URL, published to flow context as <code>flow.cemFlexInstructionUrl</code> (and <code>flow.cemApiAuth</code>, if Username is set) by <b>s2-rm</b>. It's derived from the WebSocket URL's host with the WebSocket path dropped and this prefix appended instead - set it when the REST API lives under a different path than the WebSocket endpoint (e.g. the WebSocket is at <code>/s2-message-handler/ws</code> but the REST API is at <code>/s2-message-handler/resource_managers/...</code>, needing prefix <code>/s2-message-handler</code>). Leave empty if the REST API is at the host root, or if you don't use the CEM's REST API at all.</p>
+
+  <p><b>Username</b>/<b>Password</b> are optional HTTP Basic credentials. <b>s2-websocket</b> sends them as an <code>Authorization</code> header on the WebSocket connection itself; <b>s2-rm</b> also publishes the same header value as <code>flow.cemApiAuth</code> for use against the REST API above.</p>
+</script>
+
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

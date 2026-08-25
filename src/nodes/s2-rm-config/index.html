@@ -205,4 +205,18 @@
   </div>
 </script>
 
+<script type="text/html" data-help-name="s2-rm-config">
+  <p>Configuration for <b>s2-rm</b>: the Resource Manager's identity, advertised capabilities, and protocol-level behavior. Sent to the CEM in <code>ResourceManagerDetails</code> during the S2 handshake.</p>
+
+  <h3>Identity</h3>
+  <p><b>Resource ID</b> is a stable UUID identifying this RM to the CEM - it's also used to build the CEM connection URL on <b>s2-cem-config</b>. Auto-generated the first time the node is added; avoid changing it after deployment, since the CEM associates state with this id.</p>
+  <p><b>Roles</b> and <b>Control Types</b> are advertised capabilities - at least one of each must be selected. Control types beyond OMBC and PEBC (FRBC, DDBC, PPBC) have no dedicated node yet; their instructions are still forwarded on <b>s2-rm</b>'s instructions output for you to handle yourself.</p>
+
+  <h3>Power Meas. / Forecast</h3>
+  <p>Advertise whether this RM reports <code>PowerMeasurement</code> (as a single 3-phase-symmetric value, or per-phase L1/L2/L3) and/or <code>PowerForecast</code>. These affect what's advertised to the CEM and whether <b>s2-rm</b> emits its <code>PowerMeasurementStart</code> signal on output 1 - they don't gate whether a <code>PowerMeasurement</code>/<code>Forecast</code> command you send is actually forwarded, which happens regardless.</p>
+
+  <h3>Advanced</h3>
+  <p><b>Poll interval</b> controls how often <b>s2-rm</b> checks for pending instructions whose <code>execution_time</code> has now arrived (PEBC instructions bypass this queue entirely and are delivered immediately). <b>Skip instruction status updates</b> suppresses automatic <code>InstructionStatusUpdate(ACCEPTED/STARTED)</code> messages - <code>ReceptionStatus</code> and control-type status messages are still sent - useful if the CEM generates high load from frequent instructions.</p>
+</script>
+
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
