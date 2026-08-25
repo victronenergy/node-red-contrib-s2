@@ -200,14 +200,20 @@ export = function (RED: NodeRedApp): void {
       if (changed) setPending(remaining)
     }, pollIntervalMs).unref()
 
-    node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
+    node.status({ fill: 'grey', shape: 'ring', text: 'waiting for CEM' })
 
+    // S2 is a 1:1 CEM<->RM relationship, so the common case (one session) gets a
+    // singular status naming the connected CEM. Multiple concurrent sessions are
+    // technically possible (the map is keyed by cemId), so that case still shows a count.
     function updateStatus (): void {
       const count = sessions.size
       if (count === 0) {
-        node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
+        node.status({ fill: 'grey', shape: 'ring', text: 'waiting for CEM' })
+      } else if (count === 1) {
+        const [cemId] = sessions.keys()
+        node.status({ fill: 'green', shape: 'dot', text: `CEM connected (${cemId})` })
       } else {
-        node.status({ fill: 'green', shape: 'dot', text: `${count} CEM${count > 1 ? 's' : ''} connected` })
+        node.status({ fill: 'green', shape: 'dot', text: `${count} CEMs connected` })
       }
     }
 
