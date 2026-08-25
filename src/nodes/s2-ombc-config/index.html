@@ -1,46 +1,379 @@
 <script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
-  RED.nodes.registerType('s2-ombc-config', {
-    category: 'config',
-    defaults: {
-      name: { value: '' },
-      systemDescription: { value: '' }
-    },
-    label: function () {
-      return this.name || 's2-ombc-config'
-    },
-    oneditprepare: function () {
-      $('#node-config-input-systemDescription').typedInput({ types: ['json'] })
+  (function () {
+    function generateUuid () {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+      })
+    }
 
-      if (!this.systemDescription) {
-        var modeId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-          var r = Math.random() * 16 | 0
-          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
-        })
-        var defaultConfig = {
-          operationModes: [
-            {
-              id: modeId,
-              diagnostic_label: 'Normal operation',
-              power_ranges: [
-                {
-                  commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-                  start_of_range: 0,
-                  end_of_range: 2500
-                }
-              ],
-              abnormal_condition_only: false
-            }
-          ],
-          transitions: [],
-          timers: []
+    // Every configured mode able to transition to every other configured mode,
+    // with no timers - the fully-connected graph friendly mode always assumes.
+    function buildTransitions (modeIds) {
+      var transitions = []
+      for (var i = 0; i < modeIds.length; i++) {
+        for (var j = 0; j < modeIds.length; j++) {
+          if (i === j) continue
+          transitions.push({
+            id: generateUuid(),
+            from: modeIds[i],
+            to: modeIds[j],
+            start_timers: [],
+            blocking_timers: [],
+            abnormal_condition_only: false
+          })
         }
-        $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(defaultConfig, null, 2))
+      }
+      return transitions
+    }
+
+    function friendlyStateToSystemDescription (modes) {
+      var operationModes = modes.map(function (m) {
+        var powerRanges
+        if (m.symmetric) {
+          powerRanges = [{
+            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+            start_of_range: m.valueSymmetric,
+            end_of_range: m.valueSymmetric
+          }]
+        } else {
+          powerRanges = [
+            { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: m.valueL1, end_of_range: m.valueL1 },
+            { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: m.valueL2, end_of_range: m.valueL2 },
+            { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: m.valueL3, end_of_range: m.valueL3 }
+          ]
+        }
+        return {
+          id: m.id,
+          diagnostic_label: m.label,
+          power_ranges: powerRanges,
+          abnormal_condition_only: !!m.abnormalConditionOnly
+        }
+      })
+      return {
+        operationModes: operationModes,
+        transitions: buildTransitions(operationModes.map(function (m) { return m.id })),
+        timers: []
+      }
+    }
+
+    function isFriendlyPowerRanges (ranges) {
+      if (!Array.isArray(ranges)) return false
+      if (ranges.length === 1) {
+        var r = ranges[0]
+        return !!r && r.commodity_quantity === 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' &&
+          typeof r.start_of_range === 'number' && r.start_of_range === r.end_of_range
+      }
+      if (ranges.length === 3) {
+        var byCq = {}
+        for (var i = 0; i < ranges.length; i++) {
+          var rr = ranges[i]
+          if (!rr || typeof rr.start_of_range !== 'number' || rr.start_of_range !== rr.end_of_range) return false
+          byCq[rr.commodity_quantity] = rr.start_of_range
+        }
+        return ('ELECTRIC.POWER.L1' in byCq) && ('ELECTRIC.POWER.L2' in byCq) && ('ELECTRIC.POWER.L3' in byCq)
+      }
+      return false
+    }
+
+    // Strict structural check: true only when systemDescription is exactly what
+    // friendly mode itself would produce, so switching modes never silently
+    // narrows something Advanced mode expresses that friendly mode can't.
+    function isFriendlyRepresentable (sysDesc) {
+      if (!sysDesc || typeof sysDesc !== 'object') return false
+      var modes = sysDesc.operationModes
+      if (!Array.isArray(modes) || modes.length === 0) return false
+
+      var modeIds = []
+      for (var i = 0; i < modes.length; i++) {
+        var m = modes[i]
+        if (!m || typeof m.id !== 'string' || !m.id || modeIds.indexOf(m.id) !== -1) return false
+        if (!isFriendlyPowerRanges(m.power_ranges)) return false
+        modeIds.push(m.id)
       }
 
-      window.__s2Common.initializeTooltips()
+      var transitions = sysDesc.transitions
+      if (!Array.isArray(transitions) || transitions.length !== modeIds.length * (modeIds.length - 1)) return false
+
+      var seenPairs = {}
+      for (var j = 0; j < transitions.length; j++) {
+        var t = transitions[j]
+        if (!t || modeIds.indexOf(t.from) === -1 || modeIds.indexOf(t.to) === -1 || t.from === t.to) return false
+        if (!Array.isArray(t.start_timers) || t.start_timers.length !== 0) return false
+        if (!Array.isArray(t.blocking_timers) || t.blocking_timers.length !== 0) return false
+        if (t.abnormal_condition_only) return false
+        var key = t.from + '>' + t.to
+        if (seenPairs[key]) return false
+        seenPairs[key] = true
+      }
+      for (var a = 0; a < modeIds.length; a++) {
+        for (var b = 0; b < modeIds.length; b++) {
+          if (a === b) continue
+          if (!seenPairs[modeIds[a] + '>' + modeIds[b]]) return false
+        }
+      }
+
+      var timers = sysDesc.timers
+      return Array.isArray(timers) && timers.length === 0
     }
-  })
+
+    // Only called after isFriendlyRepresentable has passed.
+    function systemDescriptionToFriendlyState (sysDesc) {
+      return sysDesc.operationModes.map(function (m) {
+        var ranges = m.power_ranges
+        if (ranges.length === 1) {
+          return {
+            id: m.id,
+            protected: false,
+            label: m.diagnostic_label || '',
+            abnormalConditionOnly: !!m.abnormal_condition_only,
+            symmetric: true,
+            valueSymmetric: ranges[0].start_of_range,
+            valueL1: 0,
+            valueL2: 0,
+            valueL3: 0
+          }
+        }
+        var byCq = {}
+        ranges.forEach(function (r) { byCq[r.commodity_quantity] = r.start_of_range })
+        return {
+          id: m.id,
+          protected: false,
+          label: m.diagnostic_label || '',
+          abnormalConditionOnly: !!m.abnormal_condition_only,
+          symmetric: false,
+          valueSymmetric: 0,
+          valueL1: byCq['ELECTRIC.POWER.L1'],
+          valueL2: byCq['ELECTRIC.POWER.L2'],
+          valueL3: byCq['ELECTRIC.POWER.L3']
+        }
+      })
+    }
+
+    function defaultStandbyMode () {
+      return {
+        id: generateUuid(),
+        protected: true,
+        label: 'Standby/off',
+        abnormalConditionOnly: false,
+        symmetric: true,
+        valueSymmetric: 0,
+        valueL1: 0,
+        valueL2: 0,
+        valueL3: 0
+      }
+    }
+
+    RED.nodes.registerType('s2-ombc-config', {
+      category: 'config',
+      defaults: {
+        name: { value: '' },
+        systemDescription: { value: '' }
+      },
+      label: function () {
+        return this.name || 's2-ombc-config'
+      },
+      oneditprepare: function () {
+        var listSel = '#s2-ombc-mode-list'
+        var currentMode = 'friendly'
+
+        $('#node-config-input-systemDescription').typedInput({ types: ['json'] })
+
+        function addModeItem (container, index, opt) {
+          opt = opt || {}
+          if (!opt.id) opt.id = generateUuid()
+          // Node-RED's default editableList item content is `display:grid;
+          // grid-template-columns:50% 50%`, which grid-places our two rows into
+          // separate 50%-wide columns instead of stacking them - override back
+          // to a normal block flow (core nodes like `switch` do the same thing
+          // to get their own single-row flex layout instead of the grid default).
+          container.css({ overflow: 'visible', display: 'block' })
+
+          var row1 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+          $('<input/>', { type: 'text', class: 's2-ombc-mode-label', placeholder: 'Mode label' })
+            .val(opt.label || '')
+            .appendTo(row1)
+
+          var row1b = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+          var abnormalLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row1b)
+          $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-abnormal' })
+            .prop('checked', !!opt.abnormalConditionOnly)
+            .appendTo(abnormalLabel)
+          abnormalLabel.append(' Abnormal only')
+
+          var row2 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+          var symLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2)
+          var symCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-symmetric' })
+            .prop('checked', opt.symmetric !== false)
+            .appendTo(symLabel)
+          symLabel.append(' Same value on all phases')
+
+          var row3 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+          var symWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+          var symValue = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym', step: '1' })
+            .val(opt.valueSymmetric != null ? opt.valueSymmetric : 0)
+            .appendTo(symWrap)
+          symWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
+
+          var phaseWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+          phaseWrap.append('L1 ')
+          var l1 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1', step: '1' }).val(opt.valueL1 || 0).appendTo(phaseWrap)
+          phaseWrap.append(' L2 ')
+          var l2 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2', step: '1' }).val(opt.valueL2 || 0).appendTo(phaseWrap)
+          phaseWrap.append(' L3 ')
+          var l3 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3', step: '1' }).val(opt.valueL3 || 0).appendTo(phaseWrap)
+          phaseWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
+
+          function updateSymVisibility () {
+            if (symCheckbox.prop('checked')) {
+              symWrap.show()
+              phaseWrap.hide()
+            } else {
+              symWrap.hide()
+              phaseWrap.show()
+            }
+          }
+          symCheckbox.on('change', updateSymVisibility)
+          updateSymVisibility()
+
+          if (opt.protected) {
+            $('<div/>', { class: 's2-ombc-mode-protected-note' }).text('Always present - remove via Advanced mode if not needed.').appendTo(container)
+          }
+        }
+
+        $(listSel).css('min-height', '320px').css('min-width', '480px').editableList({
+          addItem: addModeItem,
+          removeItem: function (opt) {
+            // Protected rows can't be removed through the list's own control -
+            // restore it. (Still removable by hand-editing Advanced/JSON mode.)
+            if (opt && opt.protected) {
+              $(listSel).editableList('addItem', opt)
+            }
+          },
+          removable: true,
+          sortable: true
+        })
+
+        function getFriendlyModes () {
+          var modes = []
+          $(listSel).editableList('items').each(function () {
+            var $item = $(this)
+            var data = $item.data('data') || {}
+            modes.push({
+              id: data.id,
+              protected: !!data.protected,
+              label: $item.find('.s2-ombc-mode-label').val(),
+              abnormalConditionOnly: $item.find('.s2-ombc-mode-abnormal').prop('checked'),
+              symmetric: $item.find('.s2-ombc-mode-symmetric').prop('checked'),
+              valueSymmetric: Number($item.find('.s2-ombc-mode-value-sym').val()) || 0,
+              valueL1: Number($item.find('.s2-ombc-mode-value-l1').val()) || 0,
+              valueL2: Number($item.find('.s2-ombc-mode-value-l2').val()) || 0,
+              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0
+            })
+          })
+          return modes
+        }
+
+        function showFriendlySection () {
+          currentMode = 'friendly'
+          $('#s2-ombc-friendly-section').show()
+          $('#s2-ombc-advanced-section').hide()
+          $('#s2-ombc-advanced-warning').hide()
+          $('#s2-ombc-tab-friendly').addClass('s2-ombc-tab-active')
+          $('#s2-ombc-tab-advanced').removeClass('s2-ombc-tab-active')
+        }
+
+        function showAdvancedSection (warningText) {
+          currentMode = 'advanced'
+          $('#s2-ombc-friendly-section').hide()
+          $('#s2-ombc-advanced-section').show()
+          if (warningText) {
+            $('#s2-ombc-advanced-warning').text(warningText).show()
+          } else {
+            $('#s2-ombc-advanced-warning').hide()
+          }
+          $('#s2-ombc-tab-advanced').addClass('s2-ombc-tab-active')
+          $('#s2-ombc-tab-friendly').removeClass('s2-ombc-tab-active')
+        }
+
+        $('#s2-ombc-tab-advanced').on('click', function (e) {
+          e.preventDefault()
+          if (currentMode === 'advanced') return
+          var sysDesc = friendlyStateToSystemDescription(getFriendlyModes())
+          $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
+          showAdvancedSection()
+        })
+
+        $('#s2-ombc-tab-friendly').on('click', function (e) {
+          e.preventDefault()
+          if (currentMode === 'friendly') return
+          var raw = $('#node-config-input-systemDescription').typedInput('value')
+          var parsed
+          try {
+            parsed = JSON.parse(raw)
+          } catch (err) {
+            showAdvancedSection('Invalid JSON - fix it before switching to the friendly editor.')
+            return
+          }
+          if (!isFriendlyRepresentable(parsed)) {
+            showAdvancedSection('This system description uses something only Advanced mode supports (a genuine power range, a non-standard commodity, a blocked transition, or a timer) - continue editing it here.')
+            return
+          }
+          $(listSel).editableList('empty')
+          systemDescriptionToFriendlyState(parsed).forEach(function (m) {
+            $(listSel).editableList('addItem', m)
+          })
+          showFriendlySection()
+        })
+
+        var raw = this.systemDescription
+        var parsed = null
+        if (raw) {
+          try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
+        }
+
+        if (!raw) {
+          $(listSel).editableList('addItem', defaultStandbyMode())
+          showFriendlySection()
+        } else if (parsed && isFriendlyRepresentable(parsed)) {
+          systemDescriptionToFriendlyState(parsed).forEach(function (m) {
+            $(listSel).editableList('addItem', m)
+          })
+          showFriendlySection()
+        } else {
+          $('#node-config-input-systemDescription').typedInput('value', raw)
+          showAdvancedSection()
+        }
+
+        window.__s2Common.initializeTooltips()
+      },
+      oneditsave: function () {
+        // Only friendly mode needs an explicit save step - Advanced mode's JSON
+        // typedInput already holds the value that gets read automatically.
+        var $list = $('#s2-ombc-mode-list')
+        if ($('#s2-ombc-tab-friendly').hasClass('s2-ombc-tab-active') && $list.length) {
+          var modes = []
+          $list.editableList('items').each(function () {
+            var $item = $(this)
+            var data = $item.data('data') || {}
+            modes.push({
+              id: data.id,
+              label: $item.find('.s2-ombc-mode-label').val(),
+              abnormalConditionOnly: $item.find('.s2-ombc-mode-abnormal').prop('checked'),
+              symmetric: $item.find('.s2-ombc-mode-symmetric').prop('checked'),
+              valueSymmetric: Number($item.find('.s2-ombc-mode-value-sym').val()) || 0,
+              valueL1: Number($item.find('.s2-ombc-mode-value-l1').val()) || 0,
+              valueL2: Number($item.find('.s2-ombc-mode-value-l2').val()) || 0,
+              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0
+            })
+          })
+          var sysDesc = friendlyStateToSystemDescription(modes)
+          $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
+        }
+      }
+    })
+  })()
 </script>
 
 <script type="text/html" data-template-name="s2-ombc-config">
@@ -52,11 +385,44 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-systemDescription"><i class="fa fa-code"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription as JSON: operationModes, transitions, timers. Sent to the CEM by s2-ombc once OMBC is the selected control type."></i></label>
+      <label class="s2-section-label"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription: the operation modes this device can be in, and how it can transition between them. Sent to the CEM by s2-ombc once OMBC is the selected control type. Friendly mode covers the common case (fixed-power modes, every mode able to transition to every other); switch to Advanced for anything else - a genuine power range, a non-standard commodity, a blocked transition, or a timer."></i></label>
+    </div>
+
+    <div class="form-row s2-full-row">
+      <div class="s2-ombc-tabs">
+        <a href="#" id="s2-ombc-tab-friendly" class="s2-ombc-tab s2-ombc-tab-active">Friendly</a>
+        <a href="#" id="s2-ombc-tab-advanced" class="s2-ombc-tab">Advanced (JSON)</a>
+      </div>
+    </div>
+
+    <div id="s2-ombc-friendly-section" class="form-row s2-full-row">
+      <ol id="s2-ombc-mode-list"></ol>
+    </div>
+
+    <div id="s2-ombc-advanced-section" class="form-row s2-full-row" style="display:none;">
+      <div id="s2-ombc-advanced-warning" class="s2-ombc-advanced-warning" style="display:none;"></div>
       <input type="text" id="node-config-input-systemDescription">
     </div>
 
   </div>
+</script>
+
+<script type="text/html" data-help-name="s2-ombc-config">
+  <p>Configuration for <b>s2-ombc</b>: the OMBC system description (operation modes and how the device can transition between them). Sent to the CEM by <b>s2-ombc</b> once the CEM has selected Operation Mode Based Control.</p>
+
+  <h3>Friendly mode</h3>
+  <p>Covers the common case: a list of operation modes, each with a diagnostic label, an optional "abnormal condition only" flag, and a fixed power level (the same value on all three phases, or a separate value per phase). Every mode is assumed able to transition to every other mode - there is no separate step to define transitions.</p>
+  <p>A "Standby/off" mode is always present and can't be removed from the list itself (use Advanced mode if you genuinely don't want one). Add further modes with the "add" button below the list.</p>
+
+  <h3>Advanced (JSON) mode</h3>
+  <p>The raw <code>OMBC.SystemDescription</code> JSON (<code>operationModes</code>, <code>transitions</code>, <code>timers</code>), for anything friendly mode doesn't cover:</p>
+  <ul>
+    <li>a genuine power range (a mode whose lower and upper bound differ, rather than one fixed value)</li>
+    <li>a commodity quantity other than 3-phase-symmetric or per-phase L1/L2/L3</li>
+    <li>blocking a specific transition, rather than every mode being able to reach every other mode</li>
+    <li>a timer (<code>start_timers</code>/<code>blocking_timers</code> on a transition)</li>
+  </ul>
+  <p>Switching from Friendly to Advanced converts the current modes to JSON. Switching back only works if the JSON still matches what friendly mode can represent (fixed-power modes, every mode transitioning to every other, no timers) - otherwise the editor stays in Advanced mode and explains why, rather than discarding anything.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

@@ -16,7 +16,7 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 | **s2-rm** | S2 Resource Manager - generic S2 protocol state machine (handshake, control-type selection, instruction ack/routing) for one or more CEMs, independent of any specific control type |
 | **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
 | **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
-| **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers) |
+| **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers), with a friendly editor for the common case and a raw-JSON Advanced mode for everything else |
 | **s2-pebc** | Power Envelope Based Control - accumulates power envelope schedules from PEBC instructions, dispatches the active bound as it becomes effective, caps outgoing PowerForecasts to the accumulated schedule, and (optionally) resolves which side of an asymmetric bound currently applies from your PowerMeasurement |
 | **s2-pebc-config** | Configuration for `s2-pebc`: default power constraints (grid connection preset or custom wattage) |
 | **s2-cem-config** | Configuration for CEM connection (WebSocket URL and credentials) |

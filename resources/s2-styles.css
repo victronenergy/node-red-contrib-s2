@@ -69,8 +69,13 @@
    CONTROL TYPES / ROLES - Checkbox Grid
    ============================================================================ */
 
-/* Section labels (Roles, Control Types) span the full row. */
-.s2-form .s2-section-label {
+/* Section labels (Roles, Control Types) span the full row.
+   Selector includes the `label` element type to match (and, combined with
+   source order, beat) .s2-form .form-row label's specificity above - a
+   class-only selector loses that tie-break despite both using !important,
+   leaving the label clipped to 120px with its text and tooltip icon
+   overlapping instead of spanning the row. */
+.s2-form label.s2-section-label {
   width: 100% !important;
   display: inline-block;
 }
@@ -161,4 +166,98 @@
 .s2-form .s2-advanced-toggle:hover {
   color: #333;
   text-decoration: none;
+}
+
+/* ============================================================================
+   OMBC SYSTEM DESCRIPTION - Friendly/Advanced tabs and operation-mode rows
+   ============================================================================ */
+
+.s2-form .s2-ombc-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 8px;
+}
+
+.s2-form .s2-ombc-tab {
+  padding: 5px 12px;
+  color: #666;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+}
+
+.s2-form .s2-ombc-tab:hover {
+  color: #333;
+  text-decoration: none;
+}
+
+.s2-form .s2-ombc-tab.s2-ombc-tab-active {
+  color: #333;
+  font-weight: 600;
+  border-color: #ccc;
+  background: #fff;
+  margin-bottom: -1px;
+}
+
+.s2-form .s2-ombc-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.s2-form .s2-ombc-mode-row + .s2-ombc-mode-row {
+  margin-top: 4px;
+}
+
+.s2-form .s2-ombc-mode-row input[type="text"] {
+  flex: 1;
+  min-width: 100px;
+  width: auto !important;
+}
+
+.s2-form .s2-ombc-mode-row input[type="number"] {
+  width: 70px !important;
+}
+
+/* `label` element type included for the same specificity reason as
+   label.s2-section-label above. */
+.s2-form label.s2-ombc-mode-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto !important;
+  white-space: nowrap;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.s2-form .s2-ombc-mode-checkbox-label input[type="checkbox"] {
+  width: auto !important;
+}
+
+.s2-form .s2-ombc-mode-value-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.s2-form .s2-ombc-mode-protected-note {
+  color: #888;
+  font-size: 0.85em;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.s2-form .s2-ombc-advanced-warning {
+  color: #a06400;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  border-radius: 3px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
 }
