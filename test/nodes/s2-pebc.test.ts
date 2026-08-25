@@ -494,3 +494,74 @@ describe('s2-pebc - Forecast capping', () => {
     expect(outMsg.payload.forecast.elements[0].power_values[0].value_expected).toBe(10000)
   })
 })
+
+describe('s2-pebc - direction-aware limiting', () => {
+  beforeEach(() => { jest.useFakeTimers() })
+  afterEach(() => { jest.useRealTimers() })
+
+  function powerMeasurementMsg (value: number, commodityQuantity = 'ELECTRIC.POWER.3_PHASE_SYMMETRIC') {
+    return { payload: { command: 'PowerMeasurement', cemId: 'cem', values: [{ commodity_quantity: commodityQuantity, value }] } }
+  }
+
+  function activePayload (node: Record<string, unknown>, index = 0) {
+    return ((activeCalls(node)[index][0] as unknown[])[0] as { payload: Record<string, unknown> }).payload
+  }
+
+  it('defaults to import direction with limitW = upperBound when no measurement has been observed', () => {
+    const { node, handlers } = setupNode()
+
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { upper: 8000, lower: -2000 }), jest.fn(), jest.fn())
+
+    const payload = activePayload(node)
+    expect(payload.direction).toBe('import')
+    expect(payload.limitW).toBe(8000)
+  })
+
+  it('resolves export direction with limitW = |lowerBound| when the last measurement is negative', () => {
+    const { node, handlers } = setupNode()
+
+    handlers.input(powerMeasurementMsg(-500), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { upper: 8000, lower: -2000 }), jest.fn(), jest.fn())
+
+    const payload = activePayload(node)
+    expect(payload.direction).toBe('export')
+    expect(payload.limitW).toBe(2000)
+  })
+
+  it('has limitW null on the released element regardless of direction', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { instructionId: 'pebc-instr-1' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(revokeMsg('cem-1', 'pebc-instr-1', 'PEBC.Instruction'), jest.fn(), jest.fn())
+
+    const payload = activePayload(node)
+    expect(payload.lowerBound).toBeNull()
+    expect(payload.upperBound).toBeNull()
+    expect(payload.limitW).toBeNull()
+  })
+
+  it('re-emits the active element on output 1 only when a measurement flips direction on an asymmetric bound', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { upper: 8000, lower: -2000 }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(powerMeasurementMsg(-500), jest.fn(), jest.fn())
+
+    expect(activeCalls(node).length).toBe(1)
+    const payload = activePayload(node)
+    expect(payload.direction).toBe('export')
+    expect(payload.limitW).toBe(2000)
+    expect(commandCalls(node).length).toBe(0)
+  })
+
+  it('does not re-emit when import and export limits are equal (symmetric bounds)', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { upper: 8000, lower: -8000 }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(powerMeasurementMsg(-500), jest.fn(), jest.fn())
+
+    expect(activeCalls(node).length).toBe(0)
+  })
+})

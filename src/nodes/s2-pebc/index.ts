@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2PebcConfigNode } from '../../types/config-nodes'
-import { ControlType, InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, gridConnectionToWatts } from '../../lib/s2/messages'
+import { ControlType, InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, capForecastToSchedule, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2PebcNodeConfig extends NodeConfig {
@@ -27,14 +27,22 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  *   [s2-rm output 2 (from CEM)]     -> [s2-pebc input]  (to observe RevokeObject)
  *   [s2-rm output 3 (instructions)] -> [s2-pebc input]  (to accumulate PEBC instructions)
  *   [Forecast command source]       -> [s2-pebc input]  (optional - to cap the forecast to the accumulated schedule)
+ *   [PowerMeasurement command source] -> [s2-pebc input]  (optional - to resolve which side of an
+ *                                          asymmetric bound currently applies; see output port 1)
  *   [s2-pebc output 1] -> downstream flow (active element dispatch / pass-through instructions)
  *   [s2-pebc output 2] -> downstream flow (full accumulated schedule dump)
  *   [s2-pebc output 3] -> [s2-rm input]  (PowerConstraints / InstructionStatus / Forecast commands)
  *
  * Output port 1 - active element / pass-through:
- *   Active element: { cemId, payload: { startTime, endTime, duration, lowerBound, upperBound, commodityQuantity } }
+ *   Active element: { cemId, payload: { startTime, endTime, duration, lowerBound, upperBound, commodityQuantity, direction, limitW } }
  *   Released (no PEBC bound active - last instruction revoked, or its final element ended with
- *   nothing queued after it): { cemId, payload: { lowerBound: null, upperBound: null, commodityQuantity } }
+ *   nothing queued after it): { cemId, payload: { lowerBound: null, upperBound: null, commodityQuantity, direction, limitW: null } }
+ *   `direction` ('import' or 'export') and `limitW` (watts) are resolved from the last known
+ *   PowerMeasurement for that commodity, if any was wired in; `direction` defaults to 'import'
+ *   (limitW = upperBound) otherwise. When a measurement flips `direction` for the currently
+ *   active element and its two bounds actually differ, output 1 is re-emitted with the updated
+ *   values - this does not resend InstructionStatus on output 3, since the instruction itself
+ *   hasn't changed, only which of its bounds is presently binding.
  *   Non-PEBC instructions: passed through unchanged (node status shows a warning).
  *
  * Output port 2 - schedule:
@@ -95,6 +103,22 @@ export = function (RED: NodeRedApp): void {
     // Deduplication: track last emitted active element to suppress identical re-emits from the CEM.
     let lastEmittedActive: { startMs: number, lowerBound: number | null, upperBound: number | null, commodityQuantity: string } | null = null
     let duplicateActiveCount = 0
+
+    // Latest signed PowerMeasurement value per commodity quantity (positive = import, negative = export).
+    const lastMeasurement = new Map<string, number>()
+    // Direction last announced to the flow, tracked independently of lastEmittedActive so a
+    // measurement-driven re-announcement never interacts with the InstructionStatus dedup above.
+    let lastAnnouncedDirection: 'import' | 'export' | null = null
+
+    function resolveDirection (commodityQuantity: string): 'import' | 'export' {
+      const measured = lastMeasurement.get(commodityQuantity)
+      return measured !== undefined && measured < 0 ? 'export' : 'import'
+    }
+
+    function resolveLimitW (direction: 'import' | 'export', lowerBound: number | null, upperBound: number | null): number | null {
+      if (direction === 'export') return lowerBound === null ? null : Math.abs(lowerBound)
+      return upperBound
+    }
 
     function formatTime (ms: number): string {
       return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -160,6 +184,9 @@ export = function (RED: NodeRedApp): void {
         node.send([null, null, { payload: { command: 'InstructionStatus', cemId: slot.cemId, instructionId: slot.instructionId, status: InstructionStatus.STARTED } }])
       }
 
+      const direction = resolveDirection(schedule.commodityQuantity)
+      lastAnnouncedDirection = direction
+
       node.send([{
         cemId: schedule.cemId,
         payload: {
@@ -168,7 +195,9 @@ export = function (RED: NodeRedApp): void {
           duration: el.duration,
           lowerBound: el.lowerBound,
           upperBound: el.upperBound,
-          commodityQuantity: schedule.commodityQuantity
+          commodityQuantity: schedule.commodityQuantity,
+          direction,
+          limitW: resolveLimitW(direction, el.lowerBound, el.upperBound)
         }
       }, null, null])
     }
@@ -180,7 +209,9 @@ export = function (RED: NodeRedApp): void {
     // active-element update.
     function emitReleased (cemId: string, commodityQuantity: string): void {
       lastEmittedActive = null
-      node.send([{ cemId, payload: { lowerBound: null, upperBound: null, commodityQuantity } }, null, null])
+      const direction = resolveDirection(commodityQuantity)
+      lastAnnouncedDirection = direction
+      node.send([{ cemId, payload: { lowerBound: null, upperBound: null, commodityQuantity, direction, limitW: null } }, null, null])
       updateNodeStatus()
     }
 
@@ -322,6 +353,51 @@ export = function (RED: NodeRedApp): void {
       node.send([null, null, { ...msg, payload: { ...payload, forecast: capForecastToSchedule(forecast, schedule) } }])
     }
 
+    function handlePowerMeasurement (msg: NodeMessage): void {
+      const payload = msg.payload as Record<string, unknown>
+      const values = payload.values as PowerMeasurementValue[] | undefined
+      if (!Array.isArray(values)) return
+      for (const v of values) {
+        if (typeof v.value === 'number' && typeof v.commodity_quantity === 'string') {
+          lastMeasurement.set(v.commodity_quantity, v.value)
+        }
+      }
+      reannounceIfDirectionChanged()
+    }
+
+    // Re-emits the active element on output 1 only (no InstructionStatus on output 3) when a
+    // measurement flips which side of an asymmetric bound currently applies. Deliberately
+    // independent of emitActiveElement's dedup/InstructionStatus logic - the instruction itself
+    // hasn't changed, only which of its two bounds is presently binding.
+    function reannounceIfDirectionChanged (): void {
+      const schedule = buildCurrentSchedule()
+      if (!schedule) return
+      const el = getActiveElement(schedule, Date.now())
+      if (!el) return
+
+      const direction = resolveDirection(schedule.commodityQuantity)
+      if (direction === lastAnnouncedDirection) return
+
+      const importLimit = resolveLimitW('import', el.lowerBound, el.upperBound)
+      const exportLimit = resolveLimitW('export', el.lowerBound, el.upperBound)
+      lastAnnouncedDirection = direction
+      if (importLimit === exportLimit) return
+
+      node.send([{
+        cemId: schedule.cemId,
+        payload: {
+          startTime: new Date(el.startMs).toISOString(),
+          endTime: new Date(el.endMs).toISOString(),
+          duration: el.duration,
+          lowerBound: el.lowerBound,
+          upperBound: el.upperBound,
+          commodityQuantity: schedule.commodityQuantity,
+          direction,
+          limitW: resolveLimitW(direction, el.lowerBound, el.upperBound)
+        }
+      }, null, null])
+    }
+
     updateNodeStatus()
 
     node.on('input', (msg, _send, done) => {
@@ -338,6 +414,11 @@ export = function (RED: NodeRedApp): void {
       }
       if (payload && typeof payload === 'object' && payload.command === 'Forecast') {
         handleForecast(msg)
+        done()
+        return
+      }
+      if (payload && typeof payload === 'object' && payload.command === 'PowerMeasurement') {
+        handlePowerMeasurement(msg)
         done()
         return
       }

@@ -46,11 +46,11 @@
 
 <script type="text/html" data-help-name="s2-pebc">
   <p>Owns Power Envelope Based Control (PEBC) behavior: accumulates power envelope schedules from PEBC instructions and dispatches the currently active bound to your flow as it becomes effective. Pushes a default PowerConstraints range on deploy, used until a runtime override is supplied. That same wattage is published to flow context as <code>pebcDefaultMaxPowerW</code> (<code>null</code> if unconfigured), so your own flow logic can derive a released-state limit from it instead of hardcoding one.</p>
-  <p>Wire this node's input to both <b>s2-rm</b>'s "from CEM" output (to observe <code>RevokeObject</code>) and its "instructions" output (to accumulate PEBC instructions). Optionally also wire a <code>Forecast</code> command into this input instead of directly into s2-rm - it will be capped to the accumulated schedule before being forwarded. Wire this node's third output back to <b>s2-rm</b>'s input.</p>
+  <p>Wire this node's input to both <b>s2-rm</b>'s "from CEM" output (to observe <code>RevokeObject</code>) and its "instructions" output (to accumulate PEBC instructions). Optionally also wire a <code>Forecast</code> command into this input instead of directly into s2-rm - it will be capped to the accumulated schedule before being forwarded. Optionally also wire your <code>PowerMeasurement</code> command into this input (in addition to wherever else it already goes) so the node can resolve which side of an asymmetric bound currently applies - see output 1. Wire this node's third output back to <b>s2-rm</b>'s input.</p>
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload <span class="property-type">object</span></dt>
-    <dd>S2 "from CEM" messages and enriched instructions forwarded from <b>s2-rm</b>, as-is. Also accepts <code>{ command: 'Forecast', cemId, forecast }</code>.</dd>
+    <dd>S2 "from CEM" messages and enriched instructions forwarded from <b>s2-rm</b>, as-is. Also accepts <code>{ command: 'Forecast', cemId, forecast }</code> and <code>{ command: 'PowerMeasurement', cemId, values }</code>.</dd>
   </dl>
   <h3>Outputs</h3>
   <ol class="node-ports">
@@ -58,8 +58,13 @@
       <dl class="message-properties">
         <dt>payload.startTime / endTime / duration / lowerBound / upperBound / commodityQuantity</dt>
         <dd>The schedule's currently active element, emitted when it becomes effective.</dd>
+        <dt>payload.direction <span class="property-type">'import' | 'export'</span></dt>
+        <dd>Which side of the bound currently applies, from the sign of the last <code>PowerMeasurement</code> received for this commodity (positive/none seen yet = <code>'import'</code>, negative = <code>'export'</code>).</dd>
+        <dt>payload.limitW <span class="property-type">number | null</span></dt>
+        <dd>Magnitude, in watts, of whichever bound matches <code>direction</code> (<code>upperBound</code> for import, <code>|lowerBound|</code> for export) - useful when your hardware only supports a single settable limit and you need to know which value to apply. <code>null</code> when that bound is unbounded.</dd>
       </dl>
       When no PEBC bound is active any more - the last instruction is revoked, or its final element ends with nothing queued after it - a released element is emitted instead, with <code>lowerBound</code> and <code>upperBound</code> both <code>null</code>. Treat that explicitly as "no PEBC-imposed limit right now", not as "no data yet".
+      <br>If you've wired in <code>PowerMeasurement</code>, this output is also re-emitted (with updated <code>direction</code>/<code>limitW</code>) whenever a measurement flips which side of an asymmetric bound applies mid-slot - without resending <code>InstructionStatus</code> on output 3, since the instruction itself hasn't changed.
       <br>Non-PEBC instructions are passed through unchanged (node status shows a warning), so this node can be wired in parallel with s2-ombc downstream of the same s2-rm.
     </li>
     <li>Schedule

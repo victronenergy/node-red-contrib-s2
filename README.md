@@ -17,7 +17,7 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 | **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
 | **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
 | **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers) |
-| **s2-pebc** | Power Envelope Based Control - accumulates power envelope schedules from PEBC instructions, dispatches the active bound as it becomes effective, and caps outgoing PowerForecasts to the accumulated schedule |
+| **s2-pebc** | Power Envelope Based Control - accumulates power envelope schedules from PEBC instructions, dispatches the active bound as it becomes effective, caps outgoing PowerForecasts to the accumulated schedule, and (optionally) resolves which side of an asymmetric bound currently applies from your PowerMeasurement |
 | **s2-pebc-config** | Configuration for `s2-pebc`: default power constraints (grid connection preset or custom wattage) |
 | **s2-cem-config** | Configuration for CEM connection (WebSocket URL and credentials) |
 | **s2-websocket** | WebSocket transport for S2 communication with a CEM |
@@ -81,6 +81,15 @@ To send power measurements to the CEM, inject a message into the s2-rm input:
 ```
 
 The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM selects a control type, so you can use that to trigger periodic measurements.
+
+### Direction-aware limiting with s2-pebc
+
+A PEBC power envelope can be asymmetric (different import and export bounds), but many devices only expose a single settable limit. If your `s2-pebc` node's input is also wired to your `PowerMeasurement` command (in addition to wherever else it already goes - no changes needed to what you send to `s2-rm`), it tracks your last measurement's sign and adds two fields to its active-element output:
+
+- `direction`: `'import'` or `'export'`, from the sign of your last measurement for that commodity (defaults to `'import'` if none has been seen yet).
+- `limitW`: the magnitude, in watts, of whichever bound applies - `upperBound` for import, `|lowerBound|` for export (or `null` if that bound is unbounded).
+
+Apply `limitW` to your single actuator instead of always using `upperBound`. If your measurement's direction flips mid-slot on an asymmetric bound, `s2-pebc` re-emits output 1 with the updated values (without resending `InstructionStatus`, since the instruction itself hasn't changed) - so a flow reading `limitW` stays correct as flow direction changes, not just at the start of each slot.
 
 ## Sending PowerForecasts
 
