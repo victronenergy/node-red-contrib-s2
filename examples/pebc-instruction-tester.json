@@ -1,0 +1,248 @@
+[
+    {
+        "id": "c9f1a2b3c4d5e601",
+        "type": "tab",
+        "label": "PEBC Instruction Tester (CEM side)",
+        "disabled": false,
+        "info": "Acts as a CEM: builds a PEBC.Instruction body and POSTs it to a resource manager's REST endpoint:\n\n  POST {cemBaseUrl}/resource_managers/{resourceManagerId}/flex_instructions\n\nThis is a standalone testing flow, not part of the node-red-contrib-s2 package. Nothing in it depends on the S2 nodes in this repo - it just fires HTTP requests shaped like a PEBC.Instruction.\n\nSetup:\n1. Open the 'Config' change node and fill in:\n   - resourceManagerId: the RM's id\n   - cemBaseUrl: base URL of the CEM's REST API (no trailing slash)\n   - pebcPowerConstraintsId: the id of the PEBC PowerConstraints currently active for that RM\n2. Deploy - the 'Configure (once)' inject fires automatically and stores those into flow context.\n3. Click one of the preset inject nodes (or add your own with a {\"lower_limit\":..,\"upper_limit\":..} JSON payload) to build and send an instruction.\n\nEach instruction's execution_time is computed as the start of the next 15-minute UTC period, and id/message_id/power_envelopes[0].id are fresh random UUIDs on every send.\n\nIf pebcPowerConstraintsId changes at runtime in your real setup, replace the static Config rule with a wire from wherever you already learn that id (e.g. the RM's PowerConstraints message) instead of hardcoding it.",
+        "env": []
+    },
+    {
+        "id": "c9f1a2b3c4d5e602",
+        "type": "comment",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "1. One-time config",
+        "info": "",
+        "x": 160,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "c9f1a2b3c4d5e603",
+        "type": "inject",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Configure (once)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e604"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e604",
+        "type": "change",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Config: RM id / CEM base URL / active PowerConstraints id",
+        "rules": [
+            {
+                "t": "set",
+                "p": "resourceManagerId",
+                "pt": "flow",
+                "to": "PASTE-RESOURCE-MANAGER-UUID-HERE",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "cemBaseUrl",
+                "pt": "flow",
+                "to": "https://cem.example.com/api",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "pebcPowerConstraintsId",
+                "pt": "flow",
+                "to": "PASTE-ACTIVE-POWERCONSTRAINTS-UUID-HERE",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 400,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e60c",
+        "type": "comment",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "2. Pick a limit preset, or add your own inject with a {lower_limit, upper_limit} JSON payload",
+        "info": "",
+        "x": 260,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "c9f1a2b3c4d5e605",
+        "type": "inject",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Curtail to 0W",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"lower_limit\":0,\"upper_limit\":0}",
+        "payloadType": "json",
+        "x": 150,
+        "y": 280,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e608"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e606",
+        "type": "inject",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Normal envelope +-8000W",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"lower_limit\":-8000,\"upper_limit\":8000}",
+        "payloadType": "json",
+        "x": 170,
+        "y": 320,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e608"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e607",
+        "type": "inject",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Export only (-8000..0)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"lower_limit\":-8000,\"upper_limit\":0}",
+        "payloadType": "json",
+        "x": 160,
+        "y": 360,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e608"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e608",
+        "type": "function",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Build PEBC.Instruction",
+        "func": "const PERIOD_MS = 15 * 60 * 1000\n\nfunction uuidv4 () {\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {\n        const r = Math.random() * 16 | 0\n        const v = c === 'x' ? r : (r & 0x3 | 0x8)\n        return v.toString(16)\n    })\n}\n\nfunction nextPeriodStart () {\n    const now = Date.now()\n    let next = Math.ceil(now / PERIOD_MS) * PERIOD_MS\n    if (next <= now) next += PERIOD_MS\n    return new Date(next).toISOString().replace(/\\.\\d{3}Z$/, 'Z')\n}\n\nconst limits = msg.payload || {}\nconst lower = limits.lower_limit\nconst upper = limits.upper_limit\n\nif (typeof lower !== 'number' || typeof upper !== 'number') {\n    node.error('msg.payload must be {\"lower_limit\": <number>, \"upper_limit\": <number>}', msg)\n    return null\n}\n\nconst resourceManagerId = flow.get('resourceManagerId')\nconst cemBaseUrl = flow.get('cemBaseUrl')\nconst powerConstraintsId = flow.get('pebcPowerConstraintsId')\n\nif (!resourceManagerId || !cemBaseUrl || !powerConstraintsId) {\n    node.error('Missing flow.resourceManagerId / flow.cemBaseUrl / flow.pebcPowerConstraintsId - run the \"Configure (once)\" inject after filling in the Config node', msg)\n    return null\n}\n\nmsg.url = `${cemBaseUrl.replace(/\\/$/, '')}/resource_managers/${resourceManagerId}/flex_instructions`\n\nmsg.payload = {\n    id: uuidv4(),\n    message_id: uuidv4(),\n    message_type: 'PEBC.Instruction',\n    execution_time: nextPeriodStart(),\n    power_envelopes: [{\n        id: uuidv4(),\n        commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',\n        power_envelope_elements: [{\n            duration: PERIOD_MS,\n            lower_limit: lower,\n            upper_limit: upper\n        }]\n    }],\n    abnormal_condition: false,\n    power_constraints_id: powerConstraintsId\n}\n\nreturn msg\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 430,
+        "y": 320,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e609",
+                "c9f1a2b3c4d5e60b"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e609",
+        "type": "http request",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "POST flex_instructions",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 700,
+        "y": 300,
+        "wires": [
+            [
+                "c9f1a2b3c4d5e60a"
+            ]
+        ]
+    },
+    {
+        "id": "c9f1a2b3c4d5e60a",
+        "type": "debug",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Response",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 900,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "c9f1a2b3c4d5e60b",
+        "type": "debug",
+        "z": "c9f1a2b3c4d5e601",
+        "name": "Request body preview",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 700,
+        "y": 360,
+        "wires": []
+    }
+]

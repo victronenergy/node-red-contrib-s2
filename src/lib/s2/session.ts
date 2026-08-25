@@ -30,20 +30,21 @@ export const State = Object.freeze({
 
 export type StateValue = (typeof State)[keyof typeof State]
 
-export interface OMBCConfig {
-  systemDescription?: OMBCSystemDescriptionConfig
-  status?: OMBCStatusConfig
+/** Control-type-namespaced status payload, e.g. `{ ombc: OMBCStatusConfig }`. */
+export interface StatusPayload {
+  ombc?: OMBCStatusConfig
+  [key: string]: unknown
 }
 
-export interface ControlTypeConfig {
-  OMBC?: OMBCConfig
+/** Control-type-namespaced system description payload, e.g. `{ ombc: OMBCSystemDescriptionConfig }`. */
+export interface SystemDescriptionPayload {
+  ombc?: OMBCSystemDescriptionConfig
   [key: string]: unknown
 }
 
 export interface S2SessionOptions {
   cemId: string
   rmDetails?: RmDetails
-  controlTypeConfig?: ControlTypeConfig
   onSend?: (msg: object) => void
   onStateChange?: (state: StateValue) => void
   onMessage?: (msg: S2IncomingMessage) => void
@@ -68,12 +69,6 @@ export interface S2SessionOptions {
  *   const session = new S2Session({
  *     cemId,
  *     rmDetails,
- *     controlTypeConfig: {  // optional control type configuration
- *       OMBC: {
- *         systemDescription: { operationModes: [...], transitions: [], timers: [] },
- *         status: { activeOperationModeId: 'mode-1', operationModeFactor: 1 }
- *       }
- *     },
  *     onSend:        (msg) => <send S2 message object to CEM>,
  *     onStateChange: (state) => ...,
  *     onMessage:     (msg) => <forward received message downstream>,
@@ -87,7 +82,6 @@ export interface S2SessionOptions {
 export class S2Session {
   private readonly _cemId: string
   private readonly _rmDetails: RmDetails | undefined
-  private readonly _controlTypeConfig: ControlTypeConfig
   private readonly _onSend: (msg: object) => void
   private readonly _onStateChange: (state: StateValue) => void
   private readonly _onMessage: (msg: S2IncomingMessage) => void
@@ -101,12 +95,10 @@ export class S2Session {
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
   private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
-  private _currentOMBCStatus: OMBCStatusConfig | null
 
-  constructor ({ cemId, rmDetails, controlTypeConfig, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs, skipInstructionStatus }: S2SessionOptions) {
+  constructor ({ cemId, rmDetails, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs, skipInstructionStatus }: S2SessionOptions) {
     this._cemId = cemId
     this._rmDetails = rmDetails
-    this._controlTypeConfig = controlTypeConfig || {}
     this._onSend = onSend || (() => {})
     this._onStateChange = onStateChange || (() => {})
     this._onMessage = onMessage || (() => {})
@@ -121,14 +113,12 @@ export class S2Session {
     this._selectedControlType = ControlType.NO_SELECTION
     this._lastKeepAlive = null
     this._pebcPowerConstraints = null
-    this._currentOMBCStatus = this._controlTypeConfig.OMBC?.status ?? null
   }
 
   get cemId (): string { return this._cemId }
   get state (): StateValue { return this._state }
   get selectedControlType (): ControlTypeValue | string { return this._selectedControlType }
   get lastKeepAlive (): Date | null { return this._lastKeepAlive }
-  get currentOMBCStatus (): OMBCStatusConfig | null { return this._currentOMBCStatus }
 
   /**
    * Cancel pending retry timers and clear the sent-message buffer.
@@ -261,24 +251,32 @@ export class S2Session {
   }
 
   /**
-   * Update the tracked OMBC status and send OMBC.Status to the CEM.
-   * Call after an OMBC.Instruction is dispatched to inform the CEM of the new
-   * active operation mode. Also updates the status used when SELECT_CONTROL_TYPE
-   * is received again (e.g. after a CEM reconnect).
+   * Send a control-type-namespaced status message to the CEM.
+   * The control-type node (e.g. s2-ombc) owns tracking of the previous
+   * value and any transition timestamp - this just dispatches to the
+   * matching S2 status message and sends it when CONNECTED.
    */
-  updateOMBCStatus (status: OMBCStatusConfig): void {
-    if (this._currentOMBCStatus &&
-        this._currentOMBCStatus.activeOperationModeId !== status.activeOperationModeId) {
-      status = {
-        ...status,
-        previousOperationModeId: this._currentOMBCStatus.activeOperationModeId,
-        transitionTimestamp: new Date().toISOString()
+  updateStatus (controlType: ControlTypeValue | string, payload: StatusPayload): void {
+    if (controlType === ControlType.OMBC && payload.ombc) {
+      if (this._state === State.CONNECTED) {
+        this._send(makeOMBCStatus(payload.ombc))
       }
+      return
     }
-    this._currentOMBCStatus = status
-    if (this._state === State.CONNECTED) {
-      this._send(makeOMBCStatus(status))
+    this._onError(new Error(`No status message available for control type ${controlType}`))
+  }
+
+  /**
+   * Send a control-type-namespaced system description message to the CEM.
+   */
+  sendSystemDescription (controlType: ControlTypeValue | string, payload: SystemDescriptionPayload): void {
+    if (controlType === ControlType.OMBC && payload.ombc) {
+      if (this._state === State.CONNECTED) {
+        this._send(makeOMBCSystemDescription(payload.ombc))
+      }
+      return
     }
+    this._onError(new Error(`No system description message available for control type ${controlType}`))
   }
 
   /**
@@ -333,28 +331,13 @@ export class S2Session {
     this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
     this._onMessage(msg)
 
-    // After SelectControlType, send the appropriate SystemDescription and Status
+    // System description and status for the selected control type are no longer
+    // sent automatically here - the matching control-type node (e.g. s2-ombc)
+    // observes this message on s2-rm's "from CEM" output and pushes them back
+    // via the SystemDescription/UpdateStatus commands.
     const controlType = msg.control_type as string
-    if (controlType === ControlType.OMBC || controlType === 'OMBC') {
-      this._sendOMBCSystemDescriptionAndStatus()
-    } else if (controlType === ControlType.PEBC) {
-      if (this._pebcPowerConstraints) {
-        this._send(makePEBCPowerConstraints(this._pebcPowerConstraints))
-      }
-    }
-  }
-
-  private _sendOMBCSystemDescriptionAndStatus (): void {
-    const config = this._controlTypeConfig.OMBC
-    if (!config) {
-      this._onError(new Error(`No OMBC config for CEM ${this._cemId} - set Control Type Config in the s2-rm node`))
-      return
-    }
-    if (config.systemDescription) {
-      this._send(makeOMBCSystemDescription(config.systemDescription))
-    }
-    if (this._currentOMBCStatus) {
-      this._send(makeOMBCStatus(this._currentOMBCStatus))
+    if (controlType === ControlType.PEBC && this._pebcPowerConstraints) {
+      this._send(makePEBCPowerConstraints(this._pebcPowerConstraints))
     }
   }
 
@@ -363,18 +346,6 @@ export class S2Session {
     const instructionId = (msg as Record<string, unknown>).id
     if (typeof instructionId === 'string' && !this._skipInstructionStatus) {
       this._send(makeInstructionStatusUpdate(instructionId, InstructionStatus.ACCEPTED))
-    }
-    // For OMBC instructions: send OMBC.Status immediately at accept time.
-    // transition_timestamp is set to now (initiation time) by updateOMBCStatus when the mode changes.
-    if (msg.message_type === MessageType.OMBC_INSTRUCTION) {
-      const modeId = (msg as Record<string, unknown>).operation_mode_id as string | undefined
-      const factor = (msg as Record<string, unknown>).operation_mode_factor
-      if (modeId) {
-        this.updateOMBCStatus({
-          activeOperationModeId: modeId,
-          operationModeFactor: typeof factor === 'number' ? factor : 1
-        })
-      }
     }
     this._onInstruction(msg)
   }

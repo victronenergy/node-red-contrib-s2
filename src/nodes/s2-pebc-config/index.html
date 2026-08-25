@@ -1,0 +1,56 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-pebc-config', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      gridConnection: { value: '' },
+      customMaxPowerW: { value: '' }
+    },
+    label: function () {
+      return this.name || 's2-pebc-config'
+    },
+    oneditprepare: function () {
+      function updateCustomPowerVisibility () {
+        var val = $('#node-config-input-gridConnection').val()
+        $('#s2-pebc-config-custom-power-row').toggle(val === 'custom')
+      }
+      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
+      updateCustomPowerVisibility()
+
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-pebc-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the default outer PEBC power limits sent to the CEM as [-max, +max] watts, until a runtime override is supplied."></i></label>
+      <select id="node-config-input-gridConnection">
+        <option value="">-- Not set --</option>
+        <option value="1x16A">1x16A (3.7 kW)</option>
+        <option value="3x16A">3x16A (11 kW)</option>
+        <option value="3x25A">3x25A (17.3 kW)</option>
+        <option value="3x32A">3x32A (22 kW)</option>
+        <option value="3x40A">3x40A (27.6 kW)</option>
+        <option value="3x63A">3x63A (43.5 kW)</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="s2-pebc-config-custom-power-row" style="display:none">
+      <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
+      <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

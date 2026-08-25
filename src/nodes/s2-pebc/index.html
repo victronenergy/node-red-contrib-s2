@@ -1,0 +1,80 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-pebc', {
+    category: 's2',
+    color: '#5A8EC2',
+    defaults: {
+      name: { value: '' },
+      pebcConfig: { value: '', type: 's2-pebc-config', required: true }
+    },
+    inputs: 1,
+    outputs: 3,
+    icon: 's2-logo.svg',
+    outputLabels: ['active / instructions', 'schedule', 'to s2-rm'],
+    inputLabels: ['from s2-rm'],
+    label: function () {
+      return this.name || 's2-pebc'
+    },
+    labelStyle: function () {
+      return this.name ? 'node_label_italic' : ''
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-pebc">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name">
+        <i class="fa fa-tag"></i> Name
+      </label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-pebcConfig"><i class="fa fa-id-card"></i> PEBC Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="Default power constraints (grid connection / custom max power)."></i></label>
+      <input type="text" id="node-input-pebcConfig">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-pebc">
+  <p>Owns Power Envelope Based Control (PEBC) behavior: accumulates power envelope schedules from PEBC instructions and dispatches the currently active bound to your flow as it becomes effective. Pushes a default PowerConstraints range on deploy, used until a runtime override is supplied. That same wattage is published to flow context as <code>pebcDefaultMaxPowerW</code> (<code>null</code> if unconfigured), so your own flow logic can derive a released-state limit from it instead of hardcoding one.</p>
+  <p>Wire this node's input to both <b>s2-rm</b>'s "from CEM" output (to observe <code>RevokeObject</code>) and its "instructions" output (to accumulate PEBC instructions). Optionally also wire a <code>Forecast</code> command into this input instead of directly into s2-rm - it will be capped to the accumulated schedule before being forwarded. Wire this node's third output back to <b>s2-rm</b>'s input.</p>
+  <h3>Input</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>S2 "from CEM" messages and enriched instructions forwarded from <b>s2-rm</b>, as-is. Also accepts <code>{ command: 'Forecast', cemId, forecast }</code>.</dd>
+  </dl>
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>Active / instructions
+      <dl class="message-properties">
+        <dt>payload.startTime / endTime / duration / lowerBound / upperBound / commodityQuantity</dt>
+        <dd>The schedule's currently active element, emitted when it becomes effective.</dd>
+      </dl>
+      When no PEBC bound is active any more - the last instruction is revoked, or its final element ends with nothing queued after it - a released element is emitted instead, with <code>lowerBound</code> and <code>upperBound</code> both <code>null</code>. Treat that explicitly as "no PEBC-imposed limit right now", not as "no data yet".
+      <br>Non-PEBC instructions are passed through unchanged (node status shows a warning), so this node can be wired in parallel with s2-ombc downstream of the same s2-rm.
+    </li>
+    <li>Schedule
+      <dl class="message-properties">
+        <dt>payload.commodityQuantity <span class="property-type">string</span></dt>
+        <dd>Commodity quantity for all elements (e.g. <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>).</dd>
+        <dt>payload.elements <span class="property-type">array</span></dt>
+        <dd>Full accumulated PEBC schedule as an array of <code>{ startTime, endTime, durationSec, lowerBound, upperBound }</code>. Emitted each time the schedule is updated. Use this to program DESS schedule slots or similar downstream consumers.</dd>
+      </dl>
+    </li>
+    <li>To s2-rm
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd><code>{ command: 'PowerConstraints', constraints }</code>, <code>{ command: 'InstructionStatus', cemId, instructionId, status }</code>, or a <code>Forecast</code> command forwarded from the input (capped to the accumulated schedule, if any). Wire to s2-rm's input.</dd>
+      </dl>
+    </li>
+  </ol>
+</script>

@@ -13,21 +13,27 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 
 | Node | Description |
 |------|-------------|
-| **s2-rm** | S2 Resource Manager - manages protocol sessions with one or more CEMs |
-| **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number |
+| **s2-rm** | S2 Resource Manager - generic S2 protocol state machine (handshake, control-type selection, instruction ack/routing) for one or more CEMs, independent of any specific control type |
+| **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
+| **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
+| **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers) |
+| **s2-pebc** | Power Envelope Based Control - accumulates power envelope schedules from PEBC instructions, dispatches the active bound as it becomes effective, and caps outgoing PowerForecasts to the accumulated schedule |
+| **s2-pebc-config** | Configuration for `s2-pebc`: default power constraints (grid connection preset or custom wattage) |
 | **s2-cem-config** | Configuration for CEM connection (WebSocket URL and credentials) |
 | **s2-websocket** | WebSocket transport for S2 communication with a CEM |
 
 ## Features
 
 - S2 protocol handshake and session management
-- Operation Mode Based Control (OMBC)
-- Power Envelope Based Control (PEBC) with configurable power constraints
+- Operation Mode Based Control (OMBC), via the dedicated **s2-ombc** node
+- Power Envelope Based Control (PEBC) with configurable power constraints, via the dedicated **s2-pebc** node
 - PowerMeasurement forwarding (3-phase symmetric or per-phase L1/L2/L3)
 - PowerForecast support
 - Multiple concurrent CEM sessions
 - Configurable RM roles (Consumer, Producer, Storage)
 - Context variable templates in serial number (e.g. `{{global.vrmId}}`)
+
+Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its instructions output, enriched with `msg.controlType`, for you to handle in your own flow.
 
 ## Installation
 
@@ -45,8 +51,18 @@ npm install node-red-contrib-s2
 3. Wire an **s2-websocket** node to an **s2-rm** node:
    - s2-websocket output 2 -> s2-rm input
    - s2-rm output 1 -> s2-websocket input
-4. s2-rm output 2 carries S2 messages from the CEM (e.g. SelectControlType, ReceptionStatus).
-5. s2-rm output 3 carries instructions from the CEM (e.g. PEBC.Instruction, OMBC.Instruction).
+4. s2-rm output 2 carries S2 messages from the CEM (e.g. SelectControlType, ReceptionStatus, RevokeObject).
+5. s2-rm output 3 carries instructions from the CEM, enriched with `msg.controlType` and namespaced under a matching key (e.g. `msg.ombc`, `msg.pebc`).
+6. For OMBC or PEBC, add the matching control-type node (**s2-ombc** + **s2-ombc-config**, or **s2-pebc** + **s2-pebc-config**) and wire it up:
+   - s2-rm output 2 -> control-type node input (so it can observe `SelectControlType`/`RevokeObject`)
+   - s2-rm output 3 -> control-type node input (so it can resolve its instructions)
+   - control-type node's command output -> s2-rm input (routes `UpdateStatus`/`SystemDescription`/`PowerConstraints`/`InstructionStatus` commands back through s2-rm)
+
+   `s2-ombc` and `s2-pebc` can be wired in parallel downstream of the same `s2-rm` - each passes through instructions meant for the other control type unchanged.
+
+   If you're sending PowerForecasts and using `s2-pebc`, route your Forecast command into `s2-pebc`'s input too (instead of directly into s2-rm) - see [Sending PowerForecasts](#sending-powerforecasts).
+
+See `examples/boiler-ombc-demo.json` for a complete working OMBC flow.
 
 ## Sending PowerMeasurements
 
@@ -88,13 +104,16 @@ The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM s
 }
 ```
 
+If a `s2-pebc` node is present, inject this into its input instead of directly into `s2-rm` - `s2-pebc` caps `forecast.elements` to its currently accumulated PEBC schedule (tightest overlapping bound per element) before forwarding the command to `s2-rm` on its output 3. With no accumulated schedule, or without `s2-pebc` in the path, the forecast is forwarded/sent unchanged.
+
 ## Updating PEBC PowerConstraints
+
+`s2-pebc` pushes a default constraints range on deploy (derived from its `s2-pebc-config`). To override it at runtime, inject a message into the s2-rm input - unlike every other command, `PowerConstraints` applies globally and does not require a `cemId`:
 
 ```json
 {
   "payload": {
     "command": "PowerConstraints",
-    "cemId": "cem",
     "constraints": {
       "commodityQuantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC",
       "minPower": -3000,
@@ -104,7 +123,7 @@ The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM s
 }
 ```
 
-Constraints are stored at the node level and automatically sent when a CEM selects PEBC.
+Constraints are stored at the node level and automatically (re-)sent whenever a CEM selects PEBC.
 
 ## Development
 

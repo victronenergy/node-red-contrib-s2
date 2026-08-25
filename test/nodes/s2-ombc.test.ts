@@ -1,0 +1,272 @@
+import registerNode from '../../src/nodes/s2-ombc/index'
+
+const DEFAULT_OMBC_CONFIG = {
+  systemDescription: JSON.stringify({
+    operationModes: [
+      { id: 'mode-standby', diagnostic_label: 'Standby', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }], abnormal_condition_only: false },
+      { id: 'mode-on', diagnostic_label: 'Normal operation', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 2500 }], abnormal_condition_only: false }
+    ],
+    transitions: [],
+    timers: []
+  })
+}
+
+function setupNode (config: Record<string, unknown> = {}, ombcConfigNode: unknown = DEFAULT_OMBC_CONFIG) {
+  const handlers: Record<string, (...args: unknown[]) => void> = {}
+  const nodeContext: Record<string, unknown> = {}
+  const node: Record<string, unknown> = {
+    id: 'ombc-node-id',
+    name: '',
+    send: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    log: jest.fn(),
+    debug: jest.fn(),
+    status: jest.fn(),
+    on: jest.fn((event: string, handler: (...args: unknown[]) => void) => { handlers[event] = handler }),
+    context: jest.fn(() => ({
+      get: jest.fn((key: string) => nodeContext[key]),
+      set: jest.fn((key: string, value: unknown) => { nodeContext[key] = value }),
+      flow: { get: jest.fn(), set: jest.fn() },
+      global: { get: jest.fn(), set: jest.fn() }
+    }))
+  }
+
+  const RED = {
+    nodes: {
+      createNode: jest.fn((n: Record<string, unknown>) => { Object.assign(n, node) }),
+      registerType: jest.fn(),
+      getNode: jest.fn(() => ombcConfigNode)
+    },
+    settings: {}
+  }
+
+  let Constructor: ((this: Record<string, unknown>, config: Record<string, unknown>) => void) | null = null
+  RED.nodes.registerType.mockImplementation((_type: string, ctor: (this: Record<string, unknown>, config: Record<string, unknown>) => void) => {
+    Constructor = ctor
+  })
+
+  registerNode(RED as never)
+  Constructor!.call(node, { ombcConfig: 'ombc-cfg-id', ...config, id: 'ombc-node-id' } as never)
+
+  return { node, RED, handlers, nodeContext }
+}
+
+function selectControlType (handlers: Record<string, (...args: unknown[]) => void>, cemId: string, controlType: string): void {
+  handlers.input({
+    cemId,
+    payload: { message_type: 'SelectControlType', message_id: 'sct-1', control_type: controlType }
+  }, jest.fn(), jest.fn())
+}
+
+function instructionMsg (cemId: string, controlType: string, namespaceKey: string, instr: Record<string, unknown>) {
+  return {
+    cemId,
+    payload: instr,
+    controlType,
+    [namespaceKey]: instr
+  }
+}
+
+describe('s2-ombc - config node reference', () => {
+  it('sets error status and does not register input handler when s2-ombc-config is missing', () => {
+    const { node, handlers } = setupNode({}, null)
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'red' }))
+    expect(node.error as jest.Mock).toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+})
+
+describe('s2-ombc - system description push on control-type selection', () => {
+  it('sends a SystemDescription command when OMBC is selected', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(call).toBeDefined()
+    const cmd = ((call as unknown[][])[0][1] as { payload: Record<string, unknown> }).payload
+    expect(cmd.command).toBe('SystemDescription')
+    expect(cmd.cemId).toBe('cem-1')
+    expect(cmd.controlType).toBe('OPERATION_MODE_BASED_CONTROL')
+    expect((cmd.ombc as { operationModes: unknown[] }).operationModes).toHaveLength(2)
+  })
+
+  it('does not send a SystemDescription command for a non-OMBC control type', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'POWER_ENVELOPE_BASED_CONTROL')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(call).toBeUndefined()
+  })
+})
+
+describe('s2-ombc - instruction resolution', () => {
+  it('resolves an OMBC instruction and enriches topic/operationMode on output 1', () => {
+    const { node, handlers } = setupNode()
+
+    handlers.input(instructionMsg('cem-1', 'OPERATION_MODE_BASED_CONTROL', 'ombc', {
+      message_type: 'OMBC.Instruction',
+      id: 'instr-1',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 0.8
+    }), jest.fn(), jest.fn())
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    expect(call).toBeDefined()
+    const out = (call as unknown[][])[0][0] as { topic: string, ombc: { operationMode: { id: string, index: number, label: string, factor: number } } }
+    expect(out.topic).toBe('Normal operation')
+    expect(out.ombc.operationMode.id).toBe('mode-on')
+    expect(out.ombc.operationMode.index).toBe(1)
+    expect(out.ombc.operationMode.label).toBe('Normal operation')
+    expect(out.ombc.operationMode.factor).toBe(0.8)
+  })
+
+  it('passes through a non-OMBC instruction unchanged and warns', () => {
+    const { node, handlers } = setupNode()
+    const original = instructionMsg('cem-1', 'POWER_ENVELOPE_BASED_CONTROL', 'pebc', { message_type: 'PEBC.Instruction', id: 'instr-2' })
+
+    handlers.input(original, jest.fn(), jest.fn())
+
+    expect(node.send as jest.Mock).toHaveBeenCalledWith([original, null])
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'yellow' }))
+  })
+})
+
+describe('s2-ombc - confirm mode', () => {
+  function confirm (handlers: Record<string, (...args: unknown[]) => void>, cemId: string, modeId: string, factor?: number) {
+    const done = jest.fn()
+    handlers.input({
+      cemId,
+      payload: { confirmedOperationModeId: modeId, ...(factor !== undefined ? { operationModeFactor: factor } : {}) }
+    }, jest.fn(), done)
+    return done
+  }
+
+  it('sends an UpdateStatus command when OMBC is the selected control type', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    confirm(handlers, 'cem-1', 'mode-on', 1)
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(call).toBeDefined()
+    const cmd = ((call as unknown[][])[0][1] as { payload: Record<string, unknown> }).payload
+    expect(cmd.command).toBe('UpdateStatus')
+    expect(cmd.cemId).toBe('cem-1')
+    expect((cmd.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+  })
+
+  it('includes previousOperationModeId and transitionTimestamp when the mode changes', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    confirm(handlers, 'cem-1', 'mode-standby')
+    ;(node.send as jest.Mock).mockClear()
+
+    confirm(handlers, 'cem-1', 'mode-on')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    const cmd = ((call as unknown[][])[0][1] as { payload: { ombc: { previousOperationModeId?: string, transitionTimestamp?: string } } }).payload
+    expect(cmd.ombc.previousOperationModeId).toBe('mode-standby')
+    expect(cmd.ombc.transitionTimestamp).toBeDefined()
+  })
+
+  it('does not include previousOperationModeId when the mode stays the same', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    confirm(handlers, 'cem-1', 'mode-on')
+    ;(node.send as jest.Mock).mockClear()
+
+    confirm(handlers, 'cem-1', 'mode-on')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    const cmd = ((call as unknown[][])[0][1] as { payload: { ombc: { previousOperationModeId?: string } } }).payload
+    expect(cmd.ombc.previousOperationModeId).toBeUndefined()
+  })
+
+  it('rejects a confirmation when OMBC is not the selected control type and warns', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'POWER_ENVELOPE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    confirm(handlers, 'cem-1', 'mode-on')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(call).toBeUndefined()
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'yellow' }))
+  })
+
+  it('rejects a confirmation when no control type has been selected yet', () => {
+    const { node, handlers } = setupNode()
+
+    confirm(handlers, 'cem-1', 'mode-on')
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    expect(call).toBeUndefined()
+  })
+
+  it('errors when confirmedOperationModeId is present but cemId is missing', () => {
+    const { handlers } = setupNode()
+
+    const done = jest.fn()
+    handlers.input({ payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+})
+
+describe('s2-ombc - reconnect resend', () => {
+  it('resends SystemDescription and the last confirmed UpdateStatus when SelectControlType(OMBC) is observed again', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), jest.fn())
+
+    // Simulate disconnect + reconnect: CEM re-selects control type
+    handlers.input({ cemId: 'cem-1', topic: 'Disconnected' }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    const commands = calls.map((c) => (((c[0] as unknown[])[1]) as { payload: { command: string } }).payload.command)
+    expect(commands).toContain('SystemDescription')
+    expect(commands).toContain('UpdateStatus')
+
+    const updateStatusCall = calls.find((c) => (((c[0] as unknown[])[1]) as { payload: { command: string } }).payload.command === 'UpdateStatus')
+    const cmd = ((updateStatusCall as unknown[][])[0][1] as { payload: { ombc: { activeOperationModeId: string } } }).payload
+    expect(cmd.ombc.activeOperationModeId).toBe('mode-on')
+  })
+
+  it('does not resend UpdateStatus when nothing has been confirmed yet', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
+    )
+    const commands = calls.map((c) => (((c[0] as unknown[])[1]) as { payload: { command: string } }).payload.command)
+    expect(commands).toEqual(['SystemDescription'])
+  })
+})

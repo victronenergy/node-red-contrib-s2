@@ -1,0 +1,82 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-ombc', {
+    category: 's2',
+    color: '#5A8EC2',
+    defaults: {
+      name: { value: '' },
+      ombcConfig: { value: '', type: 's2-ombc-config', required: true }
+    },
+    inputs: 1,
+    outputs: 2,
+    icon: 's2-logo.svg',
+    outputLabels: ['instructions', 'to s2-rm'],
+    inputLabels: ['from s2-rm / confirm-mode'],
+    label: function () {
+      return this.name || 's2-ombc'
+    },
+    labelStyle: function () {
+      return this.name ? 'node_label_italic' : ''
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-ombc">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name">
+        <i class="fa fa-tag"></i> Name
+      </label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-ombcConfig"><i class="fa fa-id-card"></i> OMBC Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC system description (operation modes, transitions, timers)."></i></label>
+      <input type="text" id="node-input-ombcConfig">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-ombc">
+  <p>Owns Operation Mode Based Control (OMBC) behavior: declares the OMBC system description to the CEM, resolves OMBC instructions, and confirms operation mode changes back to the CEM once told the hardware state is confirmed.</p>
+  <p>Wire this node's input to both <b>s2-rm</b>'s "from CEM" output (to observe <code>SelectControlType</code>) and its "instructions" output (to resolve OMBC instructions). Wire this node's second output back to <b>s2-rm</b>'s input.</p>
+  <h3>Input</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>S2 "from CEM" messages and enriched instructions forwarded from <b>s2-rm</b>, as-is.</dd>
+  </dl>
+  <p>Confirm-mode message, sent from your own flow once the hardware state matches the requested mode:</p>
+  <dl class="message-properties">
+    <dt>payload.confirmedOperationModeId <span class="property-type">string</span></dt>
+    <dd>Id of the operation mode now active on the hardware.</dd>
+    <dt>payload.operationModeFactor <span class="property-type">number</span></dt>
+    <dd>Optional. Defaults to 1.</dd>
+    <dt>cemId <span class="property-type">string</span></dt>
+    <dd>Required. The CEM this confirmation applies to.</dd>
+  </dl>
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>Instructions
+      <dl class="message-properties">
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>Resolved mode's diagnostic label, for routing with a Switch node. Only set for resolved OMBC instructions.</dd>
+        <dt>ombc.operationMode <span class="property-type">object</span></dt>
+        <dd><code>{ id, index, label, factor, powerRanges }</code> for the resolved mode.</dd>
+      </dl>
+      Non-OMBC instructions are passed through unchanged (node status shows a warning), so this node can be wired in parallel with s2-pebc downstream of the same s2-rm.
+    </li>
+    <li>To s2-rm
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd><code>{ command: 'SystemDescription', cemId, controlType, ombc }</code> or <code>{ command: 'UpdateStatus', cemId, controlType, ombc }</code>. Wire to s2-rm's input.</dd>
+      </dl>
+    </li>
+  </ol>
+</script>

@@ -1,14 +1,5 @@
 <script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
-  var GRID_CONNECTIONS = {
-    '1x16A': 3680,
-    '3x16A': 11040,
-    '3x25A': 17250,
-    '3x32A': 22080,
-    '3x40A': 27600,
-    '3x63A': 43470
-  }
-
   RED.nodes.registerType('s2-rm-config', {
     category: 'config',
     defaults: {
@@ -21,10 +12,8 @@
       manufacturer: { value: 'Victron Energy' },
       model: { value: 'Virtual RM' },
       firmwareVersion: { value: '1.0.0' },
-      maxBatteryChargePower: { value: 0, validate: RED.validators.number() },
-      maxBatteryDischargePower: { value: 0, validate: RED.validators.number() },
-      gridConnection: { value: '' },
-      customMaxPowerW: { value: '' },
+      providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
+      providesForecast: { value: false },
       instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() },
       skipInstructionStatus: { value: false }
     },
@@ -56,26 +45,20 @@
         $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
       })
 
-      function updateBatteryLimitsVisibility () {
-        var hasStorage = $('.s2-rm-config-role-checkbox[value="ENERGY_STORAGE"]').is(':checked')
-        $('#s2-rm-config-battery-section').toggle(hasStorage)
-      }
-
       $('.s2-rm-config-role-checkbox').on('change', function () {
         if ($('.s2-rm-config-role-checkbox:checked').length === 0) {
           $(this).prop('checked', true)
         }
-        updateBatteryLimitsVisibility()
       })
 
-      updateBatteryLimitsVisibility()
-
-      function updateCustomPowerVisibility () {
-        var val = $('#node-config-input-gridConnection').val()
-        $('#s2-rm-config-custom-power-row').toggle(val === 'custom')
+      // Migrate legacy boolean to string value
+      if (this.providesPowerMeasurement === true) {
+        this.providesPowerMeasurement = '3_PHASE_SYMMETRIC'
+        $('#node-config-input-providesPowerMeasurement').val('3_PHASE_SYMMETRIC')
+      } else if (this.providesPowerMeasurement === false) {
+        this.providesPowerMeasurement = ''
+        $('#node-config-input-providesPowerMeasurement').val('')
       }
-      $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
-      updateCustomPowerVisibility()
 
       $('#node-config-input-skipInstructionStatus').prop('checked', this.skipInstructionStatus === true)
 
@@ -158,22 +141,20 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the outer PEBC power limits sent to the CEM as [-max, +max] watts."></i></label>
-      <select id="node-config-input-gridConnection">
-        <option value="">-- Not set --</option>
-        <option value="1x16A">1x16A (3.7 kW)</option>
-        <option value="3x16A">3x16A (11 kW)</option>
-        <option value="3x25A">3x25A (17.3 kW)</option>
-        <option value="3x32A">3x32A (22 kW)</option>
-        <option value="3x40A">3x40A (27.6 kW)</option>
-        <option value="3x63A">3x63A (43.5 kW)</option>
-        <option value="custom">Custom</option>
+      <label for="node-config-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i></label>
+      <select id="node-config-input-providesPowerMeasurement" style="width: 70%;">
+        <option value="">None</option>
+        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
       </select>
     </div>
 
-    <div class="form-row" id="s2-rm-config-custom-power-row" style="display:none">
-      <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
-      <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
+    <div class="form-row">
+      <label for="node-config-input-providesForecast">
+        <i class="fa fa-line-chart"></i> Forecast
+      </label>
+      <input type="checkbox" id="node-config-input-providesForecast" style="width: auto; margin-top: 6px;">
+      <span style="margin-left: 6px;">Provides power forecast</span>
     </div>
 
     <div class="form-row">
@@ -194,33 +175,6 @@
     <div class="form-row">
       <label for="node-config-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
       <input type="text" id="node-config-input-firmwareVersion" placeholder="e.g. 1.0.0">
-    </div>
-
-    <div id="s2-rm-config-battery-section">
-      <div class="form-row">
-        <label class="s2-section-label">
-          <i class="fa fa-battery-three-quarters"></i> Battery Limits
-          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Hardware ceiling for battery power. CEM instructions are clamped to these values. Set to 0 for no limit."></i>
-        </label>
-      </div>
-
-      <div class="form-row s2-battery-row">
-        <label for="node-config-input-maxBatteryChargePower">
-          <i class="fa fa-arrow-circle-down"></i> Charge
-          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery charge power in Watts. Never exceeded when writing DESS limits."></i>
-        </label>
-        <input type="number" id="node-config-input-maxBatteryChargePower" placeholder="0 = no limit" min="0" step="1">
-        <span class="s2-unit-label">W</span>
-      </div>
-
-      <div class="form-row s2-battery-row">
-        <label for="node-config-input-maxBatteryDischargePower">
-          <i class="fa fa-arrow-circle-up"></i> Discharge
-          <i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum battery discharge power in Watts. Never exceeded when writing DESS limits."></i>
-        </label>
-        <input type="number" id="node-config-input-maxBatteryDischargePower" placeholder="0 = no limit" min="0" step="1">
-        <span class="s2-unit-label">W</span>
-      </div>
     </div>
 
     <div class="form-row">

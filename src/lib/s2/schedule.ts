@@ -78,15 +78,16 @@ export function getActiveElement (schedule: PebcSchedule, nowMs: number): Schedu
 }
 
 /**
- * Return the start time (ms) of the element that follows the currently active one,
- * or null if in the last element or outside the schedule window.
+ * Return the start time (ms) of the next element to activate after nowMs - the
+ * soonest startMs still in the future, whether or not an element is currently
+ * active - or null if there is none.
  */
 export function getNextElementStart (schedule: PebcSchedule, nowMs: number): number | null {
-  for (let i = 0; i < schedule.elements.length - 1; i++) {
-    const el = schedule.elements[i]
-    if (nowMs >= el.startMs && nowMs < el.endMs) return schedule.elements[i + 1].startMs
+  let next: number | null = null
+  for (const el of schedule.elements) {
+    if (el.startMs > nowMs && (next === null || el.startMs < next)) next = el.startMs
   }
-  return null
+  return next
 }
 
 /**

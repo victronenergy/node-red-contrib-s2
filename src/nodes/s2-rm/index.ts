@@ -1,18 +1,11 @@
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode, S2CemConfigNode } from '../../types/config-nodes'
-import { S2Session, State } from '../../lib/s2/session'
-import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ReceptionStatusResult, InstructionStatus, InstructionStatusValue, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts, OMBCStatusConfig } from '../../lib/s2/messages'
-import { parsePebcInstruction, getActiveElement, getNextElementStart, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
+import { S2Session, State, StatusPayload, SystemDescriptionPayload } from '../../lib/s2/session'
+import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ControlType, ControlTypeValue, ReceptionStatusResult, InstructionStatus, InstructionStatusValue, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
   cem?: string // optional reference to s2-cem-config for CEM REST API access
-  controlTypeConfig?: string
-  providesPowerMeasurement?: string
-  providesForecast?: boolean
 }
 
 interface PendingInstruction {
@@ -21,31 +14,49 @@ interface PendingInstruction {
   instruction: Record<string, unknown>
   cemId: string
   executionTimeMs: number
-  isPebc: boolean
-  scheduleEndMs: number | undefined
 }
 
 const PENDING_INSTRUCTIONS_KEY = 's2PendingInstructions'
-const OMBC_STATUS_KEY = 's2OmbcStatus'
-const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before a non-PEBC instruction is pruned
+const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before an instruction is pruned
+
+// Maps an instruction's message_type to the control type it belongs to and the
+// namespace key used to enrich the emitted message (msg.controlType / msg.<key>).
+const INSTRUCTION_CONTROL_TYPE: Record<string, { controlType: ControlTypeValue, key: string }> = {
+  [MessageType.OMBC_INSTRUCTION]: { controlType: ControlType.OMBC, key: 'ombc' },
+  [MessageType.PEBC_INSTRUCTION]: { controlType: ControlType.PEBC, key: 'pebc' },
+  [MessageType.FRBC_INSTRUCTION]: { controlType: ControlType.FRBC, key: 'frbc' },
+  [MessageType.DDBC_INSTRUCTION]: { controlType: ControlType.DDBC, key: 'ddbc' },
+  [MessageType.PPBC_SCHEDULE_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' },
+  [MessageType.PPBC_START_INTERRUPTION_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' },
+  [MessageType.PPBC_END_INTERRUPTION_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' }
+}
 
 /**
  * s2-rm node (S2 Resource Manager)
  *
- * Manages S2 protocol sessions for all connected CEMs. Sits between
- * the transport node (victron-virtual acload, s2-websocket, etc.) and the
- * rest of the flow.
+ * Generic S2 protocol state machine: handshake, control-type selection,
+ * generic instruction ack/routing. Control-type-specific behavior (OMBC mode
+ * resolution, PEBC schedule dispatch, etc.) lives in dedicated nodes
+ * (s2-ombc, s2-pebc, ...) wired downstream/alongside this node.
  *
  * Wiring:
  *   [transport port 2] -> [s2-rm input]
  *   [s2-rm port 1]     -> [transport input]
+ *   [s2-rm port 2]     -> [control-type node input]  (so it can observe SelectControlType/RevokeObject/etc.)
+ *   [s2-rm port 3]     -> [control-type node input]  (enriched instructions)
+ *   [control-type node command output] -> [s2-rm input]  (UpdateStatus/SystemDescription/PowerConstraints/InstructionStatus)
  *
- * Input msg.payload from transport:
- *   { command: 'Connect',          cemId, keepAliveInterval }
- *   { command: 'Message',          cemId, message }   <- message is a raw S2 JSON string
- *   { command: 'KeepAlive',        cemId }
- *   { command: 'PowerMeasurement', cemId, values }
- *   { command: 'Disconnect',       cemId }
+ * Input msg.payload from transport or a control-type node:
+ *   { command: 'Connect',           cemId, keepAliveInterval }
+ *   { command: 'Message',           cemId, message }   <- message is a raw S2 JSON string
+ *   { command: 'KeepAlive',         cemId }
+ *   { command: 'PowerMeasurement',  cemId, values }
+ *   { command: 'PowerConstraints',  constraints }
+ *   { command: 'Forecast',          cemId, forecast }
+ *   { command: 'Disconnect',        cemId }
+ *   { command: 'InstructionStatus', cemId, instructionId, status }
+ *   { command: 'UpdateStatus',         cemId, controlType, <namespaced status payload, e.g. ombc: {...}> }
+ *   { command: 'SystemDescription',    cemId, controlType, <namespaced system description payload, e.g. ombc: {...}> }
  *
  * Output port 1 - messages to send to the CEM (via transport input):
  *   { payload: { s2Signal: 'Message', message: <S2 message object> }, cemId }
@@ -57,8 +68,9 @@ const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before a non-PEBC instruction i
  *   { topic: 'Connected',    cemId: <string> }
  *   { topic: 'Disconnected', cemId: <string>, reason: 'cem_initiated' | 'keepalive_timeout' }
  *
- * Output port 3 - S2 instructions from CEM:
- *   { payload: <S2 instruction object>, cemId: <string> }
+ * Output port 3 - S2 instructions from CEM, enriched with the resolved control type:
+ *   { payload: <S2 instruction object>, cemId: <string>, controlType: <string>, <namespace key>: <S2 instruction object> }
+ *   e.g. for an OMBC.Instruction: { payload: {...}, cemId, controlType: 'OPERATION_MODE_BASED_CONTROL', ombc: {...} }
  */
 export = function (RED: NodeRedApp): void {
   function S2RmNode (this: NodeRedNode, config: S2RmConfig): void {
@@ -96,51 +108,13 @@ export = function (RED: NodeRedApp): void {
         .map((role: string) => ({ role, commodity: 'ELECTRICITY' })),
       availableControlTypes: (rmConfigNode.controlTypes || 'OPERATION_MODE_BASED_CONTROL')
         .split(',').map((s: string) => s.trim()).filter(Boolean),
-      providesForecast: config.providesForecast === true,
-      providesPowerMeasurementTypes: parsePowerMeasurementTypes(config.providesPowerMeasurement),
+      providesForecast: rmConfigNode.providesForecast === true,
+      providesPowerMeasurementTypes: parsePowerMeasurementTypes(rmConfigNode.providesPowerMeasurement),
       instructionProcessingDelay: 0,
       manufacturer: rmConfigNode.manufacturer || 'Victron Energy',
       model: rmConfigNode.model || 'Virtual RM',
       serialNumber: rmConfigNode.serialNumber || node.id,
       firmwareVersion: rmConfigNode.firmwareVersion || '1.0.0'
-    }
-
-    let controlTypeConfig = {}
-    if (config.controlTypeConfig) {
-      try {
-        controlTypeConfig = JSON.parse(config.controlTypeConfig) as Record<string, unknown>
-      } catch (e) {
-        node.error('Invalid Control Type Config JSON: ' + (e as Error).message)
-      }
-    }
-
-    // Persist/restore schedule across restarts
-    const scheduleDir = path.join(RED.settings?.userDir || path.join(os.homedir(), '.node-red'), '.s2')
-    const scheduleFile = path.join(scheduleDir, `${node.id}-schedule.json`)
-
-    function saveSchedule (schedule: PebcSchedule): void {
-      try {
-        fs.mkdirSync(scheduleDir, { recursive: true })
-        fs.writeFileSync(scheduleFile, JSON.stringify(schedule, null, 2))
-      } catch (e) {
-        node.warn('Failed to persist S2 schedule: ' + (e as Error).message)
-      }
-    }
-
-    function loadPersistedSchedule (): void {
-      try {
-        const raw = fs.readFileSync(scheduleFile, 'utf8')
-        const schedule = JSON.parse(raw) as PebcSchedule
-        const now = Date.now()
-        const validElements = schedule.elements.filter(el => el.endMs > now)
-        if (validElements.length === 0) return
-        applySchedule({ ...schedule, elements: validElements })
-        node.log(`Restored S2 schedule for CEM ${schedule.cemId} with ${validElements.length} future element(s)`)
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-          node.warn('Failed to load persisted S2 schedule: ' + (e as Error).message)
-        }
-      }
     }
 
     // Publish CEM REST API endpoint and auth header to flow context for use in downstream function nodes.
@@ -165,21 +139,9 @@ export = function (RED: NodeRedApp): void {
     // One session per connected CEM
     const sessions = new Map<string, S2Session>()
 
-    // Derive default PEBC constraints from the grid connection config
-    const defaultMaxPowerW = gridConnectionToWatts(rmConfigNode.gridConnection, rmConfigNode.customMaxPowerW)
-    let pendingPEBCConstraints: PEBCPowerConstraintsInput | null = defaultMaxPowerW != null
-      ? { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -defaultMaxPowerW, maxPower: defaultMaxPowerW }
-      : null
+    let pendingPEBCConstraints: PEBCPowerConstraintsInput | null = null
 
     let statusTimer: ReturnType<typeof setTimeout> | null = null
-
-    // PEBC schedule dispatch
-    let scheduleTimer: ReturnType<typeof setTimeout> | null = null
-    const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
-    // Accumulated PEBC slots: keyed by slot start time (ms).
-    // Cleared when power_constraints_id changes (new planning period).
-    let pebcConstraintsId: string | null = null
-    const pebcSlots = new Map<number, { element: ScheduleElement, commodityQuantity: string, cemId: string, instructionId: string }>()
 
     function getPending (): PendingInstruction[] {
       return (node.context().flow.get(PENDING_INSTRUCTIONS_KEY) as PendingInstruction[] | undefined) || []
@@ -203,7 +165,17 @@ export = function (RED: NodeRedApp): void {
     const pollIntervalMs = rmConfigNode.instructionPollIntervalMs || 2000
     const isSkipInstructionStatus = rmConfigNode.skipInstructionStatus === true
 
+    // Enrich an outgoing instruction message with msg.controlType and the
+    // namespaced instruction payload (e.g. msg.ombc, msg.pebc), per the
+    // s2-rm-protocol spec. Unknown/unmapped instruction types are left as-is.
+    function enrichInstruction (rawMsg: Record<string, unknown>): Record<string, unknown> {
+      const mapping = INSTRUCTION_CONTROL_TYPE[rawMsg.message_type as string]
+      if (!mapping) return {}
+      return { controlType: mapping.controlType, [mapping.key]: rawMsg }
+    }
+
     // Poll at the configured interval: dispatch due non-PEBC instructions, prune expired entries.
+    // PEBC instructions bypass this queue entirely (see onInstruction) - their timing is owned by s2-pebc.
     const pollTimer = setInterval(() => {
       const pending = getPending()
       if (pending.length === 0) return
@@ -211,23 +183,15 @@ export = function (RED: NodeRedApp): void {
       let changed = false
       const remaining: PendingInstruction[] = []
       for (const item of pending) {
-        const expired = item.isPebc
-          ? (item.scheduleEndMs !== undefined && item.scheduleEndMs < now)
-          : (item.executionTimeMs + PRUNE_GRACE_MS < now)
+        const expired = item.executionTimeMs + PRUNE_GRACE_MS < now
         if (expired) { changed = true; continue }
-        if (!item.isPebc && item.executionTimeMs <= now) {
+        if (item.executionTimeMs <= now) {
           const session = sessions.get(item.cemId)
           if (session && item.instructionId && !isSkipInstructionStatus) {
             session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
           }
-          const rawItem = item.instruction as Record<string, unknown>
-          const resolvedItemMode = resolveOMBCMode(rawItem)
-          const itemOutMsg: Record<string, unknown> = { payload: item.instruction, cemId: item.cemId }
-          if (resolvedItemMode) {
-            itemOutMsg.topic = resolvedItemMode.label
-            itemOutMsg.operationMode = resolvedItemMode
-          }
-          node.send([null, null, itemOutMsg, null])
+          const outMsg: Record<string, unknown> = { payload: item.instruction, cemId: item.cemId, ...enrichInstruction(item.instruction) }
+          node.send([null, null, outMsg])
           changed = true
           continue
         }
@@ -235,117 +199,6 @@ export = function (RED: NodeRedApp): void {
       }
       if (changed) setPending(remaining)
     }, pollIntervalMs).unref()
-
-    // Deduplication: track last emitted active element to suppress identical re-emits from the CEM.
-    let lastEmittedActive: { startMs: number, lowerBound: number | null, upperBound: number | null, commodityQuantity: string } | null = null
-    let duplicateActiveCount = 0
-
-    function emitActiveElement (schedule: PebcSchedule): void {
-      const el = getActiveElement(schedule, Date.now())
-      if (!el) return
-
-      const isDuplicate = lastEmittedActive !== null &&
-        lastEmittedActive.startMs === el.startMs &&
-        lastEmittedActive.lowerBound === el.lowerBound &&
-        lastEmittedActive.upperBound === el.upperBound &&
-        lastEmittedActive.commodityQuantity === schedule.commodityQuantity
-
-      if (isDuplicate) {
-        duplicateActiveCount++
-        node.debug(`duplicate active element from CEM (${duplicateActiveCount} total) - suppressing port 3 emit`)
-        const count = sessions.size
-        node.status({ fill: 'yellow', shape: 'ring', text: `${count} CEM${count > 1 ? 's' : ''} connected · ${duplicateActiveCount} dup.` })
-        return
-      }
-
-      lastEmittedActive = { startMs: el.startMs, lowerBound: el.lowerBound, upperBound: el.upperBound, commodityQuantity: schedule.commodityQuantity }
-      duplicateActiveCount = 0
-      updateStatus()
-      const slot = pebcSlots.get(el.startMs)
-      if (slot && !isSkipInstructionStatus) {
-        const session = sessions.get(slot.cemId)
-        if (session) session.sendInstructionStatus(slot.instructionId, InstructionStatus.STARTED)
-      }
-      node.send([null, null, {
-        cemId: schedule.cemId,
-        payload: {
-          startTime: new Date(el.startMs).toISOString(),
-          endTime: new Date(el.endMs).toISOString(),
-          duration: el.duration,
-          lowerBound: el.lowerBound,
-          upperBound: el.upperBound,
-          commodityQuantity: schedule.commodityQuantity
-        }
-      }, null])
-    }
-
-    function scheduleNextDispatch (schedule: PebcSchedule): void {
-      if (scheduleTimer) {
-        clearTimeout(scheduleTimer)
-        scheduleTimer = null
-      }
-      const nextStart = getNextElementStart(schedule, Date.now())
-      if (nextStart === null) return
-      const delay = Math.max(0, nextStart - Date.now())
-      scheduleTimer = setTimeout(() => {
-        scheduleTimer = null
-        emitActiveElement(schedule)
-        scheduleNextDispatch(schedule)
-      }, delay)
-    }
-
-    function applySchedule (schedule: PebcSchedule): void {
-      node.context().flow.set(SCHEDULE_CONTEXT_KEY, schedule)
-      saveSchedule(schedule)
-      emitActiveElement(schedule)
-      scheduleNextDispatch(schedule)
-      node.send([null, null, null, {
-        cemId: schedule.cemId,
-        payload: {
-          commodityQuantity: schedule.commodityQuantity,
-          elements: schedule.elements.map(el => ({
-            startTime: new Date(el.startMs).toISOString(),
-            endTime: new Date(el.endMs).toISOString(),
-            durationSec: Math.round(el.duration / 1000),
-            lowerBound: el.lowerBound,
-            upperBound: el.upperBound
-          }))
-        }
-      }])
-    }
-
-    type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: unknown[] }
-
-    function resolveOMBCMode (rawInstr: Record<string, unknown>): ResolvedOMBCMode | null {
-      if (rawInstr.message_type !== MessageType.OMBC_INSTRUCTION) return null
-      const modeId = (rawInstr.operation_mode_id || rawInstr.operation_mode) as string | undefined
-      if (!modeId) return null
-      const factor = typeof rawInstr.operation_mode_factor === 'number' ? rawInstr.operation_mode_factor : 1
-      const ctc = controlTypeConfig as Record<string, unknown>
-      const modes = ((ctc.OMBC as Record<string, unknown> | undefined)
-        ?.systemDescription as Record<string, unknown> | undefined)
-        ?.operationModes as Array<Record<string, unknown>> | undefined
-      const modeIndex = modes?.findIndex(m => m.id === modeId) ?? -1
-      const mode = modeIndex >= 0 ? modes![modeIndex] : undefined
-      return {
-        id: modeId,
-        index: modeIndex,
-        label: (mode?.diagnostic_label as string | undefined) || modeId,
-        factor,
-        powerRanges: (mode?.power_ranges as unknown[] | undefined) || []
-      }
-    }
-
-    // Persist the committed OMBC mode to flow context so reconnecting CEMs see the correct status.
-    // Called at instruction accept time (in onInstruction, which runs inside _ackAndForward).
-    // The session has already updated _currentOMBCStatus and sent OMBC.Status by this point.
-    function persistOMBCStatusIfInstruction (session: S2Session, rawInstr: Record<string, unknown>): void {
-      if (rawInstr.message_type !== MessageType.OMBC_INSTRUCTION) return
-      const status = session.currentOMBCStatus
-      if (status) {
-        node.context().flow.set(OMBC_STATUS_KEY, status)
-      }
-    }
 
     node.status({ fill: 'grey', shape: 'ring', text: 'no CEMs connected' })
 
@@ -366,7 +219,6 @@ export = function (RED: NodeRedApp): void {
       const session = new S2Session({
         cemId,
         rmDetails: resolvedDetails,
-        controlTypeConfig,
         skipInstructionStatus: isSkipInstructionStatus,
 
         onSend: (msg) => {
@@ -405,25 +257,6 @@ export = function (RED: NodeRedApp): void {
                   const sess = sessions.get(cemId)
                   if (sess) sess.sendInstructionStatus(revokedId, InstructionStatus.REVOKED)
                 }
-                if (revokedItem.isPebc) {
-                  for (const [key, slot] of pebcSlots.entries()) {
-                    if (slot.instructionId === revokedId) pebcSlots.delete(key)
-                  }
-                  if (pebcSlots.size === 0) {
-                    if (scheduleTimer) { clearTimeout(scheduleTimer); scheduleTimer = null }
-                    node.context().flow.set(SCHEDULE_CONTEXT_KEY, null)
-                  } else {
-                    const sorted = [...pebcSlots.values()].sort((a, b) => a.element.startMs - b.element.startMs)
-                    const rebuilt: PebcSchedule = {
-                      receivedAt: Date.now(),
-                      cemId: sorted[0].cemId,
-                      instructionId: sorted[0].instructionId,
-                      commodityQuantity: sorted[0].commodityQuantity,
-                      elements: sorted.map(s => s.element)
-                    }
-                    applySchedule(rebuilt)
-                  }
-                }
               }
             }
           }
@@ -447,63 +280,22 @@ export = function (RED: NodeRedApp): void {
           const executionTimeStr = rawMsg.execution_time as string | undefined
           const executionTimeMs = executionTimeStr ? new Date(executionTimeStr).getTime() : Date.now()
 
-          // Persist the OMBC status committed by the session in _ackAndForward.
-          // Done at accept time so reconnecting CEMs always see the correct mode,
-          // even if the CEM disconnects before the instruction's execution_time.
-          const sess = sessions.get(cemId)
-          if (sess) {
-            persistOMBCStatusIfInstruction(sess, rawMsg)
-          }
-
           if (msg.message_type === MessageType.PEBC_INSTRUCTION) {
-            const parsed = parsePebcInstruction(rawMsg, Date.now(), cemId)
-            if (parsed && parsed.elements.length > 0) {
-              const constraintsId = rawMsg.power_constraints_id as string | undefined
-              if (constraintsId && constraintsId !== pebcConstraintsId) {
-                pebcSlots.clear()
-                pebcConstraintsId = constraintsId
-              }
-              for (const el of parsed.elements) {
-                pebcSlots.set(el.startMs, { element: el, commodityQuantity: parsed.commodityQuantity, cemId, instructionId: parsed.instructionId })
-              }
-              const sorted = [...pebcSlots.values()].sort((a, b) => a.element.startMs - b.element.startMs)
-              const combined: PebcSchedule = {
-                receivedAt: Date.now(),
-                cemId: sorted[0].cemId,
-                instructionId: parsed.instructionId,
-                commodityQuantity: sorted[0].commodityQuantity,
-                elements: sorted.map(s => s.element)
-              }
-              if (messageId) {
-                addToPending({
-                  messageId,
-                  instructionId,
-                  instruction: rawMsg,
-                  cemId,
-                  executionTimeMs,
-                  isPebc: true,
-                  scheduleEndMs: combined.elements[combined.elements.length - 1].endMs
-                })
-              }
-              applySchedule(combined)
-              return
-            }
+            // PEBC schedule accumulation and per-element dispatch timing is owned by s2-pebc -
+            // deliver the raw instruction immediately so it can build/dispatch with its own timers.
+            const outMsg: Record<string, unknown> = { payload: msg, cemId, ...enrichInstruction(rawMsg) }
+            node.send([null, null, outMsg])
+            return
           }
 
-          // Non-PEBC (or PEBC with no valid schedule): dispatch immediately or queue.
           const now = Date.now()
           if (executionTimeMs <= now) {
             const session = sessions.get(cemId)
             if (session && instructionId && !isSkipInstructionStatus) {
               session.sendInstructionStatus(instructionId, InstructionStatus.STARTED)
             }
-            const resolvedMode = resolveOMBCMode(rawMsg)
-            const outMsg: Record<string, unknown> = { payload: msg, cemId }
-            if (resolvedMode) {
-              outMsg.topic = resolvedMode.label
-              outMsg.operationMode = resolvedMode
-            }
-            node.send([null, null, outMsg, null])
+            const outMsg: Record<string, unknown> = { payload: msg, cemId, ...enrichInstruction(rawMsg) }
+            node.send([null, null, outMsg])
           } else {
             if (messageId) {
               addToPending({
@@ -511,9 +303,7 @@ export = function (RED: NodeRedApp): void {
                 instructionId,
                 instruction: rawMsg,
                 cemId,
-                executionTimeMs,
-                isPebc: false,
-                scheduleEndMs: undefined
+                executionTimeMs
               })
             }
           }
@@ -548,6 +338,23 @@ export = function (RED: NodeRedApp): void {
         return
       }
 
+      // PowerConstraints applies globally (all current + future sessions), so unlike every
+      // other command it does not require a cemId - a control-type node can push a default
+      // at deploy time, before any CEM has connected.
+      if (command === 'PowerConstraints') {
+        const { constraints } = msg.payload as { constraints?: PEBCPowerConstraintsInput }
+        if (!constraints || typeof constraints !== 'object') {
+          done(new Error('PowerConstraints requires a constraints object'))
+          return
+        }
+        pendingPEBCConstraints = constraints
+        for (const session of sessions.values()) {
+          session.setPEBCPowerConstraints(constraints)
+        }
+        done()
+        return
+      }
+
       if (!cemId) {
         done(new Error("msg.payload must have a 'cemId' field"))
         return
@@ -561,12 +368,6 @@ export = function (RED: NodeRedApp): void {
             sessions.delete(cemId)
           }
           const session = createSession(cemId)
-          // Restore persisted OMBC status so this session reports the last known mode
-          // when SELECT_CONTROL_TYPE(OMBC) is received. Falls back to the static config.
-          const savedOmbcStatus = node.context().flow.get(OMBC_STATUS_KEY) as OMBCStatusConfig | undefined
-          if (savedOmbcStatus) {
-            session.updateOMBCStatus(savedOmbcStatus)
-          }
           session.start()
           node.send([null, { topic: 'Connected', cemId }, null])
           node.log(`CEM ${cemId} connected (keepAliveInterval: ${keepAliveInterval}s)`)
@@ -614,21 +415,6 @@ export = function (RED: NodeRedApp): void {
             return
           }
           pmSession.send(makePowerMeasurement(values as PowerMeasurementValue[]))
-          done()
-          break
-        }
-
-        case 'PowerConstraints': {
-          const { constraints } = msg.payload as { constraints?: PEBCPowerConstraintsInput }
-          if (!constraints || typeof constraints !== 'object') {
-            done(new Error('PowerConstraints requires a constraints object'))
-            return
-          }
-          pendingPEBCConstraints = constraints
-          // Apply to all currently connected sessions
-          for (const session of sessions.values()) {
-            session.setPEBCPowerConstraints(constraints)
-          }
           done()
           break
         }
@@ -681,6 +467,40 @@ export = function (RED: NodeRedApp): void {
           break
         }
 
+        case 'UpdateStatus': {
+          const { controlType, ...payload } = msg.payload as { controlType?: string, [key: string]: unknown }
+          if (!controlType || typeof controlType !== 'string') {
+            done(new Error('UpdateStatus requires a controlType string'))
+            return
+          }
+          const usSession = sessions.get(cemId)
+          if (!usSession) {
+            node.warn(`UpdateStatus for unknown CEM ${cemId} - ignoring`)
+            done()
+            return
+          }
+          usSession.updateStatus(controlType, payload as StatusPayload)
+          done()
+          break
+        }
+
+        case 'SystemDescription': {
+          const { controlType, ...payload } = msg.payload as { controlType?: string, [key: string]: unknown }
+          if (!controlType || typeof controlType !== 'string') {
+            done(new Error('SystemDescription requires a controlType string'))
+            return
+          }
+          const sdSession = sessions.get(cemId)
+          if (!sdSession) {
+            node.warn(`SystemDescription for unknown CEM ${cemId} - ignoring`)
+            done()
+            return
+          }
+          sdSession.sendSystemDescription(controlType, payload as SystemDescriptionPayload)
+          done()
+          break
+        }
+
         default:
           done(new Error(`Unknown command: ${command}`))
       }
@@ -692,10 +512,6 @@ export = function (RED: NodeRedApp): void {
         statusTimer = null
       }
       clearInterval(pollTimer)
-      if (scheduleTimer) {
-        clearTimeout(scheduleTimer)
-        scheduleTimer = null
-      }
       for (const session of sessions.values()) {
         session.dispose()
       }
@@ -703,8 +519,6 @@ export = function (RED: NodeRedApp): void {
       node.status({})
       done()
     })
-
-    loadPersistedSchedule()
   }
 
   RED.nodes.registerType('s2-rm', S2RmNode)

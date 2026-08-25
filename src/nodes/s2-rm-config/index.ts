@@ -12,8 +12,8 @@ export = function (RED: NodeRedApp): void {
     this.model = config.model as string
     this.firmwareVersion = config.firmwareVersion as string
     this.controlTypes = config.controlTypes as string
-    this.gridConnection = config.gridConnection as string
-    this.customMaxPowerW = config.customMaxPowerW != null ? Number(config.customMaxPowerW) : undefined
+    this.providesPowerMeasurement = config.providesPowerMeasurement as string
+    this.providesForecast = config.providesForecast === true
     this.instructionPollIntervalMs = config.instructionPollIntervalMs != null ? Number(config.instructionPollIntervalMs) : 2000
     this.skipInstructionStatus = config.skipInstructionStatus === true
   }

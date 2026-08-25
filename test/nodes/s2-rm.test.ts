@@ -1,6 +1,3 @@
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
 import { MessageType, serialize } from '../../src/lib/s2/messages'
 import registerNode from '../../src/nodes/s2-rm/index'
 
@@ -134,6 +131,29 @@ describe('s2-rm - PowerConstraints command', () => {
     // Just verify no error occurred
     expect(node.error as jest.Mock).not.toHaveBeenCalled()
   })
+
+  it('accepts PowerConstraints without a cemId, unlike every other command', () => {
+    const { handlers } = setupNode({})
+
+    const done = jest.fn()
+    handlers.input({
+      payload: {
+        command: 'PowerConstraints',
+        constraints: { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -3000, maxPower: 3000 }
+      }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+  })
+
+  it('errors when constraints object is missing, even without a cemId', () => {
+    const { handlers } = setupNode({})
+
+    const done = jest.fn()
+    handlers.input({ payload: { command: 'PowerConstraints' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
 })
 
 describe('s2-rm - TEMPORARY_ERROR handling', () => {
@@ -191,358 +211,17 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
   })
 })
 
-describe('s2-rm - grid connection default constraints', () => {
-  it('initializes pendingPEBCConstraints from rmConfig gridConnection', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x25A' }
-    const { node, handlers } = setupNode({}, rmConfig)
-
-    // Connect a CEM and trigger SelectControlType to cause PEBC constraints to be sent
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-
-    // No error means constraints were accepted without a prior PowerConstraints command
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-
-  it('initializes with correct wattage for 3x25A', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x25A', controlTypes: 'POWER_ENVELOPE_BASED_CONTROL' }
-    const { node, handlers } = setupNode({}, rmConfig)
-
-    ;(node.send as jest.Mock).mockClear()
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-
-    // Session created without error; constraints are set from config (-17250, 17250)
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-
-  it('does not initialize pendingPEBCConstraints when gridConnection is not set', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG }
-    const { node, handlers } = setupNode({}, rmConfig)
-
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-
-  it('uses customMaxPowerW when gridConnection is custom', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: 'custom', customMaxPowerW: 15000 }
-    const { node, handlers } = setupNode({}, rmConfig)
-
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-})
-
-describe('s2-rm - PEBC instruction accumulation', () => {
-  beforeEach(() => { jest.useFakeTimers() })
-  afterEach(() => { jest.useRealTimers() })
-
-  const SLOT = 900_000
-
-  function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
-    handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-    handlers.input(
-      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
-      jest.fn(), jest.fn()
-    )
-  }
-
-  function sendPebcInstruction (handlers: Record<string, (...args: unknown[]) => void>, executionTimeMs: number, cemId = 'cem-1', constraintsId = 'cid-1'): void {
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId,
-        message: serialize({
-          message_type: 'PEBC.Instruction',
-          message_id: 'pi-' + executionTimeMs,
-          id: 'instr-' + executionTimeMs,
-          power_constraints_id: constraintsId,
-          execution_time: new Date(executionTimeMs).toISOString(),
-          power_envelopes: [{
-            id: 'pe-1',
-            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-            power_envelope_elements: [{ duration: SLOT, upper_limit: 11040, lower_limit: -11040 }]
-          }]
-        })
-      }
-    }, jest.fn(), jest.fn())
-  }
-
-  it('accumulates multiple single-slot instructions into one schedule', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    ;(node.send as jest.Mock).mockClear()
-
-    const now = Date.now()
-    sendPebcInstruction(handlers, now, 'cem-1')
-    sendPebcInstruction(handlers, now + SLOT, 'cem-1')
-    sendPebcInstruction(handlers, now + 2 * SLOT, 'cem-1')
-
-    // Port 3 should have been called - check the last call has the active element
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
-    )
-    expect(port3Calls.length).toBeGreaterThan(0)
-    const lastPayload = ((port3Calls[port3Calls.length - 1][0] as unknown[])[2] as { payload: { upperBound: number } }).payload
-    expect(lastPayload.upperBound).toBe(11040)
-  })
-
-  it('fires port 3 at the start of the next slot', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-
-    const now = Date.now()
-    sendPebcInstruction(handlers, now, 'cem-1')
-    sendPebcInstruction(handlers, now + SLOT, 'cem-1')
-    ;(node.send as jest.Mock).mockClear()
-
-    jest.advanceTimersByTime(SLOT)
-
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
-    )
-    expect(port3Calls.length).toBe(1)
-  })
-
-  it('emits full schedule on port 4 when schedule is updated', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    ;(node.send as jest.Mock).mockClear()
-
-    const now = Date.now()
-    sendPebcInstruction(handlers, now, 'cem-1')
-    sendPebcInstruction(handlers, now + SLOT, 'cem-1')
-
-    const port4Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[3] !== null
-    )
-    expect(port4Calls.length).toBeGreaterThan(0)
-    const last = (port4Calls[port4Calls.length - 1][0] as unknown[])[3] as { cemId: string, payload: { elements: unknown[] } }
-    expect(last.cemId).toBe('cem-1')
-    expect(last.payload.elements).toHaveLength(2)
-  })
-
-  it('clears accumulated slots when power_constraints_id changes', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-
-    const now = Date.now()
-    sendPebcInstruction(handlers, now - SLOT, 'cem-1', 'cid-old')
-    sendPebcInstruction(handlers, now, 'cem-1', 'cid-old')
-    ;(node.send as jest.Mock).mockClear()
-
-    // New planning period - old slots should be cleared
-    sendPebcInstruction(handlers, now + SLOT, 'cem-1', 'cid-new')
-
-    // Only the new slot should be in the schedule (the old ones are gone)
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-    // The new slot starts in the future so emitActiveElement finds nothing - no port 3 output
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
-    )
-    expect(port3Calls.length).toBe(0)
-  })
-})
-
-describe('s2-rm - duplicate active element deduplication', () => {
-  beforeEach(() => { jest.useFakeTimers() })
-  afterEach(() => { jest.useRealTimers() })
-
-  const SLOT = 900_000
-
-  function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-    handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
-      jest.fn(), jest.fn()
-    )
-  }
-
-  function sendPebcInstruction (handlers: Record<string, (...args: unknown[]) => void>, opts: { executionTimeMs: number, upper?: number, lower?: number, constraintsId?: string }): void {
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: 'PEBC.Instruction',
-          message_id: 'pi-' + Math.random(),
-          id: 'instr-' + Math.random(),
-          power_constraints_id: opts.constraintsId ?? 'cid-1',
-          execution_time: new Date(opts.executionTimeMs).toISOString(),
-          power_envelopes: [{
-            id: 'pe-1',
-            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-            power_envelope_elements: [{ duration: SLOT, upper_limit: opts.upper ?? 11040, lower_limit: opts.lower ?? -11040 }]
-          }]
-        })
-      }
-    }, jest.fn(), jest.fn())
-  }
-
-  function countPort3 (node: Record<string, unknown>): number {
-    return (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
-    ).length
-  }
-
-  it('emits port 3 only once when the same active element is received repeatedly', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    const now = Date.now()
-    ;(node.send as jest.Mock).mockClear()
-
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-
-    expect(countPort3(node)).toBe(1)
-  })
-
-  it('emits port 3 again when bounds change for the same time slot', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    const now = Date.now()
-    ;(node.send as jest.Mock).mockClear()
-
-    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 5000 })
-    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 8000 })
-
-    expect(countPort3(node)).toBe(2)
-  })
-
-  it('shows duplicate count in node status when duplicates are received', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    const now = Date.now()
-
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ fill: 'yellow', text: expect.stringContaining('dup') })
-    )
-  })
-
-  it('resets duplicate count and restores green status when a new instruction arrives', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    const now = Date.now()
-
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    sendPebcInstruction(handlers, { executionTimeMs: now })
-    ;(node.status as jest.Mock).mockClear()
-
-    sendPebcInstruction(handlers, { executionTimeMs: now, upper: 8000 })
-
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ fill: 'green' })
-    )
-    expect(node.status as jest.Mock).not.toHaveBeenCalledWith(
-      expect.objectContaining({ fill: 'yellow' })
-    )
-  })
-})
-
-describe('s2-rm - schedule persistence', () => {
-  let tmpDir: string
-
-  function makePebcInstructionMsg (durationMs: number, upperLimit: number, executionTime?: string, constraintsId = 'cid-1'): string {
-    return serialize({
-      message_type: 'PEBC.Instruction',
-      message_id: 'pi1',
-      id: 'instr-1',
-      power_constraints_id: constraintsId,
-      ...(executionTime ? { execution_time: executionTime } : {}),
-      power_envelopes: [{
-        id: 'pe-1',
-        commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-        power_envelope_elements: [{ duration: durationMs, upper_limit: upperLimit, lower_limit: -upperLimit }]
-      }]
-    })
-  }
-
-  function connectAndSendPebc (handlers: Record<string, (...args: unknown[]) => void>, durationMs = 3600000): void {
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-    handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
-      jest.fn(), jest.fn()
-    )
-    handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: makePebcInstructionMsg(durationMs, 11040) } },
-      jest.fn(), jest.fn()
-    )
-  }
-
-  beforeEach(() => {
-    jest.useFakeTimers()
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 's2-rm-persist-'))
-  })
-
-  afterEach(() => {
-    jest.useRealTimers()
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  it('saves schedule to file when a PEBC instruction is received', () => {
-    const { handlers } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
-    connectAndSendPebc(handlers)
-
-    const scheduleFile = path.join(tmpDir, '.s2', 'node-test-id-schedule.json')
-    expect(fs.existsSync(scheduleFile)).toBe(true)
-    const saved = JSON.parse(fs.readFileSync(scheduleFile, 'utf8'))
-    expect(saved.cemId).toBe('cem-1')
-    expect(saved.commodityQuantity).toBe('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
-    expect(Array.isArray(saved.elements)).toBe(true)
-    expect(saved.elements.length).toBe(1)
-  })
-
-  it('restores a saved schedule on startup and emits the current element', () => {
-    const { handlers } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
-    connectAndSendPebc(handlers)
-
-    const { node: node2 } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
-
-    expect(node2.log as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('Restored S2 schedule'))
-    expect(node2.send as jest.Mock).toHaveBeenCalledWith([
-      null,
-      null,
-      expect.objectContaining({ cemId: 'cem-1', payload: expect.objectContaining({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }) }),
-      null
-    ])
-  })
-
-  it('filters out past elements and does not restore when all elements are expired', () => {
-    const now = Date.now()
-    const pastSchedule = {
-      receivedAt: now - 7200000,
-      cemId: 'cem-past',
-      instructionId: 'instr-past',
-      commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-      elements: [
-        { startMs: now - 7200000, endMs: now - 3600000, duration: 3600000, upperBound: 11040, lowerBound: -11040 }
-      ]
-    }
-    const scheduleDir = path.join(tmpDir, '.s2')
-    fs.mkdirSync(scheduleDir, { recursive: true })
-    fs.writeFileSync(path.join(scheduleDir, 'node-test-id-schedule.json'), JSON.stringify(pastSchedule))
-
-    const { node } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
-
-    expect(node.log as jest.Mock).not.toHaveBeenCalledWith(expect.stringContaining('Restored'))
-    expect(node.send as jest.Mock).not.toHaveBeenCalledWith([null, null, expect.anything(), null])
-  })
-
-  it('silently ignores a missing schedule file on startup', () => {
-    const { node } = setupNode({}, DEFAULT_RM_CONFIG, { userDir: tmpDir })
-
-    expect(node.warn as jest.Mock).not.toHaveBeenCalled()
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-})
-
 describe('s2-rm - flow context tracking', () => {
   const PEBC_CONTROL_TYPE = 'POWER_ENVELOPE_BASED_CONTROL'
+
+  function setConstraints (handlers: Record<string, (...args: unknown[]) => void>, minPower: number, maxPower: number): void {
+    handlers.input({
+      payload: {
+        command: 'PowerConstraints',
+        constraints: { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower, maxPower }
+      }
+    }, jest.fn(), jest.fn())
+  }
 
   function connectAndSelectPebc (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
@@ -557,9 +236,10 @@ describe('s2-rm - flow context tracking', () => {
   }
 
   it('sets pebcConstraintsId in flow context when PEBC.PowerConstraints is sent', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x16A', controlTypes: PEBC_CONTROL_TYPE }
+    const rmConfig = { ...DEFAULT_RM_CONFIG, controlTypes: PEBC_CONTROL_TYPE }
     const { handlers, flowContext } = setupNode({}, rmConfig)
 
+    setConstraints(handlers, -11040, 11040)
     connectAndSelectPebc(handlers)
 
     expect(typeof flowContext.pebcConstraintsId).toBe('string')
@@ -567,19 +247,14 @@ describe('s2-rm - flow context tracking', () => {
   })
 
   it('updates pebcConstraintsId when new constraints are sent via PowerConstraints command', () => {
-    const rmConfig = { ...DEFAULT_RM_CONFIG, gridConnection: '3x16A', controlTypes: PEBC_CONTROL_TYPE }
+    const rmConfig = { ...DEFAULT_RM_CONFIG, controlTypes: PEBC_CONTROL_TYPE }
     const { handlers, flowContext } = setupNode({}, rmConfig)
 
+    setConstraints(handlers, -11040, 11040)
     connectAndSelectPebc(handlers)
     const firstId = flowContext.pebcConstraintsId as string
 
-    handlers.input({
-      payload: {
-        command: 'PowerConstraints',
-        cemId: 'cem-1',
-        constraints: { commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -5000, maxPower: 5000 }
-      }
-    }, jest.fn(), jest.fn())
+    setConstraints(handlers, -5000, 5000)
 
     expect(typeof flowContext.pebcConstraintsId).toBe('string')
     expect(flowContext.pebcConstraintsId).not.toBe(firstId)
@@ -828,31 +503,8 @@ describe('s2-rm - pending instructions context', () => {
     expect(port3Calls.length).toBe(1)
   })
 
-  it('enriches immediate OMBC instruction on port 3 with topic and operationMode', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: {
-          operationModes: [
-            {
-              id: 'mode-standby',
-              diagnostic_label: 'Standby',
-              power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }],
-              abnormal_condition_only: false
-            },
-            {
-              id: 'mode-on',
-              diagnostic_label: 'Normal operation',
-              power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 2500 }],
-              abnormal_condition_only: false
-            }
-          ],
-          transitions: [],
-          timers: []
-        },
-        status: { activeOperationModeId: 'mode-standby', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
+  it('enriches an immediate OMBC instruction on port 3 with msg.controlType and namespaced msg.ombc', () => {
+    const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
 
@@ -876,30 +528,13 @@ describe('s2-rm - pending instructions context', () => {
       (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
     )
     expect(port3Call).toBeDefined()
-    const out = (port3Call as unknown[][])[0][2] as { topic: string, operationMode: { id: string, index: number, label: string, factor: number, powerRanges: unknown[] } }
-    expect(out.topic).toBe('Normal operation')
-    expect(out.operationMode.id).toBe('mode-on')
-    expect(out.operationMode.index).toBe(1)
-    expect(out.operationMode.label).toBe('Normal operation')
-    expect(out.operationMode.factor).toBe(0.8)
-    expect(out.operationMode.powerRanges).toHaveLength(1)
+    const out = (port3Call as unknown[][])[0][2] as { controlType: string, ombc: { operation_mode_id: string } }
+    expect(out.controlType).toBe('OPERATION_MODE_BASED_CONTROL')
+    expect(out.ombc.operation_mode_id).toBe('mode-on')
   })
 
-  it('enriches future OMBC instruction on port 3 with topic and operationMode when dispatched', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: {
-          operationModes: [
-            { id: 'mode-standby', diagnostic_label: 'Standby', power_ranges: [], abnormal_condition_only: false },
-            { id: 'mode-on', diagnostic_label: 'Normal operation', power_ranges: [], abnormal_condition_only: false }
-          ],
-          transitions: [],
-          timers: []
-        },
-        status: { activeOperationModeId: 'mode-standby', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
+  it('enriches a future OMBC instruction on port 3 with msg.controlType and namespaced msg.ombc when dispatched', () => {
+    const { node, handlers } = setupNode({})
     connectCem(handlers)
 
     handlers.input({
@@ -925,315 +560,142 @@ describe('s2-rm - pending instructions context', () => {
       (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
     )
     expect(port3Call).toBeDefined()
-    const out = (port3Call as unknown[][])[0][2] as { topic: string, operationMode: { label: string } }
-    expect(out.topic).toBe('Normal operation')
-    expect(out.operationMode.label).toBe('Normal operation')
+    const out = (port3Call as unknown[][])[0][2] as { controlType: string, ombc: { operation_mode_id: string } }
+    expect(out.controlType).toBe('OPERATION_MODE_BASED_CONTROL')
+    expect(out.ombc.operation_mode_id).toBe('mode-on')
   })
 
-  it('sends OMBC.Status on port 1 when an immediate OMBC instruction is dispatched', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: {
-          operationModes: [
-            { id: 'mode-off', power_ranges: [], abnormal_condition_only: false },
-            { id: 'mode-on', power_ranges: [], abnormal_condition_only: false }
-          ],
-          transitions: [],
-          timers: []
-        },
-        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
-    connectCem(handlers)
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.SELECT_CONTROL_TYPE,
-          message_id: 'sct-1',
-          control_type: 'OPERATION_MODE_BASED_CONTROL'
-        })
-      }
-    }, jest.fn(), jest.fn())
-    ;(node.send as jest.Mock).mockClear()
-
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.OMBC_INSTRUCTION,
-          message_id: 'msg-ombc',
-          id: 'instr-ombc',
-          execution_time: new Date(Date.now() - 1000).toISOString(),
-          operation_mode_id: 'mode-on',
-          operation_mode_factor: 1,
-          abnormal_condition: false
-        })
-      }
-    }, jest.fn(), jest.fn())
-
-    const ombcStatusCall = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => {
-        const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
-        return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === MessageType.OMBC_STATUS
-      }
-    )
-    expect(ombcStatusCall).toBeDefined()
-    const statusMsg = ((ombcStatusCall as unknown[][])[0][0] as { payload: { message: { active_operation_mode_id: string } } })
-    expect(statusMsg.payload.message.active_operation_mode_id).toBe('mode-on')
-  })
-
-  it('sends OMBC.Status on port 1 immediately when a future OMBC instruction is accepted', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: {
-          operationModes: [
-            { id: 'mode-off', power_ranges: [], abnormal_condition_only: false },
-            { id: 'mode-on', power_ranges: [], abnormal_condition_only: false }
-          ],
-          transitions: [],
-          timers: []
-        },
-        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
-    connectCem(handlers)
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.SELECT_CONTROL_TYPE,
-          message_id: 'sct-2',
-          control_type: 'OPERATION_MODE_BASED_CONTROL'
-        })
-      }
-    }, jest.fn(), jest.fn())
-    ;(node.send as jest.Mock).mockClear()
-
-    // OMBC.Status is sent at accept time (inside _ackAndForward), not at execution time.
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.OMBC_INSTRUCTION,
-          message_id: 'msg-ombc-fut',
-          id: 'instr-ombc-fut',
-          execution_time: new Date(Date.now() + 5000).toISOString(),
-          operation_mode_id: 'mode-on',
-          operation_mode_factor: 1,
-          abnormal_condition: false
-        })
-      }
-    }, jest.fn(), jest.fn())
-
-    const ombcStatusCall = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => {
-        const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
-        return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === MessageType.OMBC_STATUS
-      }
-    )
-    expect(ombcStatusCall).toBeDefined()
-    const statusMsg = ((ombcStatusCall as unknown[][])[0][0] as { payload: { message: { active_operation_mode_id: string } } })
-    expect(statusMsg.payload.message.active_operation_mode_id).toBe('mode-on')
-  })
-
-  it('does not send OMBC.Status again when a future OMBC instruction is dispatched at execution time', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: {
-          operationModes: [
-            { id: 'mode-off', power_ranges: [], abnormal_condition_only: false },
-            { id: 'mode-on', power_ranges: [], abnormal_condition_only: false }
-          ],
-          transitions: [],
-          timers: []
-        },
-        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers } = setupNode({ controlTypeConfig: ombcConfig })
-    connectCem(handlers)
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-2', control_type: 'OPERATION_MODE_BASED_CONTROL' })
-      }
-    }, jest.fn(), jest.fn())
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.OMBC_INSTRUCTION,
-          message_id: 'msg-ombc-fut2',
-          id: 'instr-ombc-fut2',
-          execution_time: new Date(Date.now() + 5000).toISOString(),
-          operation_mode_id: 'mode-on',
-          operation_mode_factor: 1,
-          abnormal_condition: false
-        })
-      }
-    }, jest.fn(), jest.fn())
-    ;(node.send as jest.Mock).mockClear()
-
-    jest.advanceTimersByTime(7000)
-
-    const ombcStatusCalls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => {
-        const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
-        return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === MessageType.OMBC_STATUS
-      }
-    )
-    expect(ombcStatusCalls.length).toBe(0)
-  })
-
-  it('persists OMBC status to flow context when an OMBC instruction is dispatched', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: { operationModes: [{ id: 'mode-off', power_ranges: [], abnormal_condition_only: false }], transitions: [], timers: [] },
-        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
-      }
-    })
-    const { handlers, flowContext } = setupNode({ controlTypeConfig: ombcConfig })
-    connectCem(handlers)
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-1', control_type: 'OPERATION_MODE_BASED_CONTROL' })
-      }
-    }, jest.fn(), jest.fn())
-
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.OMBC_INSTRUCTION,
-          message_id: 'msg-persist',
-          id: 'instr-persist',
-          execution_time: new Date(Date.now() - 1000).toISOString(),
-          operation_mode_id: 'mode-on',
-          operation_mode_factor: 1
-        })
-      }
-    }, jest.fn(), jest.fn())
-
-    const saved = flowContext['s2OmbcStatus'] as { activeOperationModeId: string }
-    expect(saved).toBeDefined()
-    expect(saved.activeOperationModeId).toBe('mode-on')
-  })
-
-  it('restores persisted OMBC status for a new CEM session', () => {
-    const ombcConfig = JSON.stringify({
-      OMBC: {
-        systemDescription: { operationModes: [{ id: 'mode-off', power_ranges: [], abnormal_condition_only: false }], transitions: [], timers: [] },
-        status: { activeOperationModeId: 'mode-off', operationModeFactor: 1 }
-      }
-    })
-    const { node, handlers, flowContext } = setupNode({ controlTypeConfig: ombcConfig })
-
-    // Simulate a persisted status from a previous session
-    flowContext['s2OmbcStatus'] = { activeOperationModeId: 'mode-on', operationModeFactor: 1 }
-
-    // New CEM connects
+  it('delivers a PEBC instruction on port 3 immediately, bypassing the execution_time queue', () => {
+    const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
 
-    // CEM selects OMBC
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-2', control_type: 'OPERATION_MODE_BASED_CONTROL' })
-      }
-    }, jest.fn(), jest.fn())
-
-    // OMBC.Status should report the persisted mode, not the config default
-    const ombcStatusCall = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => {
-        const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
-        return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === MessageType.OMBC_STATUS
-      }
-    )
-    expect(ombcStatusCall).toBeDefined()
-    const statusMsg = ((ombcStatusCall as unknown[][])[0][0] as { payload: { message: { active_operation_mode_id: string } } })
-    expect(statusMsg.payload.message.active_operation_mode_id).toBe('mode-on')
-  })
-
-  it('stores PEBC instructions in s2PendingInstructions for traceability', () => {
-    const { handlers, flowContext } = setupNode({})
-    connectCem(handlers)
-
-    const SLOT = 900_000
     handlers.input({
       payload: {
         command: 'Message',
         cemId: 'cem-1',
         message: serialize({
           message_type: 'PEBC.Instruction',
-          message_id: 'pi-1',
-          id: 'pebc-instr-1',
+          message_id: 'msg-pebc',
+          id: 'instr-pebc',
+          execution_time: new Date(Date.now() + 60000).toISOString(),
           power_constraints_id: 'cid-1',
-          execution_time: new Date(Date.now()).toISOString(),
-          power_envelopes: [{
-            id: 'pe-1',
-            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-            power_envelope_elements: [{ duration: SLOT, upper_limit: 11040, lower_limit: -11040 }]
-          }]
+          power_envelopes: []
         })
       }
     }, jest.fn(), jest.fn())
 
-    const pending = flowContext[PENDING_KEY] as unknown[]
-    expect(Array.isArray(pending)).toBe(true)
-    const pebcEntry = pending.find(
-      (p) => (p as Record<string, unknown>).isPebc === true
+    const port3Call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
     )
-    expect(pebcEntry).toBeDefined()
-    expect((pebcEntry as Record<string, unknown>).cemId).toBe('cem-1')
+    expect(port3Call).toBeDefined()
+    const out = (port3Call as unknown[][])[0][2] as { controlType: string, pebc: Record<string, unknown> }
+    expect(out.controlType).toBe('POWER_ENVELOPE_BASED_CONTROL')
+    expect(out.pebc.message_type).toBe('PEBC.Instruction')
+
+    // No pending-instruction bookkeeping for PEBC - it's not queued generically
+    expect(node.error as jest.Mock).not.toHaveBeenCalled()
   })
+})
 
-  it('prunes PEBC entries from context after their schedule ends', () => {
-    const { handlers, flowContext } = setupNode({})
+describe('s2-rm - UpdateStatus / SystemDescription commands', () => {
+  function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  function findMessageOfType (node: Record<string, unknown>, messageType: string): Record<string, unknown> | undefined {
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => {
+      const p1 = Array.isArray(c[0]) && (c[0] as unknown[])[0] as { payload?: { s2Signal?: string, message?: { message_type?: string } } }
+      return p1 && p1.payload?.s2Signal === 'Message' && p1.payload?.message?.message_type === messageType
+    })
+    if (!call) return undefined
+    return (((call as unknown[][])[0][0]) as { payload: { message: Record<string, unknown> } }).payload.message
+  }
+
+  it('sends OMBC.Status to the CEM for an UpdateStatus command', () => {
+    const { node, handlers } = setupNode({})
     connectCem(handlers)
+    ;(node.send as jest.Mock).mockClear()
 
-    const SLOT = 900_000
-    const now = Date.now()
     handlers.input({
       payload: {
-        command: 'Message',
+        command: 'UpdateStatus',
         cemId: 'cem-1',
-        message: serialize({
-          message_type: 'PEBC.Instruction',
-          message_id: 'pi-prune',
-          id: 'pebc-instr-prune',
-          power_constraints_id: 'cid-1',
-          execution_time: new Date(now).toISOString(),
-          power_envelopes: [{
-            id: 'pe-1',
-            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-            power_envelope_elements: [{ duration: SLOT, upper_limit: 11040, lower_limit: -11040 }]
-          }]
-        })
+        controlType: 'OPERATION_MODE_BASED_CONTROL',
+        ombc: { activeOperationModeId: 'mode-on', operationModeFactor: 1 }
       }
     }, jest.fn(), jest.fn())
 
-    // Advance past the schedule end (1 slot = 15 min) + poll interval
-    jest.advanceTimersByTime(SLOT + 2000)
+    const status = findMessageOfType(node, MessageType.OMBC_STATUS)
+    expect(status).toBeDefined()
+    expect(status!.active_operation_mode_id).toBe('mode-on')
+  })
 
-    const pending = (flowContext[PENDING_KEY] as unknown[]) || []
-    const pebcEntry = pending.find(
-      (p) => (p as Record<string, unknown>).isPebc === true
-    )
-    expect(pebcEntry).toBeUndefined()
+  it('sends OMBC.SystemDescription to the CEM for a SystemDescription command', () => {
+    const { node, handlers } = setupNode({})
+    connectCem(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      payload: {
+        command: 'SystemDescription',
+        cemId: 'cem-1',
+        controlType: 'OPERATION_MODE_BASED_CONTROL',
+        ombc: { operationModes: [{ id: 'mode-on', diagnostic_label: 'On', power_ranges: [], abnormal_condition_only: false }], transitions: [], timers: [] }
+      }
+    }, jest.fn(), jest.fn())
+
+    const sysDesc = findMessageOfType(node, MessageType.OMBC_SYSTEM_DESCRIPTION)
+    expect(sysDesc).toBeDefined()
+    expect((sysDesc!.operation_modes as unknown[])[0]).toMatchObject({ id: 'mode-on' })
+  })
+
+  it('errors when UpdateStatus is missing a controlType', () => {
+    const { handlers } = setupNode({})
+    connectCem(handlers)
+
+    const done = jest.fn()
+    handlers.input({ payload: { command: 'UpdateStatus', cemId: 'cem-1', ombc: {} } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('warns and succeeds when UpdateStatus targets an unknown CEM', () => {
+    const { node, handlers } = setupNode({})
+
+    const done = jest.fn()
+    handlers.input({
+      payload: { command: 'UpdateStatus', cemId: 'cem-unknown', controlType: 'OPERATION_MODE_BASED_CONTROL', ombc: {} }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(node.warn as jest.Mock).toHaveBeenCalled()
+  })
+
+  it('errors when SystemDescription is missing a controlType', () => {
+    const { handlers } = setupNode({})
+    connectCem(handlers)
+
+    const done = jest.fn()
+    handlers.input({ payload: { command: 'SystemDescription', cemId: 'cem-1', ombc: {} } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('warns and succeeds when SystemDescription targets an unknown CEM', () => {
+    const { node, handlers } = setupNode({})
+
+    const done = jest.fn()
+    handlers.input({
+      payload: { command: 'SystemDescription', cemId: 'cem-unknown', controlType: 'OPERATION_MODE_BASED_CONTROL', ombc: {} }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(node.warn as jest.Mock).toHaveBeenCalled()
   })
 })
 
@@ -1242,7 +704,6 @@ describe('s2-rm - RevokeObject handling', () => {
   afterEach(() => { jest.useRealTimers() })
 
   const PENDING_KEY = 's2PendingInstructions'
-  const SCHEDULE_KEY = 's2PebcSchedule'
 
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
@@ -1427,46 +888,6 @@ describe('s2-rm - RevokeObject handling', () => {
 
     expect(done).toHaveBeenCalledWith()
     expect(node.error as jest.Mock).not.toHaveBeenCalled()
-  })
-
-  it('clears the PEBC schedule when a PEBC instruction is revoked', () => {
-    const SLOT = 900_000
-    const { node, handlers, flowContext } = setupNode({})
-    connectCem(handlers)
-
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: 'PEBC.Instruction',
-          message_id: 'pi-1',
-          id: 'pebc-instr-1',
-          power_constraints_id: 'cid-1',
-          execution_time: new Date(Date.now()).toISOString(),
-          power_envelopes: [{
-            id: 'pe-1',
-            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-            power_envelope_elements: [{ duration: SLOT, upper_limit: 11040, lower_limit: -11040 }]
-          }]
-        })
-      }
-    }, jest.fn(), jest.fn())
-
-    expect(flowContext[SCHEDULE_KEY]).toBeDefined()
-    ;(node.send as jest.Mock).mockClear()
-
-    sendRevokeObject(handlers, 'pebc-instr-1', 'PEBC.Instruction')
-
-    expect(flowContext[SCHEDULE_KEY]).toBeNull()
-
-    jest.advanceTimersByTime(SLOT * 2)
-
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
-    )
-    // Only the port 2 forward of the revoke itself, no schedule dispatch
-    expect(port3Calls.length).toBe(0)
   })
 })
 

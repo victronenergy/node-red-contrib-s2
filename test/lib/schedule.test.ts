@@ -152,8 +152,8 @@ describe('getNextElementStart', () => {
     expect(getNextElementStart(schedule!, base + SLOT)).toBeNull()
   })
 
-  it('returns null when schedule has not started', () => {
-    expect(getNextElementStart(schedule!, base - 1)).toBeNull()
+  it('returns the first element start when the schedule has not started yet', () => {
+    expect(getNextElementStart(schedule!, base - 1)).toBe(base)
   })
 
   it('returns null when schedule has ended', () => {

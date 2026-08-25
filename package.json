@@ -21,7 +21,11 @@
       "s2-rm-config": "./dist/nodes/s2-rm-config/index.js",
       "s2-cem-config": "./dist/nodes/s2-cem-config/index.js",
       "s2-websocket": "./dist/nodes/s2-websocket/index.js",
-      "s2-rm": "./dist/nodes/s2-rm/index.js"
+      "s2-rm": "./dist/nodes/s2-rm/index.js",
+      "s2-ombc-config": "./dist/nodes/s2-ombc-config/index.js",
+      "s2-ombc": "./dist/nodes/s2-ombc/index.js",
+      "s2-pebc-config": "./dist/nodes/s2-pebc-config/index.js",
+      "s2-pebc": "./dist/nodes/s2-pebc/index.js"
     }
   },
   "scripts": {

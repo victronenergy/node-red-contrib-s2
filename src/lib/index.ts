@@ -1,5 +1,5 @@
 export { S2Session, State } from './s2/session'
-export type { StateValue, S2SessionOptions, ControlTypeConfig } from './s2/session'
+export type { StateValue, S2SessionOptions, StatusPayload, SystemDescriptionPayload } from './s2/session'
 
 export {
   MessageType,

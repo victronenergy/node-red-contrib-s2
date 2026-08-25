@@ -13,18 +13,34 @@ export interface S2RmConfigNode extends NodeRedNode {
   model: string
   firmwareVersion: string
   controlTypes: string // comma-separated list of control type values
-  /** Hardware ceiling for battery charge power in Watts. 0 = no limit configured. */
-  maxBatteryChargePower: number
-  /** Hardware ceiling for battery discharge power in Watts. 0 = no limit configured. */
-  maxBatteryDischargePower: number
-  gridConnection: string // e.g. '3x25A' or 'custom'
-  customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
+  /** Commodity quantity list for power measurement, or '' for none. */
+  providesPowerMeasurement: string
+  /** Whether this RM provides power forecasts to the CEM. */
+  providesForecast: boolean
   /** How often (ms) to poll for due pending instructions. Defaults to 2000 if not set. */
   instructionPollIntervalMs: number
   /** When true, skip sending InstructionStatusUpdate(ACCEPTED/STARTED) automatically.
    * ReceptionStatus and OMBC.Status are still sent. Use when the CEM does not require
    * acknowledgment messages and the extra D-Bus traffic causes CPU load. */
   skipInstructionStatus: boolean
+}
+
+/**
+ * Server-side shape of the s2-ombc-config config node.
+ * Use RED.nodes.getNode(id) and cast to this type.
+ */
+export interface S2OmbcConfigNode extends NodeRedNode {
+  /** JSON-encoded OMBCSystemDescriptionConfig: { operationModes, transitions, timers } */
+  systemDescription: string
+}
+
+/**
+ * Server-side shape of the s2-pebc-config config node.
+ * Use RED.nodes.getNode(id) and cast to this type.
+ */
+export interface S2PebcConfigNode extends NodeRedNode {
+  gridConnection: string // e.g. '3x25A' or 'custom'
+  customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
 }
 
 /**

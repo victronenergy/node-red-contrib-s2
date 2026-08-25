@@ -1,0 +1,62 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-ombc-config', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      systemDescription: { value: '' }
+    },
+    label: function () {
+      return this.name || 's2-ombc-config'
+    },
+    oneditprepare: function () {
+      $('#node-config-input-systemDescription').typedInput({ types: ['json'] })
+
+      if (!this.systemDescription) {
+        var modeId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = Math.random() * 16 | 0
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+        })
+        var defaultConfig = {
+          operationModes: [
+            {
+              id: modeId,
+              diagnostic_label: 'Normal operation',
+              power_ranges: [
+                {
+                  commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+                  start_of_range: 0,
+                  end_of_range: 2500
+                }
+              ],
+              abnormal_condition_only: false
+            }
+          ],
+          transitions: [],
+          timers: []
+        }
+        $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(defaultConfig, null, 2))
+      }
+
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-ombc-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-systemDescription"><i class="fa fa-code"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription as JSON: operationModes, transitions, timers. Sent to the CEM by s2-ombc once OMBC is the selected control type."></i></label>
+      <input type="text" id="node-config-input-systemDescription">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
