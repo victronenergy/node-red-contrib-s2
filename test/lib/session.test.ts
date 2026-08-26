@@ -667,35 +667,20 @@ describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
   })
 })
 
-describe('S2Session skipInstructionStatus option', () => {
-  function connectedSession (skipInstructionStatus: boolean) {
-    const mocks = makeSession({ skipInstructionStatus })
+describe('S2Session ACCEPTED is not configurable off', () => {
+  // The S2 spec requires an InstructionStatusUpdate for every instruction until it reaches
+  // a terminal state, so ACCEPTED (unlike s2-rm-config's STARTED-only skipInstructionStatus
+  // setting, tested at the s2-rm node level) cannot be suppressed on S2Session.
+  function connectedSession () {
+    const mocks = makeSession()
     mocks.session.start()
     mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
     mocks.onSend.mockClear()
     return mocks
   }
 
-  it('still sends ReceptionStatus when skipInstructionStatus is true', () => {
-    const { session, onSend } = connectedSession(true)
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
-
-    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
-  })
-
-  it('does not send InstructionStatusUpdate(ACCEPTED) when skipInstructionStatus is true', () => {
-    const { session, onSend } = connectedSession(true)
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
-
-    const hasAccepted = onSend.mock.calls.some(
-      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE &&
-        (c[0] as Record<string, unknown>).status_type === InstructionStatus.ACCEPTED
-    )
-    expect(hasAccepted).toBe(false)
-  })
-
-  it('still sends InstructionStatusUpdate(ACCEPTED) when skipInstructionStatus is false', () => {
-    const { session, onSend } = connectedSession(false)
+  it('always sends InstructionStatusUpdate(ACCEPTED) for an instruction with an id field', () => {
+    const { session, onSend } = connectedSession()
     session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
 
     const hasAccepted = onSend.mock.calls.some(

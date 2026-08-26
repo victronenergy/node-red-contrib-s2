@@ -51,10 +51,6 @@ export interface S2SessionOptions {
   onInstruction?: (msg: S2IncomingMessage) => void
   onError?: (err: Error) => void
   retryDelayMs?: number
-  /** When true, skip auto-sending InstructionStatusUpdate(ACCEPTED) on instruction receipt.
-   * ReceptionStatus and OMBC.Status are still sent. Use to reduce D-Bus traffic when
-   * the CEM does not require acknowledgment messages. */
-  skipInstructionStatus?: boolean
 }
 
 /**
@@ -88,7 +84,6 @@ export class S2Session {
   private readonly _onInstruction: (msg: S2IncomingMessage) => void
   private readonly _onError: (err: Error) => void
   private readonly _retryDelayMs: number
-  private readonly _skipInstructionStatus: boolean
   private readonly _sentMessages: Map<string, { msg: object, retryCount: number }>
   private readonly _retryTimers: Map<string, ReturnType<typeof setTimeout>>
   private _state: StateValue
@@ -96,7 +91,7 @@ export class S2Session {
   private _lastKeepAlive: Date | null
   private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
 
-  constructor ({ cemId, rmDetails, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs, skipInstructionStatus }: S2SessionOptions) {
+  constructor ({ cemId, rmDetails, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs }: S2SessionOptions) {
     this._cemId = cemId
     this._rmDetails = rmDetails
     this._onSend = onSend || (() => {})
@@ -105,7 +100,6 @@ export class S2Session {
     this._onInstruction = onInstruction || this._onMessage
     this._onError = onError || ((err) => console.error(err))
     this._retryDelayMs = retryDelayMs ?? 5000
-    this._skipInstructionStatus = skipInstructionStatus === true
     this._sentMessages = new Map()
     this._retryTimers = new Map()
 
@@ -344,7 +338,11 @@ export class S2Session {
   private _ackAndForward (msg: S2IncomingMessage): void {
     this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
     const instructionId = (msg as Record<string, unknown>).id
-    if (typeof instructionId === 'string' && !this._skipInstructionStatus) {
+    // ACCEPTED is not gated by skipInstructionStatus (s2-rm-config): the S2 spec requires
+    // an InstructionStatusUpdate for every instruction until it reaches a terminal state, and
+    // this one is a single cheap message per instruction, unlike the higher-frequency STARTED
+    // updates that flag is meant to reduce.
+    if (typeof instructionId === 'string') {
       this._send(makeInstructionStatusUpdate(instructionId, InstructionStatus.ACCEPTED))
     }
     this._onInstruction(msg)

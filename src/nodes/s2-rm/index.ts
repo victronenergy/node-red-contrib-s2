@@ -225,7 +225,6 @@ export = function (RED: NodeRedApp): void {
       const session = new S2Session({
         cemId,
         rmDetails: resolvedDetails,
-        skipInstructionStatus: isSkipInstructionStatus,
 
         onSend: (msg) => {
           const m = msg as Record<string, unknown>

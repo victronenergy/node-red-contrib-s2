@@ -19,9 +19,11 @@ export interface S2RmConfigNode extends NodeRedNode {
   providesForecast: boolean
   /** How often (ms) to poll for due pending instructions. Defaults to 2000 if not set. */
   instructionPollIntervalMs: number
-  /** When true, skip sending InstructionStatusUpdate(ACCEPTED/STARTED) automatically.
-   * ReceptionStatus and OMBC.Status are still sent. Use when the CEM does not require
-   * acknowledgment messages and the extra D-Bus traffic causes CPU load. */
+  /** When true, skip sending the automatic InstructionStatusUpdate(STARTED) when a pending
+   * instruction's execution_time arrives. ReceptionStatus and InstructionStatusUpdate(ACCEPTED)
+   * are always sent - the S2 spec requires them for every instruction regardless of this
+   * setting. Use when the CEM does not need STARTED updates and the extra traffic causes
+   * CPU load. */
   skipInstructionStatus: boolean
 }
 

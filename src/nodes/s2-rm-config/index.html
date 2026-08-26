@@ -197,7 +197,7 @@
         <label class="s2-checkbox-label">
           <input type="checkbox" id="node-config-input-skipInstructionStatus">
           Skip instruction status updates
-          <i class="fa fa-info-circle tooltip-icon" data-tooltip="When enabled, InstructionStatusUpdate(ACCEPTED/STARTED) messages are not sent automatically. ReceptionStatus and OMBC.Status are still sent. Use when the CEM generates high CPU load from frequent instructions." style="position:static;transform:none;"></i>
+          <i class="fa fa-info-circle tooltip-icon" data-tooltip="When enabled, the automatic InstructionStatusUpdate(STARTED) on execution_time is not sent. ReceptionStatus and InstructionStatusUpdate(ACCEPTED) are always sent regardless, per the S2 spec. Use when the CEM generates high CPU load from frequent instructions." style="position:static;transform:none;"></i>
         </label>
       </div>
     </div>
@@ -216,7 +216,7 @@
   <p>Advertise whether this RM reports <code>PowerMeasurement</code> (as a single 3-phase-symmetric value, or per-phase L1/L2/L3) and/or <code>PowerForecast</code>. These affect what's advertised to the CEM and whether <b>s2-rm</b> emits its <code>PowerMeasurementStart</code> signal on output 1 - they don't gate whether a <code>PowerMeasurement</code>/<code>Forecast</code> command you send is actually forwarded, which happens regardless.</p>
 
   <h3>Advanced</h3>
-  <p><b>Poll interval</b> controls how often <b>s2-rm</b> checks for pending instructions whose <code>execution_time</code> has now arrived (PEBC instructions bypass this queue entirely and are delivered immediately). <b>Skip instruction status updates</b> suppresses automatic <code>InstructionStatusUpdate(ACCEPTED/STARTED)</code> messages - <code>ReceptionStatus</code> and control-type status messages are still sent - useful if the CEM generates high load from frequent instructions.</p>
+  <p><b>Poll interval</b> controls how often <b>s2-rm</b> checks for pending instructions whose <code>execution_time</code> has now arrived (PEBC instructions bypass this queue entirely and are delivered immediately). <b>Skip instruction status updates</b> suppresses the automatic <code>InstructionStatusUpdate(STARTED)</code> sent when that time arrives - <code>ReceptionStatus</code>, <code>InstructionStatusUpdate(ACCEPTED)</code>, and control-type status messages are always sent regardless, since the S2 spec requires them for every instruction - useful if the CEM generates high load from frequent STARTED updates.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
