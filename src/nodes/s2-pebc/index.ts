@@ -51,6 +51,9 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  * Output port 3 - commands to s2-rm:
  *   { payload: { command: 'PowerConstraints', constraints } }
  *   { payload: { command: 'InstructionStatus', cemId, instructionId, status } }
+ *     status is STARTED when an instruction's slot becomes active, SUCCEEDED once all of an
+ *     instruction's slots have elapsed without being revoked, and REVOKED on an incoming
+ *     RevokeObject for that instruction.
  *   { payload: { command: 'Forecast', cemId, forecast } }  (forecast capped to the accumulated schedule, if any)
  */
 export = function (RED: NodeRedApp): void {
@@ -215,6 +218,26 @@ export = function (RED: NodeRedApp): void {
       updateNodeStatus()
     }
 
+    // Sends InstructionStatus(SUCCEEDED) for any instruction whose accumulated slots have all
+    // naturally elapsed (endMs <= nowMs) without being revoked or superseded, and removes those
+    // slots from pebcSlots. An instruction's own slots can span more than one element, so this
+    // only fires once none of its slots remain due - not the first time any one of them ends.
+    function reapEndedInstructions (nowMs: number): void {
+      const endedInstructionCemIds = new Map<string, string>()
+      for (const [key, slot] of pebcSlots.entries()) {
+        if (slot.element.endMs <= nowMs) {
+          endedInstructionCemIds.set(slot.instructionId, slot.cemId)
+          pebcSlots.delete(key)
+        }
+      }
+      for (const [instructionId, cemId] of endedInstructionCemIds) {
+        const stillRunning = [...pebcSlots.values()].some(s => s.instructionId === instructionId)
+        if (!stillRunning) {
+          node.send([null, null, { payload: { command: 'InstructionStatus', cemId, instructionId, status: InstructionStatus.SUCCEEDED } }])
+        }
+      }
+    }
+
     function scheduleNextDispatch (schedule: PebcSchedule): void {
       if (scheduleTimer) {
         clearTimeout(scheduleTimer)
@@ -226,6 +249,7 @@ export = function (RED: NodeRedApp): void {
         const delay = Math.max(0, nextStart - now)
         scheduleTimer = setTimeout(() => {
           scheduleTimer = null
+          reapEndedInstructions(Date.now())
           emitActiveElement(schedule)
           scheduleNextDispatch(schedule)
         }, delay)
@@ -239,6 +263,7 @@ export = function (RED: NodeRedApp): void {
       const delay = Math.max(0, active.endMs - now)
       scheduleTimer = setTimeout(() => {
         scheduleTimer = null
+        reapEndedInstructions(Date.now())
         emitReleased(schedule.cemId, schedule.commodityQuantity)
       }, delay)
     }

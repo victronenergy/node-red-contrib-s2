@@ -448,6 +448,72 @@ describe('s2-pebc - InstructionStatus(STARTED) on dispatch', () => {
   })
 })
 
+describe('s2-pebc - InstructionStatus(SUCCEEDED) on natural completion', () => {
+  beforeEach(() => { jest.useFakeTimers() })
+  afterEach(() => { jest.useRealTimers() })
+
+  function succeededCommand (node: Record<string, unknown>, instructionId: string) {
+    return commandCalls(node).find((c) => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: Record<string, unknown> }).payload
+      return cmd.command === 'InstructionStatus' && cmd.status === 'SUCCEEDED' && cmd.instructionId === instructionId
+    })
+  }
+
+  it('sends InstructionStatus(SUCCEEDED) once a single-slot instruction elapses with nothing queued after it', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-done' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    jest.advanceTimersByTime(SLOT + 1)
+
+    const cmdCall = succeededCommand(node, 'pebc-instr-done')
+    expect(cmdCall).toBeDefined()
+    const cmd = ((cmdCall as unknown[][])[0][2] as { payload: Record<string, unknown> }).payload
+    expect(cmd.cemId).toBe('cem-1')
+  })
+
+  it('sends InstructionStatus(SUCCEEDED) for the completed instruction when a later instruction takes over', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-first' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'pebc-instr-second' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    jest.advanceTimersByTime(SLOT + 1)
+
+    expect(succeededCommand(node, 'pebc-instr-first')).toBeDefined()
+    expect(succeededCommand(node, 'pebc-instr-second')).toBeUndefined()
+  })
+
+  it('does not send SUCCEEDED until every slot of a multi-slot instruction has elapsed', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-multi' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'pebc-instr-multi' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    jest.advanceTimersByTime(SLOT + 1)
+    expect(succeededCommand(node, 'pebc-instr-multi')).toBeUndefined()
+
+    jest.advanceTimersByTime(SLOT)
+    const cmdCall = succeededCommand(node, 'pebc-instr-multi')
+    expect(cmdCall).toBeDefined()
+  })
+
+  it('does not send SUCCEEDED for an instruction that was already revoked', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-revoked' }), jest.fn(), jest.fn())
+    handlers.input(revokeMsg('cem-1', 'pebc-instr-revoked', 'PEBC.Instruction'), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    jest.advanceTimersByTime(SLOT + 1)
+
+    expect(succeededCommand(node, 'pebc-instr-revoked')).toBeUndefined()
+  })
+})
+
 describe('s2-pebc - Forecast capping', () => {
   beforeEach(() => { jest.useFakeTimers() })
   afterEach(() => { jest.useRealTimers() })
