@@ -88,6 +88,13 @@ export = function (RED: NodeRedApp): void {
         const now = Date.now()
         const validElements = schedule.elements.filter(el => el.endMs > now)
         if (validElements.length === 0) return
+        // Repopulate pebcSlots (not just the schedule passed to applySchedule) so
+        // updateNodeStatus - which reads pebcSlots, not the schedule variable - reflects
+        // the restored schedule immediately instead of showing "no schedule" until the
+        // next instruction arrives.
+        for (const el of validElements) {
+          pebcSlots.set(el.startMs, { element: el, commodityQuantity: schedule.commodityQuantity, cemId: schedule.cemId, instructionId: schedule.instructionId })
+        }
         applySchedule({ ...schedule, elements: validElements })
         node.log(`Restored S2 schedule for CEM ${schedule.cemId} with ${validElements.length} future element(s)`)
       } catch (e) {

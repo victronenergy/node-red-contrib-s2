@@ -344,6 +344,18 @@ describe('s2-pebc - schedule persistence', () => {
     expect(activeCalls(node2).length).toBeGreaterThan(0)
   })
 
+  it('reflects a restored schedule in node.status instead of "no schedule"', () => {
+    const { handlers } = setupNode({ id: 'persist-node' }, DEFAULT_PEBC_CONFIG, { userDir: tmpDir })
+    handlers.input(pebcInstructionMsg('cem-1', Date.now(), { instructionId: 'instr-restore-status' }), jest.fn(), jest.fn())
+
+    const { node: node2 } = setupNode({ id: 'persist-node' }, DEFAULT_PEBC_CONFIG, { userDir: tmpDir })
+
+    const statusCalls = (node2.status as jest.Mock).mock.calls.map(c => c[0] as { text: string })
+    const lastStatus = statusCalls[statusCalls.length - 1]
+    expect(lastStatus.text).not.toBe('no schedule')
+    expect(lastStatus.text).toEqual(expect.stringContaining('active'))
+  })
+
   it('filters out past elements and does not restore when all elements are expired', () => {
     const now = Date.now()
     const pastSchedule = {
