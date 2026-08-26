@@ -16,6 +16,7 @@ import {
   makeInstructionStatusUpdate,
   generateId,
   gridConnectionToWatts,
+  gridConnectionToAmpsPerPhase,
   GRID_CONNECTIONS
 } from '../../src/lib/s2/messages'
 
@@ -376,6 +377,30 @@ describe('gridConnectionToWatts', () => {
 
   it('returns null for custom without customMaxPowerW', () => {
     expect(gridConnectionToWatts('custom')).toBeNull()
+  })
+})
+
+describe('gridConnectionToAmpsPerPhase', () => {
+  it('returns ampsPerPhase for a known connection', () => {
+    expect(gridConnectionToAmpsPerPhase('3x25A')).toBe(25)
+    expect(gridConnectionToAmpsPerPhase('1x16A')).toBe(16)
+    expect(gridConnectionToAmpsPerPhase('3x63A')).toBe(63)
+  })
+
+  it('returns null for undefined input', () => {
+    expect(gridConnectionToAmpsPerPhase(undefined)).toBeNull()
+  })
+
+  it('returns null for empty string', () => {
+    expect(gridConnectionToAmpsPerPhase('')).toBeNull()
+  })
+
+  it('returns null for unknown connection', () => {
+    expect(gridConnectionToAmpsPerPhase('2x20A')).toBeNull()
+  })
+
+  it('returns null for custom, regardless of any wattage configured', () => {
+    expect(gridConnectionToAmpsPerPhase('custom')).toBeNull()
   })
 })
 

@@ -109,6 +109,18 @@ export function gridConnectionToWatts (gridConnection: string | undefined, custo
   return conn ? conn.maxWatts : null
 }
 
+/**
+ * Returns the per-phase amp rating for a known grid connection (e.g. 25 for '3x25A').
+ * Unlike deriving amps from gridConnectionToWatts() and a live voltage reading, this is the
+ * fixed breaker rating the user configured, not a voltage-dependent approximation of it.
+ * Returns null for 'custom' (no fixed amp rating) or an unknown/unset connection.
+ */
+export function gridConnectionToAmpsPerPhase (gridConnection: string | undefined): number | null {
+  if (!gridConnection || gridConnection === 'custom') return null
+  const conn = GRID_CONNECTIONS[gridConnection as GridConnectionKey]
+  return conn ? conn.ampsPerPhase : null
+}
+
 export const ReceptionStatusResult = Object.freeze({
   OK: 'OK',
   INVALID_DATA: 'INVALID_DATA',

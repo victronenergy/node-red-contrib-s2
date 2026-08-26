@@ -58,7 +58,7 @@
 
   <p><b>Grid Fuse</b> picks a standard fuse/breaker size; <b>s2-pebc</b> converts it to a symmetric <code>[-max, +max]</code> watt range (the same limit for import and export). Choose <b>Custom</b> to set an exact wattage instead - useful when the site's actual limit doesn't match a standard fuse size, or is asymmetric in practice.</p>
 
-  <p>Leaving this unset is valid: <b>s2-pebc</b> simply won't push a default, and relies entirely on whatever the CEM sends. The configured value is also published to flow context as <code>pebcDefaultMaxPowerW</code>, so your own flow logic can fall back to it - for example when a PEBC instruction's bound is released (<code>null</code>) and you need to know what limit to apply instead of leaving your hardware silently unconstrained.</p>
+  <p>Leaving this unset is valid: <b>s2-pebc</b> simply won't push a default, and relies entirely on whatever the CEM sends. The configured value is also published to flow context as <code>pebcDefaultMaxPowerW</code>, so your own flow logic can fall back to it - for example when a PEBC instruction's bound is released (<code>null</code>) and you need to know what limit to apply instead of leaving your hardware silently unconstrained. For a named Grid Fuse (not Custom), its fixed per-phase amp rating is also published as <code>pebcDefaultMaxAmpsPerPhase</code> - use this instead of dividing <code>pebcDefaultMaxPowerW</code> by a live voltage reading, which drifts below the configured rating whenever actual voltage exceeds the 230V nominal used to derive that wattage.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
