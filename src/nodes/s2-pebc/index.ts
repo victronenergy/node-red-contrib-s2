@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2PebcConfigNode } from '../../types/config-nodes'
-import { ControlType, InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToWatts } from '../../lib/s2/messages'
+import { ControlType, InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToAmpsPerPhase, gridConnectionToWatts } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, capForecastToSchedule, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2PebcNodeConfig extends NodeConfig {
@@ -21,7 +21,11 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  * s2-pebc-config) on deploy, used until a runtime override is supplied. That same
  * wattage (or null if unconfigured) is published to flow context as
  * `pebcDefaultMaxPowerW`, so downstream flow logic can derive a released-state
- * limit (e.g. amps) from it instead of hardcoding one.
+ * limit (e.g. amps) from it instead of hardcoding one. For a named grid connection
+ * (not 'custom'), its fixed per-phase amp rating is also published as
+ * `pebcDefaultMaxAmpsPerPhase` (null for 'custom' or unset) - prefer this over dividing
+ * `pebcDefaultMaxPowerW` by a live voltage reading, which drifts below the configured
+ * rating whenever actual voltage exceeds the 230V nominal used to derive the wattage.
  *
  * Wiring:
  *   [s2-rm output 2 (from CEM)]     -> [s2-pebc input]  (to observe RevokeObject)
@@ -359,6 +363,15 @@ export = function (RED: NodeRedApp): void {
           elements: sorted.map(s => s.element)
         }
         applySchedule(rebuilt)
+        // The revoked slot may have been the currently-active one, leaving a gap before the
+        // next queued slot starts - applySchedule's emitActiveElement no-ops when nothing is
+        // currently active, so it would otherwise leave output 1 stuck on the revoked element's
+        // stale bounds. Only release when something WAS actively constraining before this
+        // revoke (lastEmittedActive): a schedule whose next slot simply hasn't started yet
+        // must stay silent, per the "not-yet-started schedule" rule.
+        if (lastEmittedActive !== null && !getActiveElement(rebuilt, Date.now())) {
+          emitReleased(msg.cemId || '', commodityQuantity)
+        }
       }
     }
 
@@ -473,6 +486,10 @@ export = function (RED: NodeRedApp): void {
     // Published so downstream flow logic can derive a released-state limit (e.g. amps)
     // the same way it derives any other numeric bound, instead of hardcoding one.
     node.context().flow.set('pebcDefaultMaxPowerW', defaultMaxPowerW)
+    // The fixed breaker rating, when known - independent of any live voltage reading, unlike
+    // dividing pebcDefaultMaxPowerW by voltage (which drifts below the configured rating
+    // whenever actual voltage exceeds the 230V nominal used to derive that wattage).
+    node.context().flow.set('pebcDefaultMaxAmpsPerPhase', gridConnectionToAmpsPerPhase(pebcConfigNode.gridConnection))
     if (defaultMaxPowerW != null) {
       const constraints: PEBCPowerConstraintsInput = {
         commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',

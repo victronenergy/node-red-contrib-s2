@@ -169,6 +169,24 @@ describe('s2-pebc - default power constraints push on deploy', () => {
 
     expect(flowContext.pebcDefaultMaxPowerW).toBeNull()
   })
+
+  it('publishes the fixed per-phase amp rating to flow context as pebcDefaultMaxAmpsPerPhase', () => {
+    const { flowContext } = setupNode({}, { gridConnection: '3x25A' })
+
+    expect(flowContext.pebcDefaultMaxAmpsPerPhase).toBe(25)
+  })
+
+  it('publishes null to pebcDefaultMaxAmpsPerPhase for a custom connection', () => {
+    const { flowContext } = setupNode({}, { gridConnection: 'custom', customMaxPowerW: 15000 })
+
+    expect(flowContext.pebcDefaultMaxAmpsPerPhase).toBeNull()
+  })
+
+  it('publishes null to pebcDefaultMaxAmpsPerPhase when gridConnection is not set', () => {
+    const { flowContext } = setupNode({}, { gridConnection: '' })
+
+    expect(flowContext.pebcDefaultMaxAmpsPerPhase).toBeNull()
+  })
 })
 
 describe('s2-pebc - instruction accumulation', () => {
@@ -437,6 +455,40 @@ describe('s2-pebc - RevokeObject handling', () => {
     handlers.input(revokeMsg('cem-1', 'pebc-instr-1', 'PEBC.PowerConstraints'), jest.fn(), jest.fn())
 
     expect(commandCalls(node).length).toBe(0)
+  })
+
+  it('emits a released element when the active instruction is revoked but a future one remains queued', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-active' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'pebc-instr-future' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(revokeMsg('cem-1', 'pebc-instr-active', 'PEBC.Instruction'), jest.fn(), jest.fn())
+
+    const call = activeCalls(node)[0]
+    const outMsg = (call[0] as unknown[])[0] as { payload: { lowerBound: number | null, upperBound: number | null } }
+    expect(outMsg.payload.lowerBound).toBeNull()
+    expect(outMsg.payload.upperBound).toBeNull()
+
+    // The still-queued future instruction still dispatches normally once its own start arrives.
+    ;(node.send as jest.Mock).mockClear()
+    jest.advanceTimersByTime(SLOT)
+    const laterCall = activeCalls(node)[0]
+    const laterMsg = (laterCall[0] as unknown[])[0] as { payload: { upperBound: number } }
+    expect(laterMsg.payload.upperBound).toBe(11040)
+  })
+
+  it('does not emit a released element when revoking a not-yet-active instruction while another is currently active', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'pebc-instr-active' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'pebc-instr-future' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(revokeMsg('cem-1', 'pebc-instr-future', 'PEBC.Instruction'), jest.fn(), jest.fn())
+
+    expect(activeCalls(node).length).toBe(0)
   })
 })
 
