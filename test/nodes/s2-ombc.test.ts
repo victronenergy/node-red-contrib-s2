@@ -68,6 +68,13 @@ function instructionMsg (cemId: string, controlType: string, namespaceKey: strin
   }
 }
 
+// Commands s2-ombc sends to s2-rm (output 2 - `[null, { payload: { command, ... } }]`).
+function getCommandCalls (node: Record<string, unknown>): Array<Record<string, unknown>> {
+  return (node.send as jest.Mock).mock.calls
+    .filter((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null)
+    .map((c) => (((c[0] as unknown[])[1]) as { payload: Record<string, unknown> }).payload)
+}
+
 describe('s2-ombc - config node reference', () => {
   it('sets error status and does not register input handler when s2-ombc-config is missing', () => {
     const { node, handlers } = setupNode({}, null)
@@ -224,13 +231,163 @@ describe('s2-ombc - confirm mode', () => {
     expect(call).toBeUndefined()
   })
 
-  it('errors when confirmedOperationModeId is present but cemId is missing', () => {
+  it('applies a confirm with no cemId to the one CEM currently on OMBC', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({ payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect(cmd).toBeDefined()
+    expect(cmd!.cemId).toBe('cem-1')
+  })
+
+  it('stores a default when no cemId and no CEM has OMBC selected, then seeds a later CEM from it', () => {
+    const { node, handlers } = setupNode()
+
+    const done = jest.fn()
+    handlers.input({ payload: { confirmedOperationModeIndex: 0 } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(getCommandCalls(node).find(c => c.command === 'UpdateStatus')).toBeUndefined()
+
+    selectControlType(handlers, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
+
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect(cmd).toBeDefined()
+    expect(cmd!.cemId).toBe('cem-2')
+    expect((cmd!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-standby')
+  })
+
+  it('rejects a confirm with no cemId when more than one CEM has OMBC selected', () => {
     const { handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    selectControlType(handlers, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
 
     const done = jest.fn()
     handlers.input({ payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), done)
 
     expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('resolves confirmedOperationModeIndex and confirmedOperationModeLabel to the same status as confirmedOperationModeId', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeIndex: 1 } }, jest.fn(), jest.fn())
+    const byIndex = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((byIndex!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeLabel: 'Normal operation' } }, jest.fn(), jest.fn())
+    const byLabel = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((byLabel!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+  })
+
+  it('rejects a confirm with zero or multiple mode identifiers', () => {
+    const { handlers } = setupNode()
+
+    const doneZero = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: undefined } }, jest.fn(), doneZero)
+    expect(doneZero).toHaveBeenCalledWith(expect.any(Error))
+
+    const doneMultiple = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on', confirmedOperationModeIndex: 0 } }, jest.fn(), doneMultiple)
+    expect(doneMultiple).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('rejects a confirm whose confirmedOperationModeId matches no configured mode', () => {
+    const { handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-unknown' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('rejects a confirm whose confirmedOperationModeIndex is out of range', () => {
+    const { handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeIndex: 5 } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('rejects a confirm whose confirmedOperationModeLabel matches no configured mode', () => {
+    const { handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeLabel: 'Nonexistent' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('rejects a confirm whose confirmedOperationModeLabel matches more than one configured mode', () => {
+    const duplicateLabelConfig = {
+      systemDescription: JSON.stringify({
+        operationModes: [
+          { id: 'mode-a', diagnostic_label: 'Duplicate', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }], abnormal_condition_only: false },
+          { id: 'mode-b', diagnostic_label: 'Duplicate', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 1000 }], abnormal_condition_only: false }
+        ],
+        transitions: [],
+        timers: []
+      })
+    }
+    const { handlers } = setupNode({}, duplicateLabelConfig)
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeLabel: 'Duplicate' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+})
+
+describe('s2-ombc - status request notification', () => {
+  function getInstructionOutputCalls (node: Record<string, unknown>): Array<Record<string, unknown>> {
+    return (node.send as jest.Mock).mock.calls
+      .filter((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+      .map((c) => (c[0] as unknown[])[0] as Record<string, unknown>)
+  }
+
+  it('emits StatusRequest when a CEM selects OMBC with neither persisted status nor default', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const statusRequest = getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')
+    expect(statusRequest).toBeDefined()
+    expect(statusRequest!.cemId).toBe('cem-1')
+  })
+
+  it('does not emit StatusRequest when a default status is available', () => {
+    const { node, handlers } = setupNode()
+    handlers.input({ payload: { confirmedOperationModeIndex: 0 } }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')).toBeUndefined()
+  })
+
+  it('does not emit StatusRequest when the CEM already has a persisted status', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), jest.fn())
+    handlers.input({ cemId: 'cem-1', topic: 'Disconnected' }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')).toBeUndefined()
   })
 })
 

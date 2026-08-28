@@ -13,6 +13,9 @@ interface CemState {
 type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: unknown[] }
 
 const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
+const DEFAULT_STATUS_KEY = 's2OmbcDefaultStatus'
+
+type ModeIdResolution = { id: string } | { error: string }
 
 /**
  * s2-ombc node
@@ -31,11 +34,20 @@ const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
  * Input:
  *   S2 "from CEM" messages and enriched instructions forwarded from s2-rm, as-is.
  *   Confirm-mode message (from your own flow, once hardware state is confirmed):
- *     { payload: { confirmedOperationModeId: <id>, operationModeFactor?: <number> }, cemId: <string> }
+ *     { payload: { <mode identifier>, operationModeFactor?: <number> }, cemId?: <string> }
+ *   where <mode identifier> is exactly one of:
+ *     confirmedOperationModeId: <id>          - exact operation mode id
+ *     confirmedOperationModeIndex: <number>   - 0-based index into the configured operation modes
+ *     confirmedOperationModeLabel: <string>   - matches a mode's diagnostic_label (must be unique)
+ *   cemId is optional: if omitted, it resolves to the one CEM currently with OMBC selected (an
+ *   error if more than one), or - if none - the confirm is stored as a default status applied to
+ *   whichever CEM next selects OMBC with no persisted status of its own.
  *
  * Output port 1 - instructions:
  *   OMBC instructions resolved: { payload, cemId, controlType, topic: <mode label>, ombc: { operationMode: {...}, ... } }
  *   Non-OMBC instructions: passed through unchanged (node status shows a warning).
+ *   StatusRequest notification - sent after SystemDescription when a newly OMBC-selecting CEM has
+ *   neither a persisted status nor a default available: { topic: 'StatusRequest', cemId }
  *
  * Output port 2 - commands to s2-rm:
  *   { payload: { command: 'SystemDescription', cemId, controlType, ombc } }
@@ -81,6 +93,59 @@ export = function (RED: NodeRedApp): void {
       node.context().set(PERSISTED_STATUS_KEY_PREFIX + cemId, status)
     }
 
+    function getDefaultStatus (): OMBCStatusConfig | null {
+      return (node.context().get(DEFAULT_STATUS_KEY) as OMBCStatusConfig | undefined) || null
+    }
+
+    function setDefaultStatus (status: OMBCStatusConfig): void {
+      node.context().set(DEFAULT_STATUS_KEY, status)
+    }
+
+    // Resolves a confirm message's mode identifier - exactly one of confirmedOperationModeId /
+    // confirmedOperationModeIndex / confirmedOperationModeLabel - down to a configured mode's
+    // canonical id. All three are validated against systemDescription.operationModes: an id must
+    // match a configured mode, an index must be in range, and a label must match exactly one mode
+    // (diagnostic_label is optional and not declared unique by the S2 schema).
+    function resolveModeIdentifier (payload: Record<string, unknown>): ModeIdResolution {
+      const idField = payload.confirmedOperationModeId
+      const indexField = payload.confirmedOperationModeIndex
+      const labelField = payload.confirmedOperationModeLabel
+      const providedCount = [idField, indexField, labelField].filter(v => v !== undefined).length
+
+      if (providedCount !== 1) {
+        return { error: 'Confirm message requires exactly one of confirmedOperationModeId, confirmedOperationModeIndex, or confirmedOperationModeLabel' }
+      }
+
+      const modes = (systemDescription.operationModes || []) as Array<Record<string, unknown>>
+
+      if (idField !== undefined) {
+        const modeId = idField as string
+        const match = modes.find(m => m.id === modeId)
+        if (!match) {
+          return { error: `confirmedOperationModeId "${modeId}" does not match any configured operation mode` }
+        }
+        return { id: modeId }
+      }
+
+      if (indexField !== undefined) {
+        const index = indexField as number
+        if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= modes.length) {
+          return { error: `confirmedOperationModeIndex ${String(index)} is out of range (0-${modes.length - 1})` }
+        }
+        return { id: modes[index].id as string }
+      }
+
+      const label = labelField as string
+      const matches = modes.filter(m => m.diagnostic_label === label)
+      if (matches.length === 0) {
+        return { error: `confirmedOperationModeLabel "${label}" does not match any configured operation mode` }
+      }
+      if (matches.length > 1) {
+        return { error: `confirmedOperationModeLabel "${label}" matches more than one configured operation mode` }
+      }
+      return { id: matches[0].id as string }
+    }
+
     function resolveMode (rawInstr: Record<string, unknown>): ResolvedOMBCMode | null {
       const modeId = (rawInstr.operation_mode_id || rawInstr.operation_mode) as string | undefined
       if (!modeId) return null
@@ -124,18 +189,56 @@ export = function (RED: NodeRedApp): void {
 
       node.send([null, { payload: { command: 'SystemDescription', cemId, controlType: ControlType.OMBC, ombc: systemDescription } }])
 
-      const persisted = getPersistedStatus(cemId)
-      if (persisted) {
-        node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: persisted } }])
+      let status = getPersistedStatus(cemId)
+      if (!status) {
+        const defaultStatus = getDefaultStatus()
+        if (defaultStatus) {
+          setPersistedStatus(cemId, defaultStatus)
+          status = defaultStatus
+        }
+      }
+
+      if (status) {
+        node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } }])
+      } else {
+        node.send([{ topic: 'StatusRequest', cemId }, null])
       }
     }
 
     function handleConfirm (msg: NodeMessage, done: DoneFunction): void {
-      const cemId = msg.cemId
       const payload = msg.payload as Record<string, unknown>
-      const modeId = payload.confirmedOperationModeId as string | undefined
-      if (!cemId || !modeId) {
-        done(new Error('Confirm message requires cemId and payload.confirmedOperationModeId'))
+
+      const resolution = resolveModeIdentifier(payload)
+      if ('error' in resolution) {
+        done(new Error(resolution.error))
+        return
+      }
+      const modeId = resolution.id
+
+      let cemId = msg.cemId as string | undefined
+      if (!cemId) {
+        const ombcCemIds = Array.from(cemStates.entries())
+          .filter(([, state]) => state.selectedControlType === ControlType.OMBC)
+          .map(([id]) => id)
+        if (ombcCemIds.length > 1) {
+          done(new Error('Confirm message with no cemId is ambiguous - multiple CEMs currently have OMBC selected; specify cemId'))
+          return
+        }
+        if (ombcCemIds.length === 1) {
+          cemId = ombcCemIds[0]
+        }
+      }
+
+      const factor = payload.operationModeFactor
+      const operationModeFactor = typeof factor === 'number' ? factor : 1
+
+      if (!cemId) {
+        // No CEM currently has OMBC selected (pre-connection, or after a disconnect) - store as
+        // the default status for whichever CEM next selects OMBC, per "Pre-connection default
+        // status" in the spec.
+        setDefaultStatus({ activeOperationModeId: modeId, operationModeFactor })
+        node.status({ fill: 'blue', shape: 'dot', text: `default: ${modeId}` })
+        done()
         return
       }
 
@@ -146,11 +249,10 @@ export = function (RED: NodeRedApp): void {
         return
       }
 
-      const factor = payload.operationModeFactor
       const previous = getPersistedStatus(cemId)
       let status: OMBCStatusConfig = {
         activeOperationModeId: modeId,
-        operationModeFactor: typeof factor === 'number' ? factor : 1
+        operationModeFactor
       }
       if (previous && previous.activeOperationModeId !== modeId) {
         status = {
@@ -184,7 +286,7 @@ export = function (RED: NodeRedApp): void {
         return
       }
 
-      if ('confirmedOperationModeId' in payload) {
+      if ('confirmedOperationModeId' in payload || 'confirmedOperationModeIndex' in payload || 'confirmedOperationModeLabel' in payload) {
         handleConfirm(msg, done)
         return
       }
