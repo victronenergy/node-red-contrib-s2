@@ -61,6 +61,8 @@ const INSTRUCTION_CONTROL_TYPE: Record<string, { controlType: ControlTypeValue, 
  * Output port 1 - messages to send to the CEM (via transport input):
  *   { payload: { s2Signal: 'Message', message: <S2 message object> }, cemId }
  *   { payload: { s2Signal: 'PowerMeasurementStart', commodityQuantities: [...] }, cemId }
+ *   { payload: { 'S2/0/Active': 1 | 0 } }  <- on every SelectControlType, reflects whether the
+ *                                             selected control type is other than NO_SELECTION/NOT_CONTROLABLE
  *
  * Output port 2 - S2 messages received from CEM, forwarded for downstream processing:
  *   { payload: <S2 message object>, cemId: <string>, topic: <message_type string> }
@@ -266,15 +268,19 @@ export = function (RED: NodeRedApp): void {
             }
           }
           node.send([null, { payload: msg, cemId, topic: msg.message_type }, null])
-          if (msg.message_type === MessageType.SELECT_CONTROL_TYPE &&
-              rmDetails.providesPowerMeasurementTypes.length > 0) {
-            node.send([{
-              payload: {
-                s2Signal: 'PowerMeasurementStart',
-                commodityQuantities: rmDetails.providesPowerMeasurementTypes
-              },
-              cemId
-            }, null, null])
+          if (msg.message_type === MessageType.SELECT_CONTROL_TYPE) {
+            const controlType = (msg.control_type as string) || ControlType.NO_SELECTION
+            const isActive = controlType !== ControlType.NO_SELECTION && controlType !== ControlType.NOT_CONTROLABLE
+            node.send([{ payload: { 'S2/0/Active': isActive ? 1 : 0 } }, null, null])
+            if (rmDetails.providesPowerMeasurementTypes.length > 0) {
+              node.send([{
+                payload: {
+                  s2Signal: 'PowerMeasurementStart',
+                  commodityQuantities: rmDetails.providesPowerMeasurementTypes
+                },
+                cemId
+              }, null, null])
+            }
           }
         },
 

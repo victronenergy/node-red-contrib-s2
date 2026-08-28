@@ -1008,3 +1008,74 @@ describe('s2-rm - lifecycle events and msg.topic', () => {
     expect(handshakeMsg!.topic).toBe(MessageType.HANDSHAKE_RESPONSE)
   })
 })
+
+describe('s2-rm - S2/0/Active transport flag', () => {
+  type Port1Msg = { payload: Record<string, unknown>, cemId?: string }
+
+  function getPort1Calls (node: Record<string, unknown>): Port1Msg[] {
+    return (node.send as jest.Mock).mock.calls
+      .map((c: unknown[]) => c[0] as unknown[])
+      .filter((args) => Array.isArray(args) && args[0] !== null)
+      .map((args) => args[0] as Port1Msg)
+  }
+
+  function connectAndHandshake (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
+    handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  function selectControlType (handlers: Record<string, (...args: unknown[]) => void>, controlType: string, cemId = 'cem-1'): void {
+    handlers.input(
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: controlType }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  it('emits S2/0/Active: 1 when an active control type is selected', () => {
+    const { node, handlers } = setupNode({})
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'OPERATION_MODE_BASED_CONTROL')
+
+    const activeMsg = getPort1Calls(node).find((m) => m.payload['S2/0/Active'] !== undefined)
+    expect(activeMsg).toBeDefined()
+    expect(activeMsg!.payload['S2/0/Active']).toBe(1)
+  })
+
+  it.each(['NO_SELECTION', 'NOT_CONTROLABLE'])('emits S2/0/Active: 0 when %s is selected', (controlType) => {
+    const { node, handlers } = setupNode({})
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, controlType)
+
+    const activeMsg = getPort1Calls(node).find((m) => m.payload['S2/0/Active'] !== undefined)
+    expect(activeMsg).toBeDefined()
+    expect(activeMsg!.payload['S2/0/Active']).toBe(0)
+  })
+
+  it('does not affect existing port-1 s2Signal outputs (Message, PowerMeasurementStart)', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, providesPowerMeasurement: '3_PHASE_SYMMETRIC' }
+    const { node, handlers } = setupNode({}, rmConfig)
+    connectAndHandshake(handlers)
+
+    const rmdMsg = getPort1Calls(node).find((m) => m.payload.s2Signal === 'Message')
+    expect(rmdMsg).toBeDefined()
+
+    ;(node.send as jest.Mock).mockClear()
+    selectControlType(handlers, 'OPERATION_MODE_BASED_CONTROL')
+
+    const port1 = getPort1Calls(node)
+    const pmStart = port1.find((m) => m.payload.s2Signal === 'PowerMeasurementStart')
+    expect(pmStart).toBeDefined()
+    expect(pmStart!.payload.commodityQuantities).toEqual(['ELECTRIC.POWER.3_PHASE_SYMMETRIC'])
+
+    const activeMsg = port1.find((m) => m.payload['S2/0/Active'] !== undefined)
+    expect(activeMsg).toBeDefined()
+    expect(activeMsg!.payload['S2/0/Active']).toBe(1)
+  })
+})
