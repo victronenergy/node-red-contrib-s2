@@ -33,21 +33,21 @@ type ModeIdResolution = { id: string } | { error: string }
  *
  * Input:
  *   S2 "from CEM" messages and enriched instructions forwarded from s2-rm, as-is.
- *   Confirm-mode message (from your own flow, once hardware state is confirmed):
- *     { payload: { <mode identifier>, operationModeFactor?: <number> }, cemId?: <string> }
- *   where <mode identifier> is exactly one of:
- *     confirmedOperationModeId: <id>          - exact operation mode id
- *     confirmedOperationModeIndex: <number>   - 0-based index into the configured operation modes
- *     confirmedOperationModeLabel: <string>   - matches a mode's diagnostic_label (must be unique)
+ *   ModeConfirmation (from your own flow, once hardware state is confirmed):
+ *     { topic: 'ModeConfirmation', payload: { <mode ref> }, cemId?: <string> }
+ *   where <mode ref> is exactly one of:
+ *     id: <string>       - exact operation mode id
+ *     index: <number>    - 0-based index into the configured operation modes
+ *     label: <string>    - matches a mode's diagnostic_label (must be unique)
  *   cemId is optional: if omitted, it resolves to the one CEM currently with OMBC selected (an
  *   error if more than one), or - if none - the confirm is stored as a default status applied to
  *   whichever CEM next selects OMBC with no persisted status of its own.
+ *   Legacy format (confirmedOperationModeId/Index/Label) is still accepted.
  *
  * Output port 1 - instructions:
- *   OMBC instructions resolved: { payload, cemId, controlType, topic: <mode label>, ombc: { operationMode: {...}, ... } }
+ *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor }, cemId, rawMessage }
  *   Non-OMBC instructions: passed through unchanged (node status shows a warning).
- *   StatusRequest notification - sent after SystemDescription when a newly OMBC-selecting CEM has
- *   neither a persisted status nor a default available: { topic: 'StatusRequest', cemId }
+ *   ModeRequest: { topic: 'ModeRequest', payload: null, cemId }
  *
  * Output port 2 - commands to s2-rm:
  *   { payload: { command: 'SystemDescription', cemId, controlType, ombc } }
@@ -101,19 +101,16 @@ export = function (RED: NodeRedApp): void {
       node.context().set(DEFAULT_STATUS_KEY, status)
     }
 
-    // Resolves a confirm message's mode identifier - exactly one of confirmedOperationModeId /
-    // confirmedOperationModeIndex / confirmedOperationModeLabel - down to a configured mode's
-    // canonical id. All three are validated against systemDescription.operationModes: an id must
-    // match a configured mode, an index must be in range, and a label must match exactly one mode
-    // (diagnostic_label is optional and not declared unique by the S2 schema).
+    // Resolves a mode identifier from payload down to a configured mode's canonical id.
+    // Accepts new format (id/index/label) and legacy format (confirmedOperationModeId/Index/Label).
     function resolveModeIdentifier (payload: Record<string, unknown>): ModeIdResolution {
-      const idField = payload.confirmedOperationModeId
-      const indexField = payload.confirmedOperationModeIndex
-      const labelField = payload.confirmedOperationModeLabel
+      const idField = payload.id ?? payload.confirmedOperationModeId
+      const indexField = payload.index ?? payload.confirmedOperationModeIndex
+      const labelField = payload.label ?? payload.confirmedOperationModeLabel
       const providedCount = [idField, indexField, labelField].filter(v => v !== undefined).length
 
       if (providedCount !== 1) {
-        return { error: 'Confirm message requires exactly one of confirmedOperationModeId, confirmedOperationModeIndex, or confirmedOperationModeLabel' }
+        return { error: 'Confirm message requires exactly one of id, index, or label (or legacy confirmedOperationModeId/Index/Label)' }
       }
 
       const modes = (systemDescription.operationModes || []) as Array<Record<string, unknown>>
@@ -162,6 +159,12 @@ export = function (RED: NodeRedApp): void {
       }
     }
 
+    function modeLabelOrId (modeId: string): string {
+      const modes = (systemDescription.operationModes || []) as Array<Record<string, unknown>>
+      const mode = modes.find(m => m.id === modeId)
+      return (mode?.diagnostic_label as string | undefined) || modeId
+    }
+
     function handleInstruction (msg: NodeMessage): void {
       if (msg.controlType !== ControlType.OMBC) {
         node.status({ fill: 'yellow', shape: 'ring', text: `ignoring ${String(msg.controlType)} instruction` })
@@ -170,13 +173,17 @@ export = function (RED: NodeRedApp): void {
       }
       const rawInstr = (msg.ombc || msg.payload) as Record<string, unknown>
       const resolved = resolveMode(rawInstr)
-      const outMsg: NodeMessage = { ...msg }
       if (resolved) {
-        outMsg.topic = resolved.label
-        outMsg.ombc = { ...(msg.ombc as object || {}), operationMode: resolved }
         node.status({ fill: 'green', shape: 'dot', text: resolved.label })
+        node.send([{
+          topic: 'ModeInstruction',
+          payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor },
+          cemId: msg.cemId,
+          rawMessage: msg.payload
+        }, null])
+      } else {
+        node.send([{ ...msg }, null])
       }
-      node.send([outMsg, null])
     }
 
     function handleSelectControlType (msg: NodeMessage): void {
@@ -201,7 +208,7 @@ export = function (RED: NodeRedApp): void {
       if (status) {
         node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } }])
       } else {
-        node.send([{ topic: 'StatusRequest', cemId }, null])
+        node.send([{ topic: 'ModeRequest', payload: null, cemId }, null])
       }
     }
 
@@ -229,7 +236,7 @@ export = function (RED: NodeRedApp): void {
         }
       }
 
-      const factor = payload.operationModeFactor
+      const factor = payload.factor ?? payload.operationModeFactor
       const operationModeFactor = typeof factor === 'number' ? factor : 1
 
       if (!cemId) {
@@ -237,7 +244,7 @@ export = function (RED: NodeRedApp): void {
         // the default status for whichever CEM next selects OMBC, per "Pre-connection default
         // status" in the spec.
         setDefaultStatus({ activeOperationModeId: modeId, operationModeFactor })
-        node.status({ fill: 'blue', shape: 'dot', text: `default: ${modeId}` })
+        node.status({ fill: 'blue', shape: 'dot', text: `default: ${modeLabelOrId(modeId)}` })
         done()
         return
       }
@@ -262,7 +269,7 @@ export = function (RED: NodeRedApp): void {
         }
       }
       setPersistedStatus(cemId, status)
-      node.status({ fill: 'green', shape: 'dot', text: `confirmed: ${modeId}` })
+      node.status({ fill: 'green', shape: 'dot', text: `Confirmed: ${modeLabelOrId(modeId)}` })
       node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } }])
       done()
     }
@@ -286,7 +293,8 @@ export = function (RED: NodeRedApp): void {
         return
       }
 
-      if ('confirmedOperationModeId' in payload || 'confirmedOperationModeIndex' in payload || 'confirmedOperationModeLabel' in payload) {
+      if (topic === 'ModeConfirmation' ||
+          'confirmedOperationModeId' in payload || 'confirmedOperationModeIndex' in payload || 'confirmedOperationModeLabel' in payload) {
         handleConfirm(msg, done)
         return
       }

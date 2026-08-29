@@ -115,7 +115,7 @@ describe('s2-ombc - system description push on control-type selection', () => {
 })
 
 describe('s2-ombc - instruction resolution', () => {
-  it('resolves an OMBC instruction and enriches topic/operationMode on output 1', () => {
+  it('resolves an OMBC instruction to a ModeInstruction on output 1', () => {
     const { node, handlers } = setupNode()
 
     handlers.input(instructionMsg('cem-1', 'OPERATION_MODE_BASED_CONTROL', 'ombc', {
@@ -129,12 +129,14 @@ describe('s2-ombc - instruction resolution', () => {
       (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
     )
     expect(call).toBeDefined()
-    const out = (call as unknown[][])[0][0] as { topic: string, ombc: { operationMode: { id: string, index: number, label: string, factor: number } } }
-    expect(out.topic).toBe('Normal operation')
-    expect(out.ombc.operationMode.id).toBe('mode-on')
-    expect(out.ombc.operationMode.index).toBe(1)
-    expect(out.ombc.operationMode.label).toBe('Normal operation')
-    expect(out.ombc.operationMode.factor).toBe(0.8)
+    const out = (call as unknown[][])[0][0] as { topic: string, payload: { id: string, index: number, label: string, factor: number }, cemId: string, rawMessage: unknown }
+    expect(out.topic).toBe('ModeInstruction')
+    expect(out.payload.id).toBe('mode-on')
+    expect(out.payload.index).toBe(1)
+    expect(out.payload.label).toBe('Normal operation')
+    expect(out.payload.factor).toBe(0.8)
+    expect(out.cemId).toBe('cem-1')
+    expect(out.rawMessage).toBeDefined()
   })
 
   it('passes through a non-OMBC instruction unchanged and warns', () => {
@@ -288,6 +290,27 @@ describe('s2-ombc - confirm mode', () => {
     expect((byLabel!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
   })
 
+  it('accepts the new ModeConfirmation format with topic and payload.id/index/label', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ topic: 'ModeConfirmation', payload: { index: 1 } }, jest.fn(), jest.fn())
+    const byIndex = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((byIndex!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ topic: 'ModeConfirmation', payload: { label: 'Standby' } }, jest.fn(), jest.fn())
+    const byLabel = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((byLabel!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-standby')
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input({ topic: 'ModeConfirmation', payload: { id: 'mode-on', factor: 0.5 } }, jest.fn(), jest.fn())
+    const byId = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((byId!.ombc as { activeOperationModeId: string, operationModeFactor: number }).activeOperationModeId).toBe('mode-on')
+    expect((byId!.ombc as { operationModeFactor: number }).operationModeFactor).toBe(0.5)
+  })
+
   it('rejects a confirm with zero or multiple mode identifiers', () => {
     const { handlers } = setupNode()
 
@@ -358,27 +381,28 @@ describe('s2-ombc - status request notification', () => {
       .map((c) => (c[0] as unknown[])[0] as Record<string, unknown>)
   }
 
-  it('emits StatusRequest when a CEM selects OMBC with neither persisted status nor default', () => {
+  it('emits ModeRequest when a CEM selects OMBC with neither persisted status nor default', () => {
     const { node, handlers } = setupNode()
 
     selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
 
-    const statusRequest = getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')
-    expect(statusRequest).toBeDefined()
-    expect(statusRequest!.cemId).toBe('cem-1')
+    const modeRequest = getInstructionOutputCalls(node).find(m => m.topic === 'ModeRequest')
+    expect(modeRequest).toBeDefined()
+    expect(modeRequest!.cemId).toBe('cem-1')
+    expect(modeRequest!.payload).toBeNull()
   })
 
-  it('does not emit StatusRequest when a default status is available', () => {
+  it('does not emit ModeRequest when a default status is available', () => {
     const { node, handlers } = setupNode()
     handlers.input({ payload: { confirmedOperationModeIndex: 0 } }, jest.fn(), jest.fn())
     ;(node.send as jest.Mock).mockClear()
 
     selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
 
-    expect(getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')).toBeUndefined()
+    expect(getInstructionOutputCalls(node).find(m => m.topic === 'ModeRequest')).toBeUndefined()
   })
 
-  it('does not emit StatusRequest when the CEM already has a persisted status', () => {
+  it('does not emit ModeRequest when the CEM already has a persisted status', () => {
     const { node, handlers } = setupNode()
     selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
     handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), jest.fn())
@@ -387,7 +411,7 @@ describe('s2-ombc - status request notification', () => {
 
     selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
 
-    expect(getInstructionOutputCalls(node).find(m => m.topic === 'StatusRequest')).toBeUndefined()
+    expect(getInstructionOutputCalls(node).find(m => m.topic === 'ModeRequest')).toBeUndefined()
   })
 })
 
