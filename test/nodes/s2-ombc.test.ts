@@ -451,3 +451,127 @@ describe('s2-ombc - reconnect resend', () => {
     expect(commands).toEqual(['SystemDescription'])
   })
 })
+
+describe('s2-ombc - PowerMeasurement passthrough', () => {
+  it('forwards PowerMeasurement to s2-rm with auto-resolved cemId', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: 3000 }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    const call = (node.send as jest.Mock).mock.calls[0][0]
+    expect(call[0]).toBeNull()
+    expect(call[1].payload).toEqual({
+      command: 'PowerMeasurement',
+      cemId: 'cem-1',
+      values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 3000 }]
+    })
+  })
+
+  it('uses explicit cemId from message when provided', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      cemId: 'cem-explicit',
+      payload: { values: [{ commodity_quantity: 'ELECTRIC.POWER.L1', value: 1000 }] }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect((node.send as jest.Mock).mock.calls[0][0][1].payload.cemId).toBe('cem-explicit')
+  })
+
+  it('silently drops PowerMeasurement when no OMBC CEM is connected', () => {
+    const { node, handlers } = setupNode()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: 3000 }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(node.send as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('silently drops PowerMeasurement when multiple OMBC CEMs are connected', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    selectControlType(handlers, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: 3000 }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(node.send as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('expands per-phase array [L1, L2, L3] to S2 values', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: [1000, 1500, 500] }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect((node.send as jest.Mock).mock.calls[0][0][1].payload.values).toEqual([
+      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 1000 },
+      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 1500 },
+      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 500 }
+    ])
+  })
+
+  it('passes through full S2 value objects unchanged', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    const fullValues = [{ commodity_quantity: 'ELECTRIC.POWER.L1', value: 1000 }]
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: fullValues }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect((node.send as jest.Mock).mock.calls[0][0][1].payload.values).toEqual(fullValues)
+  })
+
+  it('rejects number array with wrong length', () => {
+    const { node, handlers } = setupNode()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: { values: [1000, 2000] }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+    expect(node.send as jest.Mock).not.toHaveBeenCalled()
+  })
+})

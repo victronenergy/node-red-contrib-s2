@@ -299,6 +299,41 @@ export = function (RED: NodeRedApp): void {
         return
       }
 
+      if (topic === 'PowerMeasurement') {
+        let pmCemId = msg.cemId as string | undefined
+        if (!pmCemId) {
+          const ombcCemIds = Array.from(cemStates.entries())
+            .filter(([, state]) => state.selectedControlType === ControlType.OMBC)
+            .map(([id]) => id)
+          if (ombcCemIds.length === 1) {
+            pmCemId = ombcCemIds[0]
+          } else {
+            done()
+            return
+          }
+        }
+        const rawValues = (payload as Record<string, unknown>).values
+        // values: 3000 → 3-phase symmetric; values: [L1, L2, L3] → per-phase
+        let values: unknown[]
+        if (typeof rawValues === 'number') {
+          values = [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: rawValues }]
+        } else if (Array.isArray(rawValues) && rawValues.length === 3 && typeof rawValues[0] === 'number') {
+          values = [
+            { commodity_quantity: 'ELECTRIC.POWER.L1', value: rawValues[0] },
+            { commodity_quantity: 'ELECTRIC.POWER.L2', value: rawValues[1] },
+            { commodity_quantity: 'ELECTRIC.POWER.L3', value: rawValues[2] }
+          ]
+        } else if (Array.isArray(rawValues) && rawValues.length > 0 && typeof rawValues[0] === 'object') {
+          values = rawValues
+        } else {
+          done(new Error('PowerMeasurement values must be a number (3-phase symmetric), a 3-element array [L1, L2, L3], or an array of {commodity_quantity, value} objects'))
+          return
+        }
+        node.send([null, { payload: { command: 'PowerMeasurement', cemId: pmCemId, values } }])
+        done()
+        return
+      }
+
       if ('controlType' in msg) {
         handleInstruction(msg)
         done()
