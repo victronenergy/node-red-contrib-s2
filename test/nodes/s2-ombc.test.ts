@@ -128,14 +128,131 @@ describe('s2-ombc - instruction resolution', () => {
       (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
     )
     expect(call).toBeDefined()
-    const out = (call as unknown[][])[0][0] as { topic: string, payload: { id: string, index: number, label: string, factor: number }, cemId: string, rawMessage: unknown }
+    const out = (call as unknown[][])[0][0] as { topic: string, payload: { id: string, index: number, label: string, factor: number, power: [number, number, number] }, cemId: string, rawMessage: unknown }
     expect(out.topic).toBe('ModeInstruction')
     expect(out.payload.id).toBe('mode-on')
     expect(out.payload.index).toBe(1)
     expect(out.payload.label).toBe('Normal operation')
     expect(out.payload.factor).toBe(0.8)
+    expect(out.payload.power).toEqual([667, 667, 667])
     expect(out.cemId).toBe('cem-1')
     expect(out.rawMessage).toBeDefined()
+  })
+
+  it('calculates per-phase power from L1/L2/L3 power ranges', () => {
+    const perPhaseConfig = {
+      systemDescription: JSON.stringify({
+        operationModes: [
+          {
+            id: 'mode-asym', diagnostic_label: 'Asymmetric', abnormal_condition_only: false,
+            power_ranges: [
+              { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: 0, end_of_range: 3000 },
+              { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: 100, end_of_range: 2000 },
+              { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: 0, end_of_range: 1000 }
+            ]
+          }
+        ],
+        transitions: [], timers: []
+      })
+    }
+    const { node, handlers } = setupNode({}, perPhaseConfig)
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction',
+      id: 'instr-3',
+      operation_mode_id: 'mode-asym',
+      operation_mode_factor: 0.5
+    }), jest.fn(), jest.fn())
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([1500, 1050, 500])
+  })
+
+  it('returns [0,0,0] when power_ranges is empty', () => {
+    const cfg = {
+      systemDescription: JSON.stringify({
+        operationModes: [{ id: 'mode-empty', diagnostic_label: 'Empty', power_ranges: [], abnormal_condition_only: false }],
+        transitions: [], timers: []
+      })
+    }
+    const { node, handlers } = setupNode({}, cfg)
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i1', operation_mode_id: 'mode-empty', operation_mode_factor: 1
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([0, 0, 0])
+  })
+
+  it('treats missing per-phase commodity as 0', () => {
+    const cfg = {
+      systemDescription: JSON.stringify({
+        operationModes: [{
+          id: 'mode-l1-only', diagnostic_label: 'L1 only', abnormal_condition_only: false,
+          power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: 0, end_of_range: 1000 }]
+        }],
+        transitions: [], timers: []
+      })
+    }
+    const { node, handlers } = setupNode({}, cfg)
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i2', operation_mode_id: 'mode-l1-only', operation_mode_factor: 0.7
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([700, 0, 0])
+  })
+
+  it('returns fixed power when start_of_range equals end_of_range', () => {
+    const cfg = {
+      systemDescription: JSON.stringify({
+        operationModes: [{
+          id: 'mode-fixed', diagnostic_label: 'Fixed', abnormal_condition_only: false,
+          power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 1500, end_of_range: 1500 }]
+        }],
+        transitions: [], timers: []
+      })
+    }
+    const { node, handlers } = setupNode({}, cfg)
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i-fixed', operation_mode_id: 'mode-fixed', operation_mode_factor: 0.5
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([500, 500, 500])
+  })
+
+  it('calculates symmetric power at factor 0 (start_of_range)', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i3', operation_mode_id: 'mode-on', operation_mode_factor: 0
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([0, 0, 0])
+  })
+
+  it('calculates symmetric power at factor 1 (end_of_range)', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i4', operation_mode_id: 'mode-on', operation_mode_factor: 1
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([833, 833, 833])
+  })
+
+  it('defaults factor to 1 when operation_mode_factor is absent', () => {
+    const { node, handlers } = setupNode()
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i5', operation_mode_id: 'mode-on'
+    }), jest.fn(), jest.fn())
+    const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    const out = (call as unknown[][])[0][0] as { payload: { power: [number, number, number] } }
+    expect(out.payload.power).toEqual([833, 833, 833])
   })
 
   it('ignores a non-OMBC instruction silently', () => {
