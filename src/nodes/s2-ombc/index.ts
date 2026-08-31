@@ -10,7 +10,8 @@ interface CemState {
   selectedControlType: string | null
 }
 
-type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: unknown[] }
+type PowerRange = { commodity_quantity: string, start_of_range: number, end_of_range: number }
+type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: PowerRange[] }
 
 const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
 const DEFAULT_STATUS_KEY = 's2OmbcDefaultStatus'
@@ -155,8 +156,28 @@ export = function (RED: NodeRedApp): void {
         index: modeIndex,
         label: (mode?.diagnostic_label as string | undefined) || modeId,
         factor,
-        powerRanges: (mode?.power_ranges as unknown[] | undefined) || []
+        powerRanges: (mode?.power_ranges as PowerRange[] | undefined) || []
       }
+    }
+
+    // Calculate per-phase power [L1, L2, L3] from power ranges and factor.
+    function calculatePower (powerRanges: PowerRange[], factor: number): [number, number, number] {
+      const byCq = new Map<string, PowerRange>()
+      for (const r of powerRanges) byCq.set(r.commodity_quantity, r)
+
+      const sym = byCq.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
+      if (sym) {
+        const total = sym.start_of_range + factor * (sym.end_of_range - sym.start_of_range)
+        const perPhase = Math.round(total / 3)
+        return [perPhase, perPhase, perPhase]
+      }
+
+      function phaseValue (cq: string): number {
+        const r = byCq.get(cq)
+        if (!r) return 0
+        return Math.round(r.start_of_range + factor * (r.end_of_range - r.start_of_range))
+      }
+      return [phaseValue('ELECTRIC.POWER.L1'), phaseValue('ELECTRIC.POWER.L2'), phaseValue('ELECTRIC.POWER.L3')]
     }
 
     function modeLabelOrId (modeId: string): string {
@@ -174,10 +195,11 @@ export = function (RED: NodeRedApp): void {
       const rawInstr = (msg.ombc || msg.payload) as Record<string, unknown>
       const resolved = resolveMode(rawInstr)
       if (resolved) {
+        const power = calculatePower(resolved.powerRanges, resolved.factor)
         node.status({ fill: 'green', shape: 'dot', text: resolved.label })
         node.send([{
           topic: 'ModeInstruction',
-          payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor },
+          payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor, power },
           cemId: msg.cemId,
           rawMessage: msg.payload
         }, null])
