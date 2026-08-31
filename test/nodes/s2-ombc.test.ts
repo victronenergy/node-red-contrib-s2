@@ -59,12 +59,11 @@ function selectControlType (handlers: Record<string, (...args: unknown[]) => voi
   }, jest.fn(), jest.fn())
 }
 
-function instructionMsg (cemId: string, controlType: string, namespaceKey: string, instr: Record<string, unknown>) {
+function instructionMsg (cemId: string, instr: Record<string, unknown>) {
   return {
     cemId,
     payload: instr,
-    controlType,
-    [namespaceKey]: instr
+    topic: instr.message_type
   }
 }
 
@@ -118,7 +117,7 @@ describe('s2-ombc - instruction resolution', () => {
   it('resolves an OMBC instruction to a ModeInstruction on output 1', () => {
     const { node, handlers } = setupNode()
 
-    handlers.input(instructionMsg('cem-1', 'OPERATION_MODE_BASED_CONTROL', 'ombc', {
+    handlers.input(instructionMsg('cem-1', {
       message_type: 'OMBC.Instruction',
       id: 'instr-1',
       operation_mode_id: 'mode-on',
@@ -139,14 +138,13 @@ describe('s2-ombc - instruction resolution', () => {
     expect(out.rawMessage).toBeDefined()
   })
 
-  it('passes through a non-OMBC instruction unchanged and warns', () => {
+  it('ignores a non-OMBC instruction silently', () => {
     const { node, handlers } = setupNode()
-    const original = instructionMsg('cem-1', 'POWER_ENVELOPE_BASED_CONTROL', 'pebc', { message_type: 'PEBC.Instruction', id: 'instr-2' })
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { message_type: 'PEBC.Instruction', id: 'instr-2' }, topic: 'PEBC.Instruction' }, jest.fn(), done)
 
-    handlers.input(original, jest.fn(), jest.fn())
-
-    expect(node.send as jest.Mock).toHaveBeenCalledWith([original, null])
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'yellow' }))
+    expect(node.send as jest.Mock).not.toHaveBeenCalled()
+    expect(done).toHaveBeenCalled()
   })
 })
 

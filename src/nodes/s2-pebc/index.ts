@@ -28,9 +28,8 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  * rating whenever actual voltage exceeds the 230V nominal used to derive the wattage.
  *
  * Wiring:
- *   [s2-rm output 2 (from CEM)]     -> [s2-pebc input]  (to observe RevokeObject)
- *   [s2-rm output 3 (instructions)] -> [s2-pebc input]  (to accumulate PEBC instructions)
- *   [Forecast command source]       -> [s2-pebc input]  (optional - to cap the forecast to the accumulated schedule)
+ *   [s2-rm output 2 (from CEM)]       -> [s2-pebc input]  (all CEM messages incl. instructions)
+ *   [Forecast command source]          -> [s2-pebc input]  (optional - to cap the forecast to the accumulated schedule)
  *   [PowerMeasurement command source] -> [s2-pebc input]  (optional - to resolve which side of an
  *                                          asymmetric bound currently applies; see output port 1)
  *   [s2-pebc output 1] -> downstream flow (active element dispatch / pass-through instructions)
@@ -301,13 +300,13 @@ export = function (RED: NodeRedApp): void {
     }
 
     function handleInstruction (msg: NodeMessage): void {
-      if (msg.controlType !== ControlType.PEBC) {
-        node.status({ fill: 'yellow', shape: 'ring', text: `ignoring ${String(msg.controlType)} instruction` })
-        node.send([msg, null, null])
+      const payload = msg.payload as Record<string, unknown>
+      const messageType = payload.message_type as string
+      if (messageType !== MessageType.PEBC_INSTRUCTION) {
         return
       }
       const cemId = msg.cemId
-      const rawMsg = (msg.pebc || msg.payload) as Record<string, unknown>
+      const rawMsg = payload
       const parsed = parsePebcInstruction(rawMsg, Date.now(), cemId)
       if (!parsed || parsed.elements.length === 0) return
 
@@ -447,11 +446,20 @@ export = function (RED: NodeRedApp): void {
 
     node.on('input', (msg, _send, done) => {
       if ('controlType' in msg) {
+        // Legacy enriched instruction from s2-rm (pre-v0.3)
         handleInstruction(msg)
         done()
         return
       }
       const payload = msg.payload as Record<string, unknown> | undefined
+      if (payload && typeof payload === 'object') {
+        const messageType = (payload as Record<string, unknown>).message_type as string | undefined
+        if (messageType && messageType.startsWith('PEBC.')) {
+          handleInstruction(msg)
+          done()
+          return
+        }
+      }
       if (payload && typeof payload === 'object' && payload.message_type === MessageType.REVOKE_OBJECT) {
         handleRevoke(msg)
         done()

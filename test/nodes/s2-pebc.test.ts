@@ -74,21 +74,22 @@ function setupNode (config: Record<string, unknown> = {}, pebcConfigNode: unknow
 const SLOT = 900_000
 
 function pebcInstructionMsg (cemId: string, executionTimeMs: number, opts: { upper?: number, lower?: number, constraintsId?: string, instructionId?: string } = {}) {
+  const instr = {
+    message_type: 'PEBC.Instruction',
+    message_id: 'pi-' + Math.random(),
+    id: opts.instructionId ?? 'instr-' + executionTimeMs,
+    power_constraints_id: opts.constraintsId ?? 'cid-1',
+    execution_time: new Date(executionTimeMs).toISOString(),
+    power_envelopes: [{
+      id: 'pe-1',
+      commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+      power_envelope_elements: [{ duration: SLOT, upper_limit: opts.upper ?? 11040, lower_limit: opts.lower ?? -11040 }]
+    }]
+  }
   return {
     cemId,
-    controlType: 'POWER_ENVELOPE_BASED_CONTROL',
-    pebc: {
-      message_type: 'PEBC.Instruction',
-      message_id: 'pi-' + Math.random(),
-      id: opts.instructionId ?? 'instr-' + executionTimeMs,
-      power_constraints_id: opts.constraintsId ?? 'cid-1',
-      execution_time: new Date(executionTimeMs).toISOString(),
-      power_envelopes: [{
-        id: 'pe-1',
-        commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-        power_envelope_elements: [{ duration: SLOT, upper_limit: opts.upper ?? 11040, lower_limit: opts.lower ?? -11040 }]
-      }]
-    }
+    payload: instr,
+    topic: instr.message_type
   }
 }
 
@@ -278,14 +279,13 @@ describe('s2-pebc - instruction accumulation', () => {
     expect(activeCalls(node).length).toBe(0)
   })
 
-  it('passes through a non-PEBC instruction unchanged and warns', () => {
+  it('ignores a non-PEBC instruction silently', () => {
     const { node, handlers } = setupNode()
-    const original = { cemId: 'cem-1', controlType: 'OPERATION_MODE_BASED_CONTROL', ombc: { message_type: 'OMBC.Instruction', id: 'instr-1' }, payload: { message_type: 'OMBC.Instruction', id: 'instr-1' } }
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', payload: { message_type: 'OMBC.Instruction', id: 'instr-1' }, topic: 'OMBC.Instruction' }, jest.fn(), done)
 
-    handlers.input(original, jest.fn(), jest.fn())
-
-    expect(node.send as jest.Mock).toHaveBeenCalledWith([original, null, null])
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'yellow' }))
+    expect(node.send as jest.Mock).not.toHaveBeenCalled()
+    expect(done).toHaveBeenCalled()
   })
 })
 

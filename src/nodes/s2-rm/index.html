@@ -9,9 +9,9 @@
       cem: { value: '', type: 's2-cem-config', required: false }
     },
     inputs: 1,
-    outputs: 3,
+    outputs: 2,
     icon: 's2-logo.svg',
-    outputLabels: ['to transport', 'from CEM', 'instructions'],
+    outputLabels: ['to transport', 'from CEM'],
     inputLabels: ['from transport / control-type nodes'],
     label: function () {
       return this.name || 'S2 Resource Manager'
@@ -53,7 +53,7 @@
 <script type="text/html" data-help-name="s2-rm">
   <p>Generic S2 protocol state machine for connected CEMs. Handles the S2 handshake, sends ResourceManagerDetails, and acknowledges/routes instructions - independent of any specific control type's semantics.</p>
   <p>RM identity (resource ID, name, control types) is configured in the linked <b>s2-rm-config</b> node, shared with the transport node.</p>
-  <p>Control-type-specific behavior (OMBC mode resolution, PEBC schedule dispatch, etc.) lives in dedicated nodes - <b>s2-ombc</b>, <b>s2-pebc</b> - wired to this node's "from CEM" and "instructions" outputs, with their command output wired back to this node's input.</p>
+  <p>Control-type-specific behavior (OMBC mode resolution, PEBC schedule dispatch, etc.) lives in dedicated nodes - <b>s2-ombc</b>, <b>s2-pebc</b> - wired to this node's "from CEM" output, with their command output wired back to this node's input.</p>
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload <span class="property-type">object</span></dt>
@@ -70,21 +70,11 @@
     <li>From CEM
       <dl class="message-properties">
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>S2 messages received from the CEM (HandshakeResponse, SelectControlType, ReceptionStatus, RevokeObject, etc.). Wire this to control-type nodes so they can observe control-type selection and revocations.</dd>
+        <dd>All S2 messages from the CEM, including instructions (SelectControlType, RevokeObject, OMBC.Instruction, PEBC.Instruction, etc.). Wire to control-type nodes.</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>ID of the CEM that sent the message.</dd>
-      </dl>
-    </li>
-    <li>Instructions
-      <dl class="message-properties">
-        <dt>payload <span class="property-type">object</span></dt>
-        <dd>Control instructions from the CEM (OMBC.Instruction, PEBC.Instruction, etc.).</dd>
-        <dt>cemId <span class="property-type">string</span></dt>
-        <dd>ID of the CEM that sent the instruction.</dd>
-        <dt>controlType <span class="property-type">string</span></dt>
-        <dd>Resolved S2 control type of the instruction, e.g. <code>OPERATION_MODE_BASED_CONTROL</code>.</dd>
-        <dt>ombc / pebc / frbc / ddbc / ppbc <span class="property-type">object</span></dt>
-        <dd>The instruction payload, namespaced under the key matching <code>controlType</code>, for easy Switch-node routing to the matching control-type node.</dd>
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>The S2 message_type, or a lifecycle event (<code>Connected</code>, <code>Disconnected</code>).</dd>
       </dl>
     </li>
   </ol>

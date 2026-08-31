@@ -1,7 +1,7 @@
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2RmConfigNode, S2CemConfigNode } from '../../types/config-nodes'
 import { S2Session, State, StatusPayload, SystemDescriptionPayload } from '../../lib/s2/session'
-import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ControlType, ControlTypeValue, ReceptionStatusResult, InstructionStatus, InstructionStatusValue, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
+import { generateId, makePowerForecast, makePowerMeasurement, MessageType, ControlType, ReceptionStatusResult, InstructionStatus, InstructionStatusValue, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue } from '../../lib/s2/messages'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
@@ -19,17 +19,7 @@ interface PendingInstruction {
 const PENDING_INSTRUCTIONS_KEY = 's2PendingInstructions'
 const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before an instruction is pruned
 
-// Maps an instruction's message_type to the control type it belongs to and the
-// namespace key used to enrich the emitted message (msg.controlType / msg.<key>).
-const INSTRUCTION_CONTROL_TYPE: Record<string, { controlType: ControlTypeValue, key: string }> = {
-  [MessageType.OMBC_INSTRUCTION]: { controlType: ControlType.OMBC, key: 'ombc' },
-  [MessageType.PEBC_INSTRUCTION]: { controlType: ControlType.PEBC, key: 'pebc' },
-  [MessageType.FRBC_INSTRUCTION]: { controlType: ControlType.FRBC, key: 'frbc' },
-  [MessageType.DDBC_INSTRUCTION]: { controlType: ControlType.DDBC, key: 'ddbc' },
-  [MessageType.PPBC_SCHEDULE_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' },
-  [MessageType.PPBC_START_INTERRUPTION_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' },
-  [MessageType.PPBC_END_INTERRUPTION_INSTRUCTION]: { controlType: ControlType.PPBC, key: 'ppbc' }
-}
+
 
 /**
  * s2-rm node (S2 Resource Manager)
@@ -42,8 +32,7 @@ const INSTRUCTION_CONTROL_TYPE: Record<string, { controlType: ControlTypeValue, 
  * Wiring:
  *   [transport port 2] -> [s2-rm input]
  *   [s2-rm port 1]     -> [transport input]
- *   [s2-rm port 2]     -> [control-type node input]  (so it can observe SelectControlType/RevokeObject/etc.)
- *   [s2-rm port 3]     -> [control-type node input]  (enriched instructions)
+ *   [s2-rm port 2]     -> [control-type node input]  (all CEM messages incl. instructions)
  *   [control-type node command output] -> [s2-rm input]  (UpdateStatus/SystemDescription/PowerConstraints/InstructionStatus)
  *
  * Input msg.payload from transport or a control-type node:
@@ -64,15 +53,11 @@ const INSTRUCTION_CONTROL_TYPE: Record<string, { controlType: ControlTypeValue, 
  *   { payload: { 'S2/0/Active': 1 | 0 } }  <- on every SelectControlType, reflects whether the
  *                                             selected control type is other than NO_SELECTION/NOT_CONTROLABLE
  *
- * Output port 2 - S2 messages received from CEM, forwarded for downstream processing:
+ * Output port 2 - all S2 messages from CEM (incl. instructions), forwarded for downstream processing:
  *   { payload: <S2 message object>, cemId: <string>, topic: <message_type string> }
  *   Also emits lifecycle events (route via Switch node on msg.topic):
  *   { topic: 'Connected',    cemId: <string> }
  *   { topic: 'Disconnected', cemId: <string>, reason: 'cem_initiated' | 'keepalive_timeout' }
- *
- * Output port 3 - S2 instructions from CEM, enriched with the resolved control type:
- *   { payload: <S2 instruction object>, cemId: <string>, controlType: <string>, <namespace key>: <S2 instruction object> }
- *   e.g. for an OMBC.Instruction: { payload: {...}, cemId, controlType: 'OPERATION_MODE_BASED_CONTROL', ombc: {...} }
  */
 export = function (RED: NodeRedApp): void {
   function S2RmNode (this: NodeRedNode, config: S2RmConfig): void {
@@ -167,15 +152,6 @@ export = function (RED: NodeRedApp): void {
     const pollIntervalMs = rmConfigNode.instructionPollIntervalMs || 2000
     const isSkipInstructionStatus = rmConfigNode.skipInstructionStatus === true
 
-    // Enrich an outgoing instruction message with msg.controlType and the
-    // namespaced instruction payload (e.g. msg.ombc, msg.pebc), per the
-    // s2-rm-protocol spec. Unknown/unmapped instruction types are left as-is.
-    function enrichInstruction (rawMsg: Record<string, unknown>): Record<string, unknown> {
-      const mapping = INSTRUCTION_CONTROL_TYPE[rawMsg.message_type as string]
-      if (!mapping) return {}
-      return { controlType: mapping.controlType, [mapping.key]: rawMsg }
-    }
-
     // Poll at the configured interval: dispatch due non-PEBC instructions, prune expired entries.
     // PEBC instructions bypass this queue entirely (see onInstruction) - their timing is owned by s2-pebc.
     const pollTimer = setInterval(() => {
@@ -192,8 +168,7 @@ export = function (RED: NodeRedApp): void {
           if (session && item.instructionId && !isSkipInstructionStatus) {
             session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
           }
-          const outMsg: Record<string, unknown> = { payload: item.instruction, cemId: item.cemId, ...enrichInstruction(item.instruction) }
-          node.send([null, null, outMsg])
+          node.send([null, { payload: item.instruction, cemId: item.cemId, topic: item.instruction.message_type as string }, null])
           changed = true
           continue
         }
@@ -233,7 +208,7 @@ export = function (RED: NodeRedApp): void {
           if (m.message_type === MessageType.PEBC_POWER_CONSTRAINTS && typeof m.id === 'string') {
             node.context().flow.set('pebcConstraintsId', m.id)
           }
-          node.send([{ payload: { s2Signal: 'Message', message: msg }, cemId }, null, null])
+          node.send([{ payload: { s2Signal: 'Message', message: msg }, cemId }, null])
         },
 
         onStateChange: (state) => {
@@ -267,11 +242,11 @@ export = function (RED: NodeRedApp): void {
               }
             }
           }
-          node.send([null, { payload: msg, cemId, topic: msg.message_type }, null])
+          node.send([null, { payload: msg, cemId, topic: msg.message_type }])
           if (msg.message_type === MessageType.SELECT_CONTROL_TYPE) {
             const controlType = (msg.control_type as string) || ControlType.NO_SELECTION
             const isActive = controlType !== ControlType.NO_SELECTION && controlType !== ControlType.NOT_CONTROLABLE
-            node.send([{ payload: { 'S2/0/Active': isActive ? 1 : 0 } }, null, null])
+            node.send([{ payload: { 'S2/0/Active': isActive ? 1 : 0 } }, null])
             if (rmDetails.providesPowerMeasurementTypes.length > 0) {
               node.send([{
                 payload: {
@@ -279,7 +254,7 @@ export = function (RED: NodeRedApp): void {
                   commodityQuantities: rmDetails.providesPowerMeasurementTypes
                 },
                 cemId
-              }, null, null])
+              }, null])
             }
           }
         },
@@ -294,8 +269,7 @@ export = function (RED: NodeRedApp): void {
           if (msg.message_type === MessageType.PEBC_INSTRUCTION) {
             // PEBC schedule accumulation and per-element dispatch timing is owned by s2-pebc -
             // deliver the raw instruction immediately so it can build/dispatch with its own timers.
-            const outMsg: Record<string, unknown> = { payload: msg, cemId, ...enrichInstruction(rawMsg) }
-            node.send([null, null, outMsg])
+            node.send([null, { payload: msg, cemId, topic: msg.message_type }])
             return
           }
 
@@ -305,8 +279,7 @@ export = function (RED: NodeRedApp): void {
             if (session && instructionId && !isSkipInstructionStatus) {
               session.sendInstructionStatus(instructionId, InstructionStatus.STARTED)
             }
-            const outMsg: Record<string, unknown> = { payload: msg, cemId, ...enrichInstruction(rawMsg) }
-            node.send([null, null, outMsg])
+            node.send([null, { payload: msg, cemId, topic: msg.message_type }])
           } else {
             if (messageId) {
               addToPending({
@@ -380,7 +353,7 @@ export = function (RED: NodeRedApp): void {
           }
           const session = createSession(cemId)
           session.start()
-          node.send([null, { topic: 'Connected', cemId }, null])
+          node.send([null, { topic: 'Connected', cemId }])
           node.log(`CEM ${cemId} connected (keepAliveInterval: ${keepAliveInterval}s)`)
           updateStatus()
           done()
@@ -450,7 +423,7 @@ export = function (RED: NodeRedApp): void {
         case 'Disconnect': {
           sessions.get(cemId)?.dispose()
           sessions.delete(cemId)
-          node.send([null, { topic: 'Disconnected', cemId, reason: 'cem_initiated' }, null])
+          node.send([null, { topic: 'Disconnected', cemId, reason: 'cem_initiated' }])
           node.log(`CEM ${cemId} disconnected`)
           updateStatus()
           done()

@@ -352,7 +352,7 @@ describe('s2-rm - pending instructions context', () => {
     expect((pending[0] as Record<string, unknown>).executionTimeMs).toBeGreaterThan(Date.now())
   })
 
-  it('does not emit a future OMBC instruction on port 3 immediately', () => {
+  it('does not emit a future OMBC instruction on port 2 immediately', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
@@ -374,13 +374,20 @@ describe('s2-rm - pending instructions context', () => {
       }
     }, jest.fn(), jest.fn())
 
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[2] !== null
+    const port2Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
     )
-    expect(port3Calls.length).toBe(0)
+    // port 2 may have other messages (e.g. ReceptionStatus forwarding), but no OMBC instruction
+    const instrCalls = port2Calls.filter(
+      (c: unknown[]) => {
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === MessageType.OMBC_INSTRUCTION
+      }
+    )
+    expect(instrCalls.length).toBe(0)
   })
 
-  it('dispatches a future OMBC instruction on port 3 when its execution_time arrives', () => {
+  it('dispatches a future OMBC instruction on port 2 when its execution_time arrives', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
 
@@ -404,11 +411,15 @@ describe('s2-rm - pending instructions context', () => {
 
     jest.advanceTimersByTime(7000)
 
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    const port2Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => {
+        if (!Array.isArray(c[0]) || (c[0] as unknown[])[1] === null) return false
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === MessageType.OMBC_INSTRUCTION
+      }
     )
-    expect(port3Calls.length).toBe(1)
-    const dispatched = (port3Calls[0][0] as unknown[])[2] as { cemId: string, payload: Record<string, unknown> }
+    expect(port2Calls.length).toBe(1)
+    const dispatched = (port2Calls[0][0] as unknown[])[1] as { cemId: string, payload: Record<string, unknown> }
     expect(dispatched.cemId).toBe('cem-1')
     expect(dispatched.payload.message_type).toBe(MessageType.OMBC_INSTRUCTION)
   })
@@ -476,7 +487,7 @@ describe('s2-rm - pending instructions context', () => {
     expect(startedCall).toBeDefined()
   })
 
-  it('dispatches an immediate OMBC instruction on port 3 right away', () => {
+  it('dispatches an immediate OMBC instruction on port 2 right away', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
@@ -497,13 +508,17 @@ describe('s2-rm - pending instructions context', () => {
       }
     }, jest.fn(), jest.fn())
 
-    const port3Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    const port2Calls = (node.send as jest.Mock).mock.calls.filter(
+      (c: unknown[]) => {
+        if (!Array.isArray(c[0]) || (c[0] as unknown[])[1] === null) return false
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === MessageType.OMBC_INSTRUCTION
+      }
     )
-    expect(port3Calls.length).toBe(1)
+    expect(port2Calls.length).toBe(1)
   })
 
-  it('enriches an immediate OMBC instruction on port 3 with msg.controlType and namespaced msg.ombc', () => {
+  it('emits an immediate OMBC instruction as raw message with topic on port 2', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
@@ -524,16 +539,21 @@ describe('s2-rm - pending instructions context', () => {
       }
     }, jest.fn(), jest.fn())
 
-    const port3Call = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    const port2Call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => {
+        if (!Array.isArray(c[0]) || (c[0] as unknown[])[1] === null) return false
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === MessageType.OMBC_INSTRUCTION
+      }
     )
-    expect(port3Call).toBeDefined()
-    const out = (port3Call as unknown[][])[0][2] as { controlType: string, ombc: { operation_mode_id: string } }
-    expect(out.controlType).toBe('OPERATION_MODE_BASED_CONTROL')
-    expect(out.ombc.operation_mode_id).toBe('mode-on')
+    expect(port2Call).toBeDefined()
+    const out = (port2Call as unknown[][])[0][1] as { payload: { operation_mode_id: string }, topic: string, cemId: string }
+    expect(out.topic).toBe(MessageType.OMBC_INSTRUCTION)
+    expect(out.cemId).toBe('cem-1')
+    expect(out.payload.operation_mode_id).toBe('mode-on')
   })
 
-  it('enriches a future OMBC instruction on port 3 with msg.controlType and namespaced msg.ombc when dispatched', () => {
+  it('emits a future OMBC instruction as raw message with topic on port 2 when dispatched', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
 
@@ -556,16 +576,20 @@ describe('s2-rm - pending instructions context', () => {
 
     jest.advanceTimersByTime(7000)
 
-    const port3Call = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    const port2Call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => {
+        if (!Array.isArray(c[0]) || (c[0] as unknown[])[1] === null) return false
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === MessageType.OMBC_INSTRUCTION
+      }
     )
-    expect(port3Call).toBeDefined()
-    const out = (port3Call as unknown[][])[0][2] as { controlType: string, ombc: { operation_mode_id: string } }
-    expect(out.controlType).toBe('OPERATION_MODE_BASED_CONTROL')
-    expect(out.ombc.operation_mode_id).toBe('mode-on')
+    expect(port2Call).toBeDefined()
+    const out = (port2Call as unknown[][])[0][1] as { payload: { operation_mode_id: string }, topic: string }
+    expect(out.topic).toBe(MessageType.OMBC_INSTRUCTION)
+    expect(out.payload.operation_mode_id).toBe('mode-on')
   })
 
-  it('delivers a PEBC instruction on port 3 immediately, bypassing the execution_time queue', () => {
+  it('delivers a PEBC instruction on port 2 immediately, bypassing the execution_time queue', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
@@ -585,13 +609,17 @@ describe('s2-rm - pending instructions context', () => {
       }
     }, jest.fn(), jest.fn())
 
-    const port3Call = (node.send as jest.Mock).mock.calls.find(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] === null && (c[0] as unknown[])[2] !== null
+    const port2Call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => {
+        if (!Array.isArray(c[0]) || (c[0] as unknown[])[1] === null) return false
+        const msg = (c[0] as unknown[])[1] as { topic?: string }
+        return msg?.topic === 'PEBC.Instruction'
+      }
     )
-    expect(port3Call).toBeDefined()
-    const out = (port3Call as unknown[][])[0][2] as { controlType: string, pebc: Record<string, unknown> }
-    expect(out.controlType).toBe('POWER_ENVELOPE_BASED_CONTROL')
-    expect(out.pebc.message_type).toBe('PEBC.Instruction')
+    expect(port2Call).toBeDefined()
+    const out = (port2Call as unknown[][])[0][1] as { payload: Record<string, unknown>, topic: string }
+    expect(out.topic).toBe('PEBC.Instruction')
+    expect(out.payload.message_type).toBe('PEBC.Instruction')
 
     // No pending-instruction bookkeeping for PEBC - it's not queued generically
     expect(node.error as jest.Mock).not.toHaveBeenCalled()

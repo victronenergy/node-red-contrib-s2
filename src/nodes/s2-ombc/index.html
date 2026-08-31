@@ -46,7 +46,7 @@
 
 <script type="text/html" data-help-name="s2-ombc">
   <p>Owns Operation Mode Based Control (OMBC) behavior: declares the OMBC system description to the CEM, resolves OMBC instructions, and confirms operation mode changes back to the CEM once told the hardware state is confirmed.</p>
-  <p>Wire this node's input to both <b>s2-rm</b>'s "from CEM" output (to observe <code>SelectControlType</code>) and its "instructions" output (to resolve OMBC instructions). Wire this node's second output back to <b>s2-rm</b>'s input.</p>
+  <p>Wire this node's input to <b>s2-rm</b>'s "from CEM" output. Wire this node's second output back to <b>s2-rm</b>'s input.</p>
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload <span class="property-type">object</span></dt>
