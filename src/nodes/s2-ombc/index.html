@@ -52,30 +52,44 @@
     <dt>payload <span class="property-type">object</span></dt>
     <dd>S2 "from CEM" messages and enriched instructions forwarded from <b>s2-rm</b>, as-is.</dd>
   </dl>
-  <p>Confirm-mode message, sent from your own flow once the hardware state matches the requested mode:</p>
+  <p><code>ModeConfirmation</code>, sent from your own flow once the hardware state matches the requested mode:</p>
   <dl class="message-properties">
-    <dt>payload.confirmedOperationModeId <span class="property-type">string</span></dt>
-    <dd>Id of the operation mode now active on the hardware.</dd>
-    <dt>payload.operationModeFactor <span class="property-type">number</span></dt>
-    <dd>Optional. Defaults to 1.</dd>
+    <dt>topic <span class="property-type">string</span></dt>
+    <dd><code>'ModeConfirmation'</code></dd>
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd>Exactly one of <code>id</code> (mode id), <code>index</code> (0-based index into the configured operation modes), or <code>label</code> (matches a mode's diagnostic label; must be unique). Optional <code>factor</code>, defaults to 1.</dd>
     <dt>cemId <span class="property-type">string</span></dt>
-    <dd>Required. The CEM this confirmation applies to.</dd>
+    <dd>Optional. Resolves to the one CEM currently with OMBC selected (error if more than one), or - if none - stored as the default status applied to whichever CEM next selects OMBC.</dd>
+  </dl>
+  <p>The legacy <code>payload.confirmedOperationModeId</code> / <code>confirmedOperationModeIndex</code> / <code>confirmedOperationModeLabel</code> / <code>operationModeFactor</code> fields are still accepted.</p>
+  <p><code>PowerMeasurement</code>, forwarded to <b>s2-rm</b> on this node's second output:</p>
+  <dl class="message-properties">
+    <dt>topic <span class="property-type">string</span></dt>
+    <dd><code>'PowerMeasurement'</code></dd>
+    <dt>payload.values <span class="property-type">number | array</span></dt>
+    <dd>A number for 3-phase symmetric power, a 3-element array <code>[L1, L2, L3]</code> for per-phase power, or an array of <code>{ commodity_quantity, value }</code> objects passed through as-is.</dd>
+    <dt>cemId <span class="property-type">string</span></dt>
+    <dd>Optional. Resolves the same way as <code>ModeConfirmation</code>'s cemId, except the message is silently dropped (no output) when no single CEM can be determined.</dd>
   </dl>
   <h3>Outputs</h3>
   <ol class="node-ports">
     <li>Instructions
       <dl class="message-properties">
         <dt>topic <span class="property-type">string</span></dt>
-        <dd>Resolved mode's diagnostic label, for routing with a Switch node. Only set for resolved OMBC instructions.</dd>
-        <dt>ombc.operationMode <span class="property-type">object</span></dt>
-        <dd><code>{ id, index, label, factor, powerRanges }</code> for the resolved mode.</dd>
+        <dd><code>'ModeInstruction'</code> for a resolved OMBC instruction, or <code>'ModeRequest'</code> sent after a newly OMBC-selecting CEM has neither a persisted status nor a default available.</dd>
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor }</code> for the resolved mode. For <code>ModeRequest</code>: <code>null</code>.</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>The CEM this message applies to.</dd>
+        <dt>rawMessage <span class="property-type">object</span></dt>
+        <dd><code>ModeInstruction</code> only. The original instruction payload received from s2-rm.</dd>
       </dl>
       Non-OMBC instructions are passed through unchanged (node status shows a warning), so this node can be wired in parallel with s2-pebc downstream of the same s2-rm.
     </li>
     <li>To s2-rm
       <dl class="message-properties">
         <dt>payload <span class="property-type">object</span></dt>
-        <dd><code>{ command: 'SystemDescription', cemId, controlType, ombc }</code> or <code>{ command: 'UpdateStatus', cemId, controlType, ombc }</code>. Wire to s2-rm's input.</dd>
+        <dd><code>{ command: 'SystemDescription', cemId, controlType, ombc }</code>, <code>{ command: 'UpdateStatus', cemId, controlType, ombc }</code>, or <code>{ command: 'PowerMeasurement', cemId, values }</code>. Wire to s2-rm's input.</dd>
       </dl>
     </li>
   </ol>

@@ -396,17 +396,36 @@
         "rules": [
             {
                 "t": "set",
+                "p": "_confirmedId",
+                "pt": "msg",
+                "to": "payload.id",
+                "tot": "msg"
+            },
+            {
+                "t": "set",
                 "p": "payload",
                 "pt": "msg",
-                "to": "{\"confirmedOperationModeId\":\"\"}",
+                "to": "{\"id\":\"\"}",
                 "tot": "json"
             },
             {
                 "t": "set",
-                "p": "payload.confirmedOperationModeId",
+                "p": "payload.id",
                 "pt": "msg",
-                "to": "ombc.operationMode.id",
+                "to": "_confirmedId",
                 "tot": "msg"
+            },
+            {
+                "t": "delete",
+                "p": "_confirmedId",
+                "pt": "msg"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ModeConfirmation",
+                "tot": "str"
             }
         ],
         "action": "",
