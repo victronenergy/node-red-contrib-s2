@@ -25,8 +25,7 @@ type ModeIdResolution = { id: string } | { error: string }
  * changes back to the CEM once told the hardware state is confirmed.
  *
  * Wiring:
- *   [s2-rm output 2 (from CEM)]    -> [s2-ombc input]  (to observe SelectControlType)
- *   [s2-rm output 3 (instructions)] -> [s2-ombc input]  (to resolve OMBC instructions)
+ *   [s2-rm output 2 (from CEM)]    -> [s2-ombc input]  (all CEM messages incl. instructions)
  *   [confirm-mode message]          -> [s2-ombc input]  (see Input below)
  *   [s2-ombc output 1]  -> downstream flow (resolved/pass-through instructions)
  *   [s2-ombc output 2]  -> [s2-rm input]  (SystemDescription / UpdateStatus commands)
@@ -166,13 +165,12 @@ export = function (RED: NodeRedApp): void {
     }
 
     function handleInstruction (msg: NodeMessage): void {
-      if (msg.controlType !== ControlType.OMBC) {
-        node.status({ fill: 'yellow', shape: 'ring', text: `ignoring ${String(msg.controlType)} instruction` })
-        node.send([msg, null])
+      const payload = msg.payload as Record<string, unknown>
+      const messageType = payload.message_type as string
+      if (messageType !== MessageType.OMBC_INSTRUCTION) {
         return
       }
-      const rawInstr = (msg.ombc || msg.payload) as Record<string, unknown>
-      const resolved = resolveMode(rawInstr)
+      const resolved = resolveMode(payload)
       if (resolved) {
         node.status({ fill: 'green', shape: 'dot', text: resolved.label })
         node.send([{
@@ -335,6 +333,14 @@ export = function (RED: NodeRedApp): void {
       }
 
       if ('controlType' in msg) {
+        // Legacy enriched instruction from s2-rm (pre-v0.3)
+        handleInstruction(msg)
+        done()
+        return
+      }
+
+      const messageType = (payload as Record<string, unknown>).message_type as string | undefined
+      if (messageType && messageType.startsWith('OMBC.')) {
         handleInstruction(msg)
         done()
         return
