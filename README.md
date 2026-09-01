@@ -33,7 +33,7 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 - Configurable RM roles (Consumer, Producer, Storage)
 - Context variable templates in serial number (e.g. `{{global.vrmId}}`)
 
-Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its instructions output, enriched with `msg.controlType`, for you to handle in your own flow.
+Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its "from CEM" output, as raw S2 messages, for you to handle in your own flow.
 
 ## Installation
 
@@ -51,14 +51,12 @@ npm install node-red-contrib-s2
 3. Wire an **s2-websocket** node to an **s2-rm** node:
    - s2-websocket output 2 -> s2-rm input
    - s2-rm output 1 -> s2-websocket input
-4. s2-rm output 2 carries S2 messages from the CEM (e.g. SelectControlType, ReceptionStatus, RevokeObject).
-5. s2-rm output 3 carries instructions from the CEM, enriched with `msg.controlType` and namespaced under a matching key (e.g. `msg.ombc`, `msg.pebc`).
-6. For OMBC or PEBC, add the matching control-type node (**s2-ombc** + **s2-ombc-config**, or **s2-pebc** + **s2-pebc-config**) and wire it up:
-   - s2-rm output 2 -> control-type node input (so it can observe `SelectControlType`/`RevokeObject`)
-   - s2-rm output 3 -> control-type node input (so it can resolve its instructions)
+4. s2-rm output 2 carries all S2 messages from the CEM (e.g. SelectControlType, ReceptionStatus, RevokeObject) and instructions (e.g. `OMBC.Instruction`, `PEBC.Instruction`), as raw S2 messages with `msg.topic` set to the `message_type`.
+5. For OMBC or PEBC, add the matching control-type node (**s2-ombc** + **s2-ombc-config**, or **s2-pebc** + **s2-pebc-config**) and wire it up:
+   - s2-rm output 2 -> control-type node input (so it can observe `SelectControlType`/`RevokeObject` and resolve its own instructions)
    - control-type node's command output -> s2-rm input (routes `UpdateStatus`/`SystemDescription`/`PowerConstraints`/`InstructionStatus` commands back through s2-rm)
 
-   `s2-ombc` and `s2-pebc` can be wired in parallel downstream of the same `s2-rm` - each passes through instructions meant for the other control type unchanged.
+   `s2-ombc` and `s2-pebc` can be wired in parallel downstream of the same `s2-rm` - each ignores instructions meant for the other control type.
 
    If you're sending PowerForecasts and using `s2-pebc`, route your Forecast command into `s2-pebc`'s input too (instead of directly into s2-rm) - see [Sending PowerForecasts](#sending-powerforecasts).
 

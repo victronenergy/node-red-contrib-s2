@@ -210,7 +210,7 @@
 
   <h3>Identity</h3>
   <p><b>Resource ID</b> is a stable UUID identifying this RM to the CEM - it's also used to build the CEM connection URL on <b>s2-cem-config</b>. Auto-generated the first time the node is added; avoid changing it after deployment, since the CEM associates state with this id.</p>
-  <p><b>Roles</b> and <b>Control Types</b> are advertised capabilities - at least one of each must be selected. Control types beyond OMBC and PEBC (FRBC, DDBC, PPBC) have no dedicated node yet; their instructions are still forwarded on <b>s2-rm</b>'s instructions output for you to handle yourself.</p>
+  <p><b>Roles</b> and <b>Control Types</b> are advertised capabilities - at least one of each must be selected. Control types beyond OMBC and PEBC (FRBC, DDBC, PPBC) have no dedicated node yet; their instructions are still forwarded on <b>s2-rm</b>'s "from CEM" output for you to handle yourself.</p>
 
   <h3>Power Meas. / Forecast</h3>
   <p>Advertise whether this RM reports <code>PowerMeasurement</code> (as a single 3-phase-symmetric value, or per-phase L1/L2/L3) and/or <code>PowerForecast</code>. These affect what's advertised to the CEM and whether <b>s2-rm</b> emits its <code>PowerMeasurementStart</code> signal on output 1 - they don't gate whether a <code>PowerMeasurement</code>/<code>Forecast</code> command you send is actually forwarded, which happens regardless.</p>

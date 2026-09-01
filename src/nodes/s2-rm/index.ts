@@ -19,8 +19,6 @@ interface PendingInstruction {
 const PENDING_INSTRUCTIONS_KEY = 's2PendingInstructions'
 const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before an instruction is pruned
 
-
-
 /**
  * s2-rm node (S2 Resource Manager)
  *

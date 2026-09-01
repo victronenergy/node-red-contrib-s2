@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2PebcConfigNode } from '../../types/config-nodes'
-import { ControlType, InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToAmpsPerPhase, gridConnectionToWatts } from '../../lib/s2/messages'
+import { InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToAmpsPerPhase, gridConnectionToWatts } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, capForecastToSchedule, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2PebcNodeConfig extends NodeConfig {

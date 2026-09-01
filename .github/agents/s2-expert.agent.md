@@ -248,7 +248,7 @@ S2/0/RmSettings/PowerSetting   - optional, Watts
 - `session.ts`: `S2Session` state machine - one instance per CEM connection. States: HANDSHAKING -> CONNECTED. Handles: HandshakeResponse, SelectControlType, all instruction types (OMBC/FRBC/DDBC/PEBC/PPBC), ReceptionStatus forwarding
 
 ### Node Layer (`src/nodes/`)
-- `s2-rm/index.ts`: S2 Resource Manager node - manages session map, routes D-Bus commands (Connect/Message/KeepAlive/PowerMeasurement/Disconnect), 3 output ports (to-CEM, received-messages, instructions)
+- `s2-rm/index.ts`: S2 Resource Manager node - manages session map, routes D-Bus commands (Connect/Message/KeepAlive/PowerMeasurement/Disconnect), 2 output ports (to-CEM, from-CEM incl. instructions)
 - `s2-websocket/index.ts`: Stub, not yet implemented
 
 ### Internal Command Interface (between transport and s2-rm)
@@ -268,8 +268,7 @@ Output to transport (port 1):
 { payload: { s2Signal: 'PowerMeasurementStart', commodityQuantities: [...] }, cemId }
 ```
 
-Output port 2: All received S2 messages `{ payload: <S2 msg>, cemId }`
-Output port 3: Instruction messages only `{ payload: <instruction msg>, cemId }`
+Output port 2: All received S2 messages, incl. instructions `{ payload: <S2 msg>, cemId, topic: <message_type> }`
 
 ---
 
