@@ -65,7 +65,7 @@
       </dl>
       When no PEBC bound is active any more - the last instruction is revoked, or its final element ends with nothing queued after it - a released element is emitted instead, with <code>lowerBound</code> and <code>upperBound</code> both <code>null</code>. Treat that explicitly as "no PEBC-imposed limit right now", not as "no data yet".
       <br>If you've wired in <code>PowerMeasurement</code>, this output is also re-emitted (with updated <code>direction</code>/<code>limitW</code>) whenever a measurement flips which side of an asymmetric bound applies mid-slot - without resending <code>InstructionStatus</code> on output 3, since the instruction itself hasn't changed.
-      <br>Non-PEBC instructions are passed through unchanged (node status shows a warning), so this node can be wired in parallel with s2-ombc downstream of the same s2-rm.
+      <br>Non-PEBC instructions are ignored silently, so this node can be wired in parallel with s2-ombc downstream of the same s2-rm.
     </li>
     <li>Schedule
       <dl class="message-properties">

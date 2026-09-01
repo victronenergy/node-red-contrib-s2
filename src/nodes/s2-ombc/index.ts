@@ -28,11 +28,11 @@ type ModeIdResolution = { id: string } | { error: string }
  * Wiring:
  *   [s2-rm output 2 (from CEM)]    -> [s2-ombc input]  (all CEM messages incl. instructions)
  *   [confirm-mode message]          -> [s2-ombc input]  (see Input below)
- *   [s2-ombc output 1]  -> downstream flow (resolved/pass-through instructions)
+ *   [s2-ombc output 1]  -> downstream flow (resolved OMBC instructions)
  *   [s2-ombc output 2]  -> [s2-rm input]  (SystemDescription / UpdateStatus commands)
  *
  * Input:
- *   S2 "from CEM" messages and enriched instructions forwarded from s2-rm, as-is.
+ *   S2 "from CEM" messages, including instructions, forwarded from s2-rm as-is.
  *   ModeConfirmation (from your own flow, once hardware state is confirmed):
  *     { topic: 'ModeConfirmation', payload: { <mode ref> }, cemId?: <string> }
  *   where <mode ref> is exactly one of:
@@ -47,7 +47,7 @@ type ModeIdResolution = { id: string } | { error: string }
  * Output port 1 - instructions:
  *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, power }, cemId, rawMessage }
  *     power: [L1, L2, L3] watts, derived from the mode's power_ranges and factor.
- *   Non-OMBC instructions: passed through unchanged (node status shows a warning).
+ *   Non-OMBC instructions: ignored silently.
  *   ModeRequest: { topic: 'ModeRequest', payload: null, cemId }
  *
  * Output port 2 - commands to s2-rm:

@@ -32,11 +32,11 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  *   [Forecast command source]          -> [s2-pebc input]  (optional - to cap the forecast to the accumulated schedule)
  *   [PowerMeasurement command source] -> [s2-pebc input]  (optional - to resolve which side of an
  *                                          asymmetric bound currently applies; see output port 1)
- *   [s2-pebc output 1] -> downstream flow (active element dispatch / pass-through instructions)
+ *   [s2-pebc output 1] -> downstream flow (active element dispatch)
  *   [s2-pebc output 2] -> downstream flow (full accumulated schedule dump)
  *   [s2-pebc output 3] -> [s2-rm input]  (PowerConstraints / InstructionStatus / Forecast commands)
  *
- * Output port 1 - active element / pass-through:
+ * Output port 1 - active element:
  *   Active element: { cemId, payload: { startTime, endTime, duration, lowerBound, upperBound, commodityQuantity, direction, limitW } }
  *   Released (no PEBC bound active - last instruction revoked, or its final element ended with
  *   nothing queued after it): { cemId, payload: { lowerBound: null, upperBound: null, commodityQuantity, direction, limitW: null } }
@@ -46,7 +46,7 @@ const SCHEDULE_CONTEXT_KEY = 's2PebcSchedule'
  *   active element and its two bounds actually differ, output 1 is re-emitted with the updated
  *   values - this does not resend InstructionStatus on output 3, since the instruction itself
  *   hasn't changed, only which of its bounds is presently binding.
- *   Non-PEBC instructions: passed through unchanged (node status shows a warning).
+ *   Non-PEBC instructions: ignored silently.
  *
  * Output port 2 - schedule:
  *   { cemId, payload: { commodityQuantity, elements: [{ startTime, endTime, durationSec, lowerBound, upperBound }] } }
