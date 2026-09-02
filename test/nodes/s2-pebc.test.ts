@@ -234,6 +234,19 @@ describe('s2-pebc - instruction accumulation', () => {
     expect(activeCalls(node).length).toBe(1)
   })
 
+  it('shows the upcoming bounds in node.status while waiting for a future slot', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { upper: 5000, lower: -3000 }), jest.fn(), jest.fn())
+
+    const statusCalls = (node.status as jest.Mock).mock.calls.map(c => c[0] as { text: string })
+    const lastStatus = statusCalls[statusCalls.length - 1]
+    expect(lastStatus.text).toEqual(expect.stringContaining('next'))
+    expect(lastStatus.text).toEqual(expect.stringContaining('-3000W'))
+    expect(lastStatus.text).toEqual(expect.stringContaining('5000W'))
+  })
+
   it('emits a released element when the only slot ends with nothing queued after it', () => {
     const { node, handlers } = setupNode()
     const now = Date.now()

@@ -164,7 +164,11 @@ export = function (RED: NodeRedApp): void {
 
       const next = sorted.find(s => s.element.startMs > now)
       if (next) {
-        node.status({ fill: 'blue', shape: 'dot', text: `${countLabel} · next @ ${formatTime(next.element.startMs)}` })
+        node.status({
+          fill: 'blue',
+          shape: 'dot',
+          text: `${countLabel} · next ${formatBound(next.element.lowerBound)}..${formatBound(next.element.upperBound)} @ ${formatTime(next.element.startMs)}`
+        })
         return
       }
 
