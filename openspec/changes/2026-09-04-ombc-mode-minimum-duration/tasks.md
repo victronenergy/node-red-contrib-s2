@@ -24,4 +24,4 @@
 - [ ] 5.1 Manual verification in a real Node-RED editor: configure a minimum duration on a mode, confirm the generated `systemDescription` (via Advanced mode) has the expected timer/start_timers/blocking_timers; leave a mode's duration unset and confirm no timer is generated for it; round-trip Friendly -> Advanced -> Friendly with a configured duration; confirm a hand-authored Advanced timer with a non-whole-second duration correctly falls through to Advanced mode with a warning
 - [ ] 5.2 `npm run lint`
 - [ ] 5.3 `npm run build`
-- [ ] 5.4 `npm test` (no new Jest coverage expected - this is editor-only browser JS with no test infrastructure in this repo, matching the prior friendly-editor change)
+- [ ] 5.4 `npm test` (no new Jest coverage expected - this is editor-only browser JS with no existing automated test harness in this repo, matching the prior friendly-editor change)
