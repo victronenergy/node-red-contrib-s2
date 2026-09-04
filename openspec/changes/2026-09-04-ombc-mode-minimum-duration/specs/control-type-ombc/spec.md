@@ -1,8 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: Per-mode minimum-duration timer configuration
-`s2-ombc-config`'s friendly editor SHALL offer each operation mode an optional minimum-duration input, entered as minutes and seconds, defaulting to unset (no timer - equivalent to today's behavior). A configured value SHALL apply only to that mode: once the timer wired to that mode (per "Auto-derived transitions in friendly mode") has been started by the CEM, the CEM SHALL NOT be offered a transition away from that mode until the configured duration has elapsed.
-
+`s2-ombc-config`'s friendly editor SHALL offer each operation mode an optional minimum-duration input, entered as minutes and seconds, defaulting to unset (no timer - equivalent to today's behavior). A configured value SHALL apply only to that mode: once the timer wired to that mode (per "Auto-derived transitions in friendly mode") has been started by the CEM, the CEM SHALL NOT issue an instruction to transition away from that mode until the configured duration has elapsed.
 #### Scenario: Mode has no minimum duration configured
 - **WHEN** an operation mode's minimum-duration minutes and seconds fields are both left unset or zero
 - **THEN** no timer is generated for that mode and no transition into or out of it references any timer
