@@ -8,19 +8,54 @@
       })
     }
 
-    // Every configured mode able to transition to every other configured mode,
-    // with no timers - the fully-connected graph friendly mode always assumes.
-    function buildTransitions (modeIds) {
+    // FNV-1a, used only to seed deriveTimerId's PRNG below - not a general hash utility.
+    function hashSeed (str) {
+      var h = 0x811c9dc5
+      for (var i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i)
+        h = Math.imul(h, 0x01000193)
+      }
+      return h >>> 0
+    }
+
+    // A per-mode minimum-duration timer needs a stable id, so unchanged config
+    // re-saves byte-identical - but s2-python validates every S2 id as UUID4
+    // and rejects any other format, so a custom string (e.g. 'min-duration:'
+    // + modeId) isn't an option. This derives an id in generateUuid()'s exact
+    // format (same version/variant nibble forcing), from a mulberry32 PRNG
+    // seeded from the mode's own id instead of Math.random() - deterministic
+    // per mode, but structurally indistinguishable from a real UUID4.
+    function deriveTimerId (modeId) {
+      var state = hashSeed(modeId)
+      function next () {
+        state |= 0
+        state = (state + 0x6D2B79F5) | 0
+        var t = Math.imul(state ^ (state >>> 15), 1 | state)
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = next() * 16 | 0
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+      })
+    }
+
+    // Every configured mode able to transition to every other configured mode.
+    // `modes` here is [{ id, timerId }] - timerId is the id of the mode's
+    // minimum-duration timer (started on entry, blocking on exit), or null.
+    function buildTransitions (modes) {
       var transitions = []
-      for (var i = 0; i < modeIds.length; i++) {
-        for (var j = 0; j < modeIds.length; j++) {
+      for (var i = 0; i < modes.length; i++) {
+        for (var j = 0; j < modes.length; j++) {
           if (i === j) continue
+          var from = modes[i]
+          var to = modes[j]
           transitions.push({
             id: generateUuid(),
-            from: modeIds[i],
-            to: modeIds[j],
-            start_timers: [],
-            blocking_timers: [],
+            from: from.id,
+            to: to.id,
+            start_timers: to.timerId ? [to.timerId] : [],
+            blocking_timers: from.timerId ? [from.timerId] : [],
             abnormal_condition_only: false
           })
         }
@@ -51,10 +86,20 @@
           abnormal_condition_only: !!m.abnormalConditionOnly
         }
       })
+      var timers = []
+      var modesWithTimerId = modes.map(function (m) {
+        var minDurationMs = (Number(m.minDurationMinutes) || 0) * 60000 + (Number(m.minDurationSeconds) || 0) * 1000
+        var timerId = null
+        if (minDurationMs > 0) {
+          timerId = deriveTimerId(m.id)
+          timers.push({ id: timerId, duration: minDurationMs })
+        }
+        return { id: m.id, timerId: timerId }
+      })
       return {
         operationModes: operationModes,
-        transitions: buildTransitions(operationModes.map(function (m) { return m.id })),
-        timers: []
+        transitions: buildTransitions(modesWithTimerId),
+        timers: timers
       }
     }
 
@@ -77,6 +122,24 @@
       return false
     }
 
+    // Reference is [] (no timer) or a single string id - anything else (a
+    // bespoke multi-timer wiring) is only expressible in Advanced mode.
+    function isSingleOrEmptyTimerRef (arr) {
+      return Array.isArray(arr) && arr.length <= 1 && (arr.length === 0 || typeof arr[0] === 'string')
+    }
+
+    // Records modeId -> timerId|null the first time it's seen, then requires
+    // every later reference for that same modeId to agree - the per-mode
+    // minimum-duration timer must be wired identically into every transition
+    // that shares that mode's inbound (or outbound) side.
+    function consistentTimerRef (map, modeId, timerIdOrNull) {
+      if (!(modeId in map)) {
+        map[modeId] = timerIdOrNull
+        return true
+      }
+      return map[modeId] === timerIdOrNull
+    }
+
     // Strict structural check: true only when systemDescription is exactly what
     // friendly mode itself would produce, so switching modes never silently
     // narrows something Advanced mode expresses that friendly mode can't.
@@ -96,16 +159,25 @@
       var transitions = sysDesc.transitions
       if (!Array.isArray(transitions) || transitions.length !== modeIds.length * (modeIds.length - 1)) return false
 
+      // Per mode: the single timer id (if any) that every transition into it
+      // shares in start_timers, and that every transition out of it shares in
+      // blocking_timers - populated as transitions are walked below.
+      var inboundTimerId = {}
+      var outboundTimerId = {}
       var seenPairs = {}
       for (var j = 0; j < transitions.length; j++) {
         var t = transitions[j]
         if (!t || modeIds.indexOf(t.from) === -1 || modeIds.indexOf(t.to) === -1 || t.from === t.to) return false
-        if (!Array.isArray(t.start_timers) || t.start_timers.length !== 0) return false
-        if (!Array.isArray(t.blocking_timers) || t.blocking_timers.length !== 0) return false
+        if (!isSingleOrEmptyTimerRef(t.start_timers) || !isSingleOrEmptyTimerRef(t.blocking_timers)) return false
         if (t.abnormal_condition_only) return false
         var key = t.from + '>' + t.to
         if (seenPairs[key]) return false
         seenPairs[key] = true
+
+        var startId = t.start_timers.length ? t.start_timers[0] : null
+        if (!consistentTimerRef(inboundTimerId, t.to, startId)) return false
+        var blockId = t.blocking_timers.length ? t.blocking_timers[0] : null
+        if (!consistentTimerRef(outboundTimerId, t.from, blockId)) return false
       }
       for (var a = 0; a < modeIds.length; a++) {
         for (var b = 0; b < modeIds.length; b++) {
@@ -114,13 +186,61 @@
         }
       }
 
+      // A mode's minimum-duration timer must be wired symmetrically: the same
+      // id started on every transition in and blocked on every transition out.
+      var timerIdByMode = {}
+      for (var c = 0; c < modeIds.length; c++) {
+        var modeId = modeIds[c]
+        var inb = inboundTimerId[modeId] || null
+        var outb = outboundTimerId[modeId] || null
+        if (inb !== outb) return false
+        if (inb) timerIdByMode[modeId] = inb
+      }
+
       var timers = sysDesc.timers
-      return Array.isArray(timers) && timers.length === 0
+      if (!Array.isArray(timers)) return false
+      var expectedTimerIds = {}
+      for (var modeKey in timerIdByMode) expectedTimerIds[timerIdByMode[modeKey]] = true
+      var expectedCount = Object.keys(expectedTimerIds).length
+      if (timers.length !== expectedCount) return false
+
+      var seenTimerIds = {}
+      for (var k = 0; k < timers.length; k++) {
+        var timer = timers[k]
+        if (!timer || typeof timer.id !== 'string' || !timer.id) return false
+        if (seenTimerIds[timer.id] || !expectedTimerIds[timer.id]) return false
+        seenTimerIds[timer.id] = true
+        // Whole seconds only - friendly mode's UI offers minutes/seconds, so a
+        // sub-second remainder can't have come from friendly mode and can't be
+        // represented without silently rounding it away.
+        if (typeof timer.duration !== 'number' || timer.duration <= 0 || timer.duration % 1000 !== 0) return false
+      }
+
+      return true
+    }
+
+    // modeId -> configured minimum-duration timer's duration (ms), read off
+    // the `to` side of each transition's start_timers (only called after
+    // isFriendlyRepresentable has confirmed inbound/outbound wiring agree).
+    function modeTimerDurations (sysDesc) {
+      var durationById = {}
+      ;(sysDesc.timers || []).forEach(function (timer) { durationById[timer.id] = timer.duration })
+      var result = {}
+      ;(sysDesc.transitions || []).forEach(function (t) {
+        if (t.start_timers && t.start_timers.length) {
+          result[t.to] = durationById[t.start_timers[0]]
+        }
+      })
+      return result
     }
 
     // Only called after isFriendlyRepresentable has passed.
     function systemDescriptionToFriendlyState (sysDesc) {
+      var durationByMode = modeTimerDurations(sysDesc)
       return sysDesc.operationModes.map(function (m) {
+        var duration = durationByMode[m.id] || 0
+        var minDurationMinutes = Math.floor(duration / 60000)
+        var minDurationSeconds = Math.floor((duration % 60000) / 1000)
         var ranges = m.power_ranges
         if (ranges.length === 1) {
           return {
@@ -132,7 +252,9 @@
             valueSymmetric: ranges[0].start_of_range,
             valueL1: 0,
             valueL2: 0,
-            valueL3: 0
+            valueL3: 0,
+            minDurationMinutes: minDurationMinutes,
+            minDurationSeconds: minDurationSeconds
           }
         }
         var byCq = {}
@@ -146,7 +268,9 @@
           valueSymmetric: 0,
           valueL1: byCq['ELECTRIC.POWER.L1'],
           valueL2: byCq['ELECTRIC.POWER.L2'],
-          valueL3: byCq['ELECTRIC.POWER.L3']
+          valueL3: byCq['ELECTRIC.POWER.L3'],
+          minDurationMinutes: minDurationMinutes,
+          minDurationSeconds: minDurationSeconds
         }
       })
     }
@@ -237,6 +361,18 @@
           symCheckbox.on('change', updateSymVisibility)
           updateSymVisibility()
 
+          var row4 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+          row4.append('Minimum time in this mode: ')
+          var minDurWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row4)
+          $('<input/>', { type: 'number', class: 's2-ombc-mode-min-duration-minutes', min: '0', step: '1' })
+            .val(opt.minDurationMinutes || 0)
+            .appendTo(minDurWrap)
+          minDurWrap.append($('<span/>', { class: 's2-unit-label' }).text('min'))
+          $('<input/>', { type: 'number', class: 's2-ombc-mode-min-duration-seconds', min: '0', max: '59', step: '1' })
+            .val(opt.minDurationSeconds || 0)
+            .appendTo(minDurWrap)
+          minDurWrap.append($('<span/>', { class: 's2-unit-label' }).text('sec'))
+
           if (opt.protected) {
             $('<div/>', { class: 's2-ombc-mode-protected-note' }).text('Always present - remove via Advanced mode if not needed.').appendTo(container)
           }
@@ -269,7 +405,9 @@
               valueSymmetric: Number($item.find('.s2-ombc-mode-value-sym').val()) || 0,
               valueL1: Number($item.find('.s2-ombc-mode-value-l1').val()) || 0,
               valueL2: Number($item.find('.s2-ombc-mode-value-l2').val()) || 0,
-              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0
+              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0,
+              minDurationMinutes: Number($item.find('.s2-ombc-mode-min-duration-minutes').val()) || 0,
+              minDurationSeconds: Number($item.find('.s2-ombc-mode-min-duration-seconds').val()) || 0
             })
           })
           return modes
@@ -317,7 +455,7 @@
             return
           }
           if (!isFriendlyRepresentable(parsed)) {
-            showAdvancedSection('This system description uses something only Advanced mode supports (a genuine power range, a non-standard commodity, a blocked transition, or a timer) - continue editing it here.')
+            showAdvancedSection('This system description uses something only Advanced mode supports (a genuine power range, a non-standard commodity, a blocked transition, or a timer not matching the per-mode minimum-duration pattern) - continue editing it here.')
             return
           }
           $(listSel).editableList('empty')
@@ -365,7 +503,9 @@
               valueSymmetric: Number($item.find('.s2-ombc-mode-value-sym').val()) || 0,
               valueL1: Number($item.find('.s2-ombc-mode-value-l1').val()) || 0,
               valueL2: Number($item.find('.s2-ombc-mode-value-l2').val()) || 0,
-              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0
+              valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0,
+              minDurationMinutes: Number($item.find('.s2-ombc-mode-min-duration-minutes').val()) || 0,
+              minDurationSeconds: Number($item.find('.s2-ombc-mode-min-duration-seconds').val()) || 0
             })
           })
           var sysDesc = friendlyStateToSystemDescription(modes)
@@ -385,7 +525,7 @@
     </div>
 
     <div class="form-row">
-      <label class="s2-section-label"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription: the operation modes this device can be in, and how it can transition between them. Sent to the CEM by s2-ombc once OMBC is the selected control type. Friendly mode covers the common case (fixed-power modes, every mode able to transition to every other); switch to Advanced for anything else - a genuine power range, a non-standard commodity, a blocked transition, or a timer."></i></label>
+      <label class="s2-section-label"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription: the operation modes this device can be in, and how it can transition between them. Sent to the CEM by s2-ombc once OMBC is the selected control type. Friendly mode covers the common case (fixed-power modes, every mode able to transition to every other, an optional per-mode minimum-duration timer); switch to Advanced for anything else - a genuine power range, a non-standard commodity, a blocked transition, or a bespoke timer."></i></label>
     </div>
 
     <div class="form-row s2-full-row">
@@ -413,6 +553,7 @@
   <h3>Friendly mode</h3>
   <p>Covers the common case: a list of operation modes, each with a diagnostic label, an optional "abnormal condition only" flag, and a fixed power level (the same value on all three phases, or a separate value per phase). Every mode is assumed able to transition to every other mode - there is no separate step to define transitions.</p>
   <p>A "Standby/off" mode is always present and can't be removed from the list itself (use Advanced mode if you genuinely don't want one). Add further modes with the "add" button below the list.</p>
+  <p>Each mode also has an optional "Minimum time in this mode" (minutes + seconds). When set, entering that mode starts an S2 timer that must elapse before the CEM may instruct a transition away from it again - useful for equipment (e.g. a compressor or boiler element) that must not be cycled faster than every few minutes. Leave both fields at 0 for no minimum (the default).</p>
 
   <h3>Advanced (JSON) mode</h3>
   <p>The raw <code>OMBC.SystemDescription</code> JSON (<code>operationModes</code>, <code>transitions</code>, <code>timers</code>), for anything friendly mode doesn't cover:</p>
@@ -420,9 +561,9 @@
     <li>a genuine power range (a mode whose lower and upper bound differ, rather than one fixed value)</li>
     <li>a commodity quantity other than 3-phase-symmetric or per-phase L1/L2/L3</li>
     <li>blocking a specific transition, rather than every mode being able to reach every other mode</li>
-    <li>a timer (<code>start_timers</code>/<code>blocking_timers</code> on a transition)</li>
+    <li>a bespoke timer - anything other than one per-mode minimum-duration timer wired symmetrically into every transition in/out of that mode (which friendly mode's own "Minimum time in this mode" field already covers)</li>
   </ul>
-  <p>Switching from Friendly to Advanced converts the current modes to JSON. Switching back only works if the JSON still matches what friendly mode can represent (fixed-power modes, every mode transitioning to every other, no timers) - otherwise the editor stays in Advanced mode and explains why, rather than discarding anything.</p>
+  <p>Switching from Friendly to Advanced converts the current modes to JSON. Switching back only works if the JSON still matches what friendly mode can represent (fixed-power modes, every mode transitioning to every other, and any timers matching the per-mode minimum-duration pattern above) - otherwise the editor stays in Advanced mode and explains why, rather than discarding anything.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

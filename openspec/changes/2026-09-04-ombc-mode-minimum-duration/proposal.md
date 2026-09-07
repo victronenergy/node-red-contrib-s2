@@ -24,5 +24,5 @@ S2's `OMBC.SystemDescription` already has a mechanism for "once a device enters 
 - `src/nodes/s2-ombc-config/index.ts` (unaffected - stored value format is unchanged)
 - `src/nodes/s2-ombc/index.ts` (unaffected - no runtime timer tracking needed; the CEM enforces `blocking_timers`)
 - `README.md` (if worth a short mention)
-- `test/` (new/updated tests for the friendly-editor conversion functions)
+- No new `test/` coverage: this is editor-only browser JS (`index.html`), which `npm test` doesn't cover today (it only runs `test/**/*.test.ts` against the TypeScript runtime code) - same scope as the prior friendly-editor change; see tasks.md Verification for the manual check instead.
 - No breaking changes: existing configs with no per-mode minimum duration produce an identical `systemDescription` to today; the stored format and the S2 wire message shape are unchanged.
