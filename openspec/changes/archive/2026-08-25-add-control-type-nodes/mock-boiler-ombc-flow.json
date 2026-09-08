@@ -1,0 +1,327 @@
+[
+    {
+        "id": "d00d0001",
+        "type": "tab",
+        "label": "S2 - Boiler (OMBC) demo - v2 DESIGN MOCK",
+        "disabled": false,
+        "info": "DESIGN MOCK for openspec/changes/add-control-type-nodes - NOT a working example.\n\n's2-ombc' and 's2-ombc-config' are not implemented yet. If imported, Node-RED will show them as unrecognized-type placeholder boxes. This file exists purely to visualize the wiring shape proposed in design.md, using the shipped examples/boiler-ombc-demo.json as the 'before' baseline for comparison.\n\nWhat changed vs. the current example:\n- s2-rm drops to 3 outputs (no more 'schedule' port).\n- controlTypeConfig moves off s2-rm onto a new s2-ombc-config node.\n- s2-ombc resolves the instruction into msg.topic + msg.ombc directly - the old 'switch on instruction's operation mode' + two 'remember: <mode>' Change nodes (3 nodes, only there to record which mode is active) collapse into a single Change node.\n- Sending OMBC.Status back to the CEM is no longer automatic (session.ts used to fire it at instruction-accept time). It's now an explicit step: once the simulated relay confirms it switched, that confirmation is echoed back into s2-ombc, which emits an UpdateStatus command wired straight into s2-rm's input.",
+        "env": []
+    },
+    {
+        "id": "d00d0002",
+        "type": "comment",
+        "z": "d00d0001",
+        "name": "DESIGN MOCK - not implemented, do not deploy",
+        "info": "",
+        "x": 260,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "d00d0003",
+        "type": "s2-rm-config",
+        "name": "S2 RM boiler",
+        "resourceId": "4d0d1065-c082-4073-aeef-fe20821cc13d",
+        "rmName": "RM: Boiler",
+        "roles": "ENERGY_CONSUMER",
+        "controlTypes": "OPERATION_MODE_BASED_CONTROL",
+        "serialNumber": "",
+        "manufacturer": "Victron Energy",
+        "model": "Virtual RM",
+        "firmwareVersion": "1.0.0",
+        "providesPowerMeasurement": "L1_L2_L3",
+        "providesForecast": false,
+        "instructionPollIntervalMs": 2000,
+        "skipInstructionStatus": false
+    },
+    {
+        "id": "d00d0004",
+        "type": "s2-cem-config",
+        "name": "Demo CEM",
+        "url": "ws://localhost:8080/s2-message-handler",
+        "apiPrefix": ""
+    },
+    {
+        "id": "d00d000a",
+        "type": "s2-ombc-config",
+        "name": "Boiler modes",
+        "operationModes": [
+            {
+                "id": "6a1d1e10-0000-4000-8000-000000000001",
+                "diagnostic_label": "Standby/off operation",
+                "power_ranges": [
+                    { "commodity_quantity": "ELECTRIC.POWER.L1", "start_of_range": 0, "end_of_range": 0 },
+                    { "commodity_quantity": "ELECTRIC.POWER.L2", "start_of_range": 0, "end_of_range": 0 },
+                    { "commodity_quantity": "ELECTRIC.POWER.L3", "start_of_range": 0, "end_of_range": 0 }
+                ],
+                "abnormal_condition_only": false
+            },
+            {
+                "id": "6a1d1e10-0000-4000-8000-000000000002",
+                "diagnostic_label": "Normal operation",
+                "power_ranges": [
+                    { "commodity_quantity": "ELECTRIC.POWER.L1", "start_of_range": 0, "end_of_range": 0 },
+                    { "commodity_quantity": "ELECTRIC.POWER.L2", "start_of_range": 2500, "end_of_range": 2500 },
+                    { "commodity_quantity": "ELECTRIC.POWER.L3", "start_of_range": 0, "end_of_range": 0 }
+                ],
+                "abnormal_condition_only": false
+            }
+        ],
+        "transitions": [
+            { "from": "6a1d1e10-0000-4000-8000-000000000002", "to": "6a1d1e10-0000-4000-8000-000000000001", "abnormal_condition_only": false, "blocking_timers": [], "start_timers": [] },
+            { "from": "6a1d1e10-0000-4000-8000-000000000001", "to": "6a1d1e10-0000-4000-8000-000000000002", "abnormal_condition_only": false, "blocking_timers": [], "start_timers": [] }
+        ],
+        "defaultOperationModeId": "6a1d1e10-0000-4000-8000-000000000001",
+        "_comment": "Relocated from s2-rm's controlTypeConfig.OMBC.systemDescription. How/when this reaches the CEM (preload vs. request-response) is still an open question in design.md."
+    },
+    {
+        "id": "d00d0005",
+        "type": "s2-websocket",
+        "z": "d00d0001",
+        "name": "",
+        "cem": "d00d0004",
+        "rmConfig": "d00d0003",
+        "reconnectInterval": 5,
+        "debug": true,
+        "x": 650,
+        "y": 120,
+        "wires": [
+            [ "d00d0006" ]
+        ]
+    },
+    {
+        "id": "d00d0006",
+        "type": "s2-rm",
+        "z": "d00d0001",
+        "name": "RM - Boiler",
+        "rmConfig": "d00d0003",
+        "cem": "",
+        "_comment": "3 outputs now, not 4 - the PEBC-only 'schedule' port is gone. No more controlTypeConfig field.",
+        "x": 440,
+        "y": 120,
+        "wires": [
+            [ "d00d0005", "d00d0007" ],
+            [ "d00d0008" ],
+            [ "d00d000b", "d00d0009" ]
+        ]
+    },
+    {
+        "id": "d00d0007",
+        "type": "debug",
+        "z": "d00d0001",
+        "name": "debug - to transport",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 700,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "d00d0008",
+        "type": "debug",
+        "z": "d00d0001",
+        "name": "debug - from CEM",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 700,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "d00d0009",
+        "type": "debug",
+        "z": "d00d0001",
+        "name": "debug - instructions (raw, namespaced)",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 730,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "d00d000b",
+        "type": "s2-ombc",
+        "z": "d00d0001",
+        "name": "OMBC - Boiler",
+        "ombcConfig": "d00d000a",
+        "rm": "d00d0006",
+        "_comment": "1 input, handles two shapes: a raw OMBC.Instruction from s2-rm (has message_type), and a confirm echo from the actuator flow below (has msg.ombc but no message_type). Output 1 = actionable event for the user (msg.topic/msg.ombc). Output 2 = UpdateStatus command, wired straight back into s2-rm's input.",
+        "x": 440,
+        "y": 320,
+        "wires": [
+            [ "d00d000c", "d00d000f" ],
+            [ "d00d0006" ]
+        ]
+    },
+    {
+        "id": "d00d000c",
+        "type": "switch",
+        "z": "d00d0001",
+        "name": "route on msg.topic (actuate relay)",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            { "t": "eq", "v": "Normal operation", "vt": "str" },
+            { "t": "eq", "v": "Standby/off operation", "vt": "str" }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 700,
+        "y": 320,
+        "wires": [
+            [ "d00d000d" ],
+            [ "d00d000e" ]
+        ]
+    },
+    {
+        "id": "d00d000d",
+        "type": "change",
+        "z": "d00d0001",
+        "name": "Simulate relay: ON (2500W)",
+        "rules": [
+            { "t": "set", "p": "payload", "pt": "msg", "to": "2500", "tot": "num" }
+        ],
+        "x": 940,
+        "y": 300,
+        "wires": [
+            [ "d00d000b" ]
+        ]
+    },
+    {
+        "id": "d00d000e",
+        "type": "change",
+        "z": "d00d0001",
+        "name": "Simulate relay: OFF (0W)",
+        "rules": [
+            { "t": "set", "p": "payload", "pt": "msg", "to": "0", "tot": "num" }
+        ],
+        "x": 940,
+        "y": 340,
+        "wires": [
+            [ "d00d000b" ]
+        ]
+    },
+    {
+        "id": "d00d000f",
+        "type": "change",
+        "z": "d00d0001",
+        "name": "remember active mode",
+        "rules": [
+            { "t": "set", "p": "operation", "pt": "flow", "to": "topic", "tot": "msg" }
+        ],
+        "_comment": "This is the one node that replaces the original example's 'switch on operation mode' + two 'remember: <mode>' Change nodes (3 nodes -> 1), since s2-ombc already hands us msg.topic directly.",
+        "x": 700,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d00d0010",
+        "type": "inject",
+        "z": "d00d0001",
+        "name": "every 5s",
+        "props": [ { "p": "payload" } ],
+        "repeat": "5",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 190,
+        "y": 520,
+        "wires": [
+            [ "d00d0011" ]
+        ]
+    },
+    {
+        "id": "d00d0011",
+        "type": "switch",
+        "z": "d00d0001",
+        "name": "which mode is active?",
+        "property": "operation",
+        "propertyType": "flow",
+        "rules": [
+            { "t": "eq", "v": "Normal operation", "vt": "str" },
+            { "t": "else" }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 380,
+        "y": 520,
+        "wires": [
+            [ "d00d0012" ],
+            [ "d00d0013" ]
+        ]
+    },
+    {
+        "id": "d00d0012",
+        "type": "change",
+        "z": "d00d0001",
+        "name": "Running: 2500 W",
+        "rules": [
+            { "t": "set", "p": "payload", "pt": "msg", "to": "2500", "tot": "num" }
+        ],
+        "x": 590,
+        "y": 500,
+        "wires": [
+            [ "d00d0014" ]
+        ]
+    },
+    {
+        "id": "d00d0013",
+        "type": "change",
+        "z": "d00d0001",
+        "name": "Off: 0 W",
+        "rules": [
+            { "t": "set", "p": "payload", "pt": "msg", "to": "0", "tot": "num" }
+        ],
+        "x": 570,
+        "y": 540,
+        "wires": [
+            [ "d00d0014" ]
+        ]
+    },
+    {
+        "id": "d00d0014",
+        "type": "function",
+        "z": "d00d0001",
+        "name": "Generate and send Power Report",
+        "func": "// msg.payload is the boiler's current wattage (L2 only).\nconst watts = msg.payload\n\nmsg.payload = {\n    command: 'PowerMeasurement',\n    cemId: 'cem',\n    values: [\n        { commodity_quantity: 'ELECTRIC.POWER.L1', value: 0 },\n        { commodity_quantity: 'ELECTRIC.POWER.L2', value: watts },\n        { commodity_quantity: 'ELECTRIC.POWER.L3', value: 0 }\n    ]\n}\n\nreturn msg\n",
+        "outputs": 1,
+        "x": 800,
+        "y": 520,
+        "wires": [
+            [ "d00d0006", "d00d0015" ]
+        ]
+    },
+    {
+        "id": "d00d0015",
+        "type": "debug",
+        "z": "d00d0001",
+        "name": "debug - power report sent",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 810,
+        "y": 580,
+        "wires": []
+    }
+]
