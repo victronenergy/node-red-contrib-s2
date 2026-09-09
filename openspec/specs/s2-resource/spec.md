@@ -1,0 +1,145 @@
+# s2-resource Specification
+
+## Purpose
+
+Provides a single Node-RED node combining an S2 resource manager, a built-in transport, and a built-in control type, so a minimal S2 flow needs one node instead of wiring `s2-rm`, a transport node, and a control-type node together.
+
+## Requirements
+
+### Requirement: Composite session behavior
+`s2-resource` SHALL exhibit the same session handshake, control-type selection, instruction acknowledgment/routing, and `S2/0/Active` transport signal behavior that `s2-rm-protocol` defines for `s2-rm`, without wiring a separate `s2-rm` node.
+
+#### Scenario: CEM connects and completes handshake through s2-resource
+- **WHEN** a CEM connects via `s2-resource`'s active transport and completes the S2 handshake
+- **THEN** `s2-resource` sends `ResourceManagerDetails` and marks the session connected, per `s2-rm-protocol`'s handshake requirement
+
+### Requirement: Selectable transport
+`s2-resource`'s Connection tab SHALL offer a `Transport` setting of `WebSocket` (built-in - reuses the same connection fields as `s2-cem-config`), `D-Bus` (built-in - reuses the same connection/device fields as `s2-dbus-config`), or `External` (no built-in transport).
+
+#### Scenario: Transport set to WebSocket
+- **WHEN** `s2-resource` is configured with `Transport: WebSocket` and valid connection fields
+- **THEN** it connects to the configured CEM endpoint without any separate `s2-websocket` or `s2-cem-config` node in the flow
+
+#### Scenario: Transport set to D-Bus
+- **WHEN** `s2-resource` is configured with `Transport: D-Bus` and a valid device type
+- **THEN** it registers the same `com.victronenergy.<deviceType>.virtual_s2_<nodeId>` D-Bus service `s2-dbus` would (`nodeId` being this node's own id, not its S2 resourceId), without any separate `s2-dbus` or `s2-dbus-config` node in the flow
+
+#### Scenario: Transport set to D-Bus relays power measurement
+- **WHEN** `s2-resource` is configured with `Transport: D-Bus`, a value matching the configured measurement type is fed to its input, and a CEM has started power measurement
+- **THEN** it relays that value to the CEM as a `PowerMeasurement` command, the same way the standalone `s2-dbus` node's power-measurement relay does
+
+#### Scenario: Transport set to D-Bus exposes power measurement on D-Bus
+- **WHEN** `s2-resource` is configured with `Transport: D-Bus` and a value matching the configured measurement type is fed to its input
+- **THEN** the corresponding D-Bus property (e.g. `Ac/Power`) is updated on the registered service, independent of whether any CEM currently has power measurement active - the same as the standalone `s2-dbus` node
+
+#### Scenario: Transport set to External
+- **WHEN** `s2-resource` is configured with `Transport: External`
+- **THEN** it exposes a "to/from transport" input/output pair carrying the same transport-agnostic message shapes `s2-rm` accepts and emits today, for wiring to any external transport node
+
+### Requirement: Selectable control type
+`s2-resource`'s Control Type tab SHALL offer a `Control type` setting of `OMBC` (built-in - reuses `s2-ombc-config`'s friendly editor as an embedded tab) or `None` (no built-in control type).
+
+#### Scenario: Control type set to OMBC
+- **WHEN** `s2-resource` is configured with `Control type: OMBC` and at least one operation mode
+- **THEN** it sends the corresponding `OMBC.SystemDescription` when a CEM selects `OPERATION_MODE_BASED_CONTROL`, resolves OMBC instructions, and sends `OMBC.Status` on confirmation, per `control-type-ombc`'s requirements, without any separate `s2-ombc` or `s2-ombc-config` node in the flow
+
+#### Scenario: Control type set to None
+- **WHEN** `s2-resource` is configured with `Control type: None`
+- **THEN** it exposes a "from CEM"/command input/output pair carrying the same message shapes `s2-rm`'s corresponding ports carry today, for wiring a dedicated control-type node instead
+
+### Requirement: Advertised control type follows the Control Type tab when built in
+When `Control type: OMBC` is selected, `s2-resource`'s Resource Manager tab SHALL NOT offer a separate, manually-editable list of advertised control types for OMBC - the advertised `ResourceManagerDetails.available_control_types` SHALL include `OPERATION_MODE_BASED_CONTROL` automatically. The manually-editable advertised-control-types list SHALL be offered only when `Control type: None`, for whatever control-type node(s) are wired externally.
+
+#### Scenario: Control type: OMBC advertises OMBC without manual selection
+- **WHEN** `s2-resource` is configured with `Control type: OMBC`
+- **THEN** it advertises `OPERATION_MODE_BASED_CONTROL` to the CEM regardless of any other manual control-type selection
+
+#### Scenario: Control type: None still allows advertising other control types
+- **WHEN** `s2-resource` is configured with `Control type: None` and the Resource Manager tab's control-types selection includes e.g. `POWER_ENVELOPE_BASED_CONTROL`
+- **THEN** it advertises that selection to the CEM, unchanged from today's `s2-rm-config` behavior
+
+### Requirement: Advertised power measurement follows the D-Bus config when Transport: D-Bus
+When `Transport: D-Bus` is selected, `s2-resource`'s Resource Manager tab's Power Meas. field SHALL NOT determine the advertised power-measurement capability - `ResourceManagerDetails.provides_power_measurement_types` SHALL be derived from the referenced `s2-dbus-config` node's measurement type instead, the same value that determines the actual declared D-Bus propert(y/ies). For any other `Transport`, the Resource Manager tab's Power Meas. field SHALL be used, unchanged from today's `s2-rm-config` behavior.
+
+#### Scenario: Transport: D-Bus advertises the D-Bus config's measurement type
+- **WHEN** `s2-resource` is configured with `Transport: D-Bus` and an `s2-dbus-config` node with a given measurement type
+- **THEN** it advertises that measurement type to the CEM, regardless of the Resource Manager tab's own Power Meas. field
+
+#### Scenario: Transport: WebSocket or External still uses the Resource Manager tab's field
+- **WHEN** `s2-resource` is configured with `Transport: WebSocket` or `Transport: External` and a Power Meas. value on the Resource Manager tab
+- **THEN** it advertises that value to the CEM, unchanged from today's `s2-rm-config` behavior
+
+### Requirement: Inapplicable per-phase OMBC fields are dimmed for a single-phase D-Bus device
+When `Control type: OMBC` and `Transport: D-Bus` are both selected and the referenced `s2-dbus-config` node has `nrOfPhases: 1`, the OMBC tab's per-phase L1/L2/L3 power fields SHALL be dimmed and disabled for every phase except the configured `phaseSetting` ("Wired to"), on every operation mode row - since a single-phase device never reports the other two. This SHALL update if the `s2-dbus-config` reference, its `Phases`/`Wired to` values, or `Transport` change while the dialog is open.
+
+#### Scenario: Single-phase D-Bus device wired to L2
+- **WHEN** `Transport: D-Bus` references an `s2-dbus-config` with `Phases: 1` and `Wired to: L2`
+- **THEN** each mode's L1 and L3 power fields are dimmed and disabled, and L2 remains editable
+
+#### Scenario: Multi-phase D-Bus device
+- **WHEN** the referenced `s2-dbus-config` has `Phases: 3` (or `Transport` is not `D-Bus`)
+- **THEN** all three per-phase fields remain enabled, unchanged from today's behavior
+
+### Requirement: Default OMBC mode without external wiring
+When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL offer a "Default mode" selection among the tab's own configured operation modes (plus "None"). When set, `s2-resource` SHALL confirm that mode as the resource's default status at deploy time, equivalent to sending `{ confirmedOperationModeId: <id> }` to its own input before any CEM has connected - without requiring a separately-wired node to do so.
+
+#### Scenario: CEM selects OMBC with a default mode configured
+- **WHEN** `s2-resource` is configured with `Control type: OMBC` and a "Default mode" selection, and a CEM selects `OPERATION_MODE_BASED_CONTROL` before anything else has confirmed a status
+- **THEN** it sends the corresponding `OMBC.Status` for that default mode, the same as if a `ModeConfirmation` had been sent to its input before the CEM connected
+
+#### Scenario: A later confirmation overrides the default
+- **WHEN** a `ModeConfirmation` (from the CEM, or the node's own input) is processed after the default mode was seeded
+- **THEN** it overrides the default status normally, per `control-type-ombc`'s existing confirm-handling requirements
+
+#### Scenario: No default mode configured
+- **WHEN** `s2-resource` is configured with `Control type: OMBC` and "Default mode: None"
+- **THEN** no status is reported until something explicitly confirms one, unchanged from today's behavior
+
+### Requirement: Auto-confirm OMBC mode instructions
+When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL offer an "Auto-confirm mode-switch requests (OMBC.Instruction)" setting, checked by default. When checked, `s2-resource` SHALL confirm an instructed mode change back to the CEM as active immediately after resolving the instruction, without waiting for a separate `ModeConfirmation`. When unchecked, confirmation SHALL only happen as a result of an explicit `ModeConfirmation` (from the CEM's own protocol messages via the flow, or sent directly to this node's input), unchanged from today's behavior.
+
+#### Scenario: Default (checked) - CEM instructs a mode change
+- **WHEN** `s2-resource` is configured with `Control type: OMBC` and "Auto-confirm mode-switch requests (OMBC.Instruction)" checked, and a CEM sends an `OMBC.Instruction` for a configured mode
+- **THEN** it emits the resolved `ModeInstruction` downstream (unchanged) and also sends `OMBC.Status` confirming that mode as active, without any `ModeConfirmation` message
+
+#### Scenario: Unchecked - CEM instructs a mode change
+- **WHEN** `s2-resource` is configured with `Control type: OMBC` and "Auto-confirm mode-switch requests (OMBC.Instruction)" unchecked, and a CEM sends an `OMBC.Instruction` for a configured mode
+- **THEN** it emits the resolved `ModeInstruction` downstream but sends no `OMBC.Status`, until a `ModeConfirmation` is sent to this node's input
+
+### Requirement: Raw S2 messages visible in the Debug sidebar
+When its "Show raw S2 messages in debug sidebar" setting is enabled, `s2-resource` SHALL publish every S2 message to/from the CEM, and every CEM Connect/Disconnect event, to the Node-RED editor's Debug sidebar (for both `Transport: WebSocket` and `Transport: D-Bus`), without requiring a Debug node to be wired into the flow. Every published entry's topic SHALL include the cemId it applies to.
+
+#### Scenario: Setting enabled - message traffic
+- **WHEN** "Show raw S2 messages in debug sidebar" is checked and a message is sent to or received from the CEM
+- **THEN** that message appears in the Debug sidebar, attributed to this node, with a topic naming the cemId it was sent to or received from
+
+#### Scenario: Setting enabled - Connect/Disconnect
+- **WHEN** "Show raw S2 messages in debug sidebar" is checked and a CEM connects or disconnects
+- **THEN** a corresponding entry (topic suffixed `(Connect)`/`(Disconnect)`) appears in the Debug sidebar, naming that CEM's id
+
+#### Scenario: Setting disabled
+- **WHEN** "Show raw S2 messages in debug sidebar" is unchecked
+- **THEN** no message content is published to the Debug sidebar
+
+### Requirement: Status reflects transport readiness while idle
+For a built-in transport (`Transport: WebSocket` or `Transport: D-Bus`), when no CEM is currently connected but the transport itself is up, `s2-resource` SHALL show a green "waiting for CEM" status - not the generic grey status a resource manager with no known transport state would show.
+
+#### Scenario: D-Bus service registered, no CEM connected yet
+- **WHEN** `Transport: D-Bus` has successfully registered its D-Bus service and no CEM has connected
+- **THEN** the node's status is green "waiting for CEM"
+
+#### Scenario: A CEM disconnects after having been connected (D-Bus)
+- **WHEN** `Transport: D-Bus` is registered and a previously-connected CEM disconnects
+- **THEN** the node's status returns to green "waiting for CEM", not grey - the D-Bus service itself remains registered and listening
+
+#### Scenario: WebSocket connection genuinely drops
+- **WHEN** `Transport: WebSocket`'s connection closes (a real transport-level disconnect, not a CEM-level event)
+- **THEN** the node's status shows grey "waiting for CEM" (or a more specific disconnected/reconnecting status), since the transport itself is not currently usable
+
+### Requirement: Port contract is a strict superset of s2-rm
+When configured with `Transport: External` and `Control type: None`, `s2-resource`'s inputs, outputs, and message shapes SHALL be identical to `s2-rm`'s, so a flow using `s2-rm` today can switch to `s2-resource` in this configuration with no other changes.
+
+#### Scenario: Both built-ins disabled
+- **WHEN** `s2-resource` is configured with `Transport: External` and `Control type: None`
+- **THEN** its port count, port order, and every message shape on those ports match `s2-rm`'s exactly
+</content>
