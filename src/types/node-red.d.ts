@@ -34,6 +34,12 @@ export interface NodeRedContext {
 export interface NodeRedNode {
   id: string
   name: string
+  /** Flow tab id, set by RED.nodes.createNode(). Used to target debug-sidebar messages at the
+   * right tab, matching what the core Debug node's own sendDebug() includes. */
+  z?: string
+  /** Subflow parentage chain, set by RED.nodes.createNode(). Only present when nested inside a
+   * subflow; lets the debug sidebar render an accurate breadcrumb and reveal the right instance. */
+  _flow?: { path: string }
   send(msgs: NodeMessage | Array<NodeMessage | null> | null): void
   error(logMessage: string, msg?: NodeMessage): void
   warn(logMessage: string, msg?: NodeMessage): void
@@ -70,7 +76,15 @@ export interface NodeRedNodes {
   getNode(id: string): NodeRedNode | null
 }
 
+export interface NodeRedComms {
+  /** Publishes to the editor's websocket comms channel. Topic 'debug' is what the core Debug
+   * node's sidebar view listens on - publishing there directly puts a message into the Debug
+   * sidebar without requiring a Debug node to be wired in. */
+  publish(topic: string, data: unknown, retain?: boolean): void
+}
+
 export interface NodeRedApp {
   nodes: NodeRedNodes
   settings?: { userDir?: string }
+  comms: NodeRedComms
 }

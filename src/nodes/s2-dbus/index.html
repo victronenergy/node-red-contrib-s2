@@ -1,0 +1,56 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-dbus', {
+    category: 's2',
+    color: '#5A8EC2',
+    defaults: {
+      name: { value: '' },
+      dbusConfig: { value: '', type: 's2-dbus-config', required: true },
+      debug: { value: false }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 's2-logo.svg',
+    outputLabels: ['to s2-rm'],
+    inputLabels: ['from s2-rm'],
+    label: function () {
+      return this.name || 's2-dbus'
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-dbus">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-dbusConfig"><i class="fa fa-plug"></i> D-Bus<i class="fa fa-info-circle tooltip-icon" data-tooltip="Connection mode, device type, and Device Instance for the registered D-Bus service."></i></label>
+      <input type="text" id="node-input-dbusConfig">
+    </div>
+
+    <div class="form-row s2-full-row">
+      <label class="s2-checkbox-label"><input type="checkbox" id="node-input-debug"> Show raw S2 messages in debug sidebar<i class="fa fa-info-circle tooltip-icon" data-tooltip="Sends every S2 message to/from the CEM straight to the Debug sidebar (the same tab a Debug node's output shows up in) - no need to wire one in yourself."></i></label>
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-dbus">
+  <p>Venus OS D-Bus transport for S2 - a purpose-built alternative to repurposing a <code>node-red-contrib-victron</code> AC-load/heat-pump virtual device for the S2 handshake. Registers a <code>com.victronenergy.&lt;deviceType&gt;.virtual_s2_&lt;nodeId&gt;</code> D-Bus service (using this node's own id, not an S2 resourceId) exposing <code>/S2/0/Rm</code>, and produces the exact same output shape <b>s2-websocket</b> does - wire it to <b>s2-rm</b> the same way, no other changes needed.</p>
+  <p>Also relays power measurement: feed it a value (e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code>) at any time. It's set as a real D-Bus BusItem property on this device immediately - readable via <code>GetValue</code> by anything else on the Venus system, the same as <code>victron-virtual</code>'s meters - and, while a CEM has <code>PowerMeasurementStart</code> active, also forwarded to <b>s2-rm</b> as a <code>PowerMeasurement</code> command.</p>
+  <p><b>Show raw S2 messages in debug sidebar</b> puts every message to/from the CEM straight into the Debug sidebar - the same view a Debug node's output shows up in - without wiring one in.</p>
+  <h3>Output</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object</span></dt>
+    <dd><code>{ command: 'Connect' | 'Message' | 'Disconnect' | 'PowerMeasurement', cemId, ... }</code>, identical in shape to <b>s2-websocket</b>'s output.</dd>
+  </dl>
+</script>

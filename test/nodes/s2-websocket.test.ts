@@ -53,7 +53,8 @@ function setupNode (
         if (id === merged.rmConfig) return rmConfig
         return null
       })
-    }
+    },
+    comms: { publish: jest.fn() }
   }
 
   let Constructor: ((this: Record<string, unknown>, config: Record<string, unknown>) => void) | null = null
@@ -309,8 +310,8 @@ describe('s2-websocket - node close', () => {
 })
 
 describe('s2-websocket - debug logging', () => {
-  it('logs outbound messages when debug is enabled', () => {
-    const { node, handlers } = setupNode({ debug: true })
+  it('publishes outbound messages to the debug sidebar when debug is enabled', () => {
+    const { RED, handlers } = setupNode({ debug: true })
 
     handlers.input(
       { payload: { s2Signal: 'Message', message: { message_type: 'Handshake' } } },
@@ -318,12 +319,15 @@ describe('s2-websocket - debug logging', () => {
       jest.fn()
     )
 
-    expect(node.log as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('Handshake'))
+    expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
+      'debug',
+      expect.objectContaining({ topic: '-> to CEM cem', msg: { message_type: 'Handshake' } }),
+      false
+    )
   })
 
-  it('does not log message content when debug is disabled', () => {
-    const { node, handlers } = setupNode({ debug: false })
-    ;(node.log as jest.Mock).mockClear()
+  it('does not publish to the debug sidebar when debug is disabled', () => {
+    const { RED, handlers } = setupNode({ debug: false })
 
     handlers.input(
       { payload: { s2Signal: 'Message', message: { message_type: 'Handshake' } } },
@@ -331,6 +335,52 @@ describe('s2-websocket - debug logging', () => {
       jest.fn()
     )
 
-    expect(node.log as jest.Mock).not.toHaveBeenCalledWith(expect.stringContaining('Handshake'))
+    expect(RED.comms.publish as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('publishes inbound messages to the debug sidebar when debug is enabled', () => {
+    const { RED } = setupNode({ debug: true })
+
+    mockTransport.emit('message', JSON.stringify({ message_type: 'HandshakeResponse' }))
+
+    expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
+      'debug',
+      expect.objectContaining({ topic: '<- from CEM cem', msg: { message_type: 'HandshakeResponse' } }),
+      false
+    )
+  })
+
+  it('publishes a Connect entry to the debug sidebar when the transport opens', () => {
+    const { RED } = setupNode({ debug: true })
+
+    mockTransport.emit('open')
+
+    expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
+      'debug',
+      expect.objectContaining({ topic: '<- from CEM cem (Connect)', msg: { cemId: 'cem' } }),
+      false
+    )
+  })
+
+  it('publishes a Disconnect entry to the debug sidebar after a real connection drops', () => {
+    const { RED } = setupNode({ debug: true })
+    mockTransport.emit('open')
+    ;(RED.comms.publish as jest.Mock).mockClear()
+
+    mockTransport.emit('close')
+
+    expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
+      'debug',
+      expect.objectContaining({ topic: '<- from CEM cem (Disconnect)', msg: { cemId: 'cem' } }),
+      false
+    )
+  })
+
+  it('does not publish a Disconnect entry when the initial connection never succeeded', () => {
+    const { RED } = setupNode({ debug: true })
+
+    mockTransport.emit('close')
+
+    expect(RED.comms.publish as jest.Mock).not.toHaveBeenCalled()
   })
 })

@@ -2,3 +2,8 @@ node_modules/
 coverage/
 dist/
 *.log
+
+# Local tooling config - never commit (.mcp.json can hold live API keys/tokens)
+.claude/
+.mcp.json
+.vscode/

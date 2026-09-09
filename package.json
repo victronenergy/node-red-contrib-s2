@@ -25,7 +25,10 @@
       "s2-ombc-config": "./dist/nodes/s2-ombc-config/index.js",
       "s2-ombc": "./dist/nodes/s2-ombc/index.js",
       "s2-pebc-config": "./dist/nodes/s2-pebc-config/index.js",
-      "s2-pebc": "./dist/nodes/s2-pebc/index.js"
+      "s2-pebc": "./dist/nodes/s2-pebc/index.js",
+      "s2-dbus-config": "./dist/nodes/s2-dbus-config/index.js",
+      "s2-dbus": "./dist/nodes/s2-dbus/index.js",
+      "s2-resource": "./dist/nodes/s2-resource/index.js"
     }
   },
   "scripts": {
@@ -50,6 +53,8 @@
     "node-red": ">=4.1.0"
   },
   "dependencies": {
+    "dbus-native-victron": "^0.4.11",
+    "dbus-victron-virtual": "^0.1.37",
     "ws": "^8.18.0"
   },
   "devDependencies": {

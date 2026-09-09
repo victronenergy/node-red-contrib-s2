@@ -1,0 +1,111 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-dbus-config', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      connectionMode: { value: 'auto' },
+      tcpAddress: { value: '' },
+      deviceType: { value: 'acload' },
+      measurementType: { value: '3_PHASE_SYMMETRIC' },
+      nrOfPhases: { value: 1 },
+      position: { value: 0 },
+      phaseSetting: { value: 1 }
+    },
+    label: function () {
+      return this.name || 's2-dbus-config'
+    },
+    oneditprepare: function () {
+      function showConnectionSection () {
+        $('#s2-dbus-config-tcp-row').toggle($('#node-config-input-connectionMode').val() === 'tcp')
+      }
+      $('#node-config-input-connectionMode').on('change', showConnectionSection)
+      showConnectionSection()
+
+      function showPhaseSettingRow () {
+        $('#s2-dbus-config-phasesetting-row').toggle($('#node-config-input-nrOfPhases').val() === '1')
+      }
+      $('#node-config-input-nrOfPhases').on('change', showPhaseSettingRow)
+      showPhaseSettingRow()
+
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-dbus-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-connectionMode"><i class="fa fa-plug"></i> Connection<i class="fa fa-info-circle tooltip-icon" data-tooltip="Auto uses the session bus if DBUS_SESSION_BUS_ADDRESS is set (development), otherwise the local system bus (Venus OS). System always uses the local system bus. TCP connects to a remote D-Bus address, e.g. for developing against a remote Venus OS device."></i></label>
+      <select id="node-config-input-connectionMode" style="width:70%">
+        <option value="auto">Auto (recommended)</option>
+        <option value="system">System bus</option>
+        <option value="tcp">TCP address</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="s2-dbus-config-tcp-row">
+      <label for="node-config-input-tcpAddress"><i class="fa fa-globe"></i> TCP Address</label>
+      <input type="text" id="node-config-input-tcpAddress" placeholder="tcp:host=venus.local,port=78">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-deviceType"><i class="fa fa-cube"></i> Device type<i class="fa fa-info-circle tooltip-icon" data-tooltip="A product type dbus-victron-virtual recognizes. Determines the registered service name (com.victronenergy.<type>.virtual_s2_<nodeId>) and advertised ProductId."></i></label>
+      <select id="node-config-input-deviceType" style="width:70%">
+        <option value="acload">AC load</option>
+        <option value="heatpump">Heat pump</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-measurementType"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="How power measurement values fed to s2-dbus's input are reported to the CEM - and which property key(s) (e.g. Ac/Power) get a live value instead of the usual 'unknown' placeholder (see Position below)."></i></label>
+      <select id="node-config-input-measurementType" style="width:70%">
+        <option value="">None</option>
+        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-nrOfPhases"><i class="fa fa-plug"></i> Phases<i class="fa fa-info-circle tooltip-icon" data-tooltip="Number of AC phases this device reports - determines which Ac/L<n>/* paths are declared on D-Bus."></i></label>
+      <select id="node-config-input-nrOfPhases" style="width:70%">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="s2-dbus-config-phasesetting-row">
+      <label for="node-config-input-phaseSetting"><i class="fa fa-random"></i> Wired to<i class="fa fa-info-circle tooltip-icon" data-tooltip="Which physical line this single-phase device is wired to - its readings are reported under Ac/L<n>/* instead of always Ac/L1/*."></i></label>
+      <select id="node-config-input-phaseSetting" style="width:70%">
+        <option value="1">L1</option>
+        <option value="2">L2</option>
+        <option value="3">L3</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-position"><i class="fa fa-arrows-h"></i> Position<i class="fa fa-info-circle tooltip-icon" data-tooltip="Matches node-red-contrib-victron's own Position property on acload/heatpump devices - purely informational metadata for the Victron UI, does not affect S2 behavior."></i></label>
+      <select id="node-config-input-position" style="width:70%">
+        <option value="0">AC output</option>
+        <option value="1">AC input</option>
+      </select>
+    </div>
+
+  </div>
+</script>
+
+<script type="text/html" data-help-name="s2-dbus-config">
+  <p>Configuration for <b>s2-dbus</b>: the D-Bus connection and registered device identity.</p>
+  <p><b>Connection</b> mirrors node-red-contrib-victron's own connection modes (auto/system/TCP) for the same underlying <code>dbus-native-victron</code> library.</p>
+  <p><b>Device type</b> determines the registered D-Bus service name and its advertised product. The DeviceInstance itself is claimed automatically via <code>com.victronenergy.settings</code>, the same mechanism and default (<code>&lt;deviceType&gt;:100</code>) node-red-contrib-victron's own virtual devices use - it's persisted and stable across redeploys/restarts, not something to configure here.</p>
+  <p>The registered service always declares the full "minimal meter" D-Bus shape node-red-contrib-victron's own virtual acload/heatpump devices expose (Position, NrOfPhases, per-phase Voltage/Current/Power/PowerFactor/Energy, ...), since the Victron UI (VRM, the GX device list) expects those paths to be present. <b>Phases</b>, <b>Wired to</b>, and <b>Position</b> are genuinely known at deploy time, so they get real values; everything else stays an "unknown" placeholder until <b>Power Meas.</b> (or a future input) actually reports one - values are never fabricated.</p>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

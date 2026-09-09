@@ -1,0 +1,882 @@
+[
+    {
+        "id": "89462d0157a97648",
+        "type": "tab",
+        "label": "SG Ready – S2",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "cb6b3a96b5b7afb1",
+        "type": "group",
+        "z": "89462d0157a97648",
+        "name": "Victron virtual device and S2 communication",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "a1f44caf9a2d32fb",
+            "02dfd9d5cb0b55ed",
+            "710100ea63f65e76",
+            "dc19a49b80117255",
+            "92b28b9e148916db",
+            "77c3e89d5ce18162",
+            "d1b88780d92a73e2",
+            "9ae065a1da50dea3",
+            "35adf1e8fb4a0f14",
+            "7f4897f2ece47fab"
+        ],
+        "x": 34,
+        "y": 39,
+        "w": 542,
+        "h": 242
+    },
+    {
+        "id": "2550bfa94693154d",
+        "type": "group",
+        "z": "89462d0157a97648",
+        "name": "GX relay state handling and faking of power measurements",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "1398f8e99f0302d7",
+            "472189d88db546ad",
+            "4c2dbbe4fe9be23a",
+            "15a70e6e7a54892d",
+            "5a14bb87e4531729",
+            "f833126f57ef82cf",
+            "950402265bfec519",
+            "470b14ecebfd3f75",
+            "6807450e4cbc5377",
+            "6f5781033c14c247",
+            "cb3d14eecefa1b83",
+            "cea2d406a9877732",
+            "b32dad59271ab90f",
+            "fd13d018fe2e831d",
+            "970f031d8e1b8536",
+            "7c853d38e88a5118",
+            "c4456b97faeec6b4",
+            "5af763f979d3e51f",
+            "3e53f971458423ba",
+            "82229921af807e52",
+            "4452a3b3320337dd",
+            "d5d19656df4b3761"
+        ],
+        "x": 34,
+        "y": 319,
+        "w": 1072,
+        "h": 502
+    },
+    {
+        "id": "a1f44caf9a2d32fb",
+        "type": "s2-rm",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "RM: SG Ready device",
+        "rmConfig": "dc0c010f94bcf970",
+        "cem": "",
+        "x": 220,
+        "y": 180,
+        "wires": [
+            [
+                "710100ea63f65e76"
+            ],
+            [
+                "d1b88780d92a73e2"
+            ]
+        ]
+    },
+    {
+        "id": "02dfd9d5cb0b55ed",
+        "type": "link in",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link in 3",
+        "links": [
+            "710100ea63f65e76",
+            "3e53f971458423ba"
+        ],
+        "x": 75,
+        "y": 80,
+        "wires": [
+            [
+                "77c3e89d5ce18162"
+            ]
+        ]
+    },
+    {
+        "id": "710100ea63f65e76",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link out 5",
+        "mode": "link",
+        "links": [
+            "02dfd9d5cb0b55ed"
+        ],
+        "x": 375,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "dc19a49b80117255",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link out 6",
+        "mode": "link",
+        "links": [
+            "92b28b9e148916db"
+        ],
+        "x": 365,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "92b28b9e148916db",
+        "type": "link in",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link in 4",
+        "links": [
+            "dc19a49b80117255",
+            "9ae065a1da50dea3"
+        ],
+        "x": 75,
+        "y": 180,
+        "wires": [
+            [
+                "a1f44caf9a2d32fb"
+            ]
+        ]
+    },
+    {
+        "id": "77c3e89d5ce18162",
+        "type": "victron-virtual",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "SG Ready (Node-RED)",
+        "outputs": 2,
+        "device": "acload",
+        "default_values": true,
+        "acload_position": 0,
+        "acload_nrofphases": 1,
+        "acload_phasesetting": 1,
+        "acload_auto_energy": true,
+        "enable_s2support": true,
+        "s2_measurement_type": "L1",
+        "heatpump_position": 0,
+        "heatpump_nrofphases": 1,
+        "heatpump_phasesetting": 1,
+        "heatpump_auto_energy": true,
+        "evcs_nrofphases": 1,
+        "battery_capacity": 25,
+        "include_battery_temperature": false,
+        "battery_voltage_preset": "24",
+        "battery_voltage_custom": 24,
+        "generator_type": "ac",
+        "generator_nrofphases": 1,
+        "include_engine_hours": false,
+        "include_starter_voltage": false,
+        "include_history_energy": false,
+        "generator_grid_meter_only": false,
+        "grid_nrofphases": 1,
+        "include_motor_temp": false,
+        "include_controller_temp": false,
+        "include_coolant_temp": false,
+        "include_motor_rpm": true,
+        "include_motor_direction": true,
+        "position": 0,
+        "pvinverter_nrofphases": 1,
+        "pvinverter_auto_energy": true,
+        "switch_1_type": 1,
+        "switch_1_min": 0,
+        "switch_1_max": "",
+        "switch_1_initial": 0,
+        "switch_1_label": "",
+        "switch_1_unit": "",
+        "switch_1_step": 1,
+        "switch_1_customname": "",
+        "switch_1_group": "",
+        "switch_1_include_measurement": false,
+        "switch_1_rgb_color_wheel": false,
+        "switch_1_cct_wheel": false,
+        "switch_1_rgb_white_dimmer": false,
+        "switch_1_passthrough_mode": "auto_only",
+        "fluid_type": 0,
+        "include_tank_battery": false,
+        "include_tank_temperature": false,
+        "tank_battery_voltage": 3.3,
+        "tank_capacity": 0.2,
+        "auto_aggregate": false,
+        "pulsemeter_multiplier": 0.001,
+        "ev_vin": "",
+        "ev_battery_capacity": "",
+        "ev_evcs_device_instance": "",
+        "temperature_type": 2,
+        "include_humidity": false,
+        "include_pressure": false,
+        "include_temp_battery": false,
+        "temp_battery_voltage": 3.3,
+        "start_disconnected": false,
+        "x": 220,
+        "y": 80,
+        "wires": [
+            [],
+            [
+                "dc19a49b80117255"
+            ]
+        ]
+    },
+    {
+        "id": "d1b88780d92a73e2",
+        "type": "s2-ombc",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "",
+        "ombcConfig": "e7246090270480b4",
+        "x": 420,
+        "y": 180,
+        "wires": [
+            [
+                "7f4897f2ece47fab"
+            ],
+            [
+                "9ae065a1da50dea3"
+            ]
+        ]
+    },
+    {
+        "id": "9ae065a1da50dea3",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link out 1",
+        "mode": "link",
+        "links": [
+            "92b28b9e148916db"
+        ],
+        "x": 535,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "1398f8e99f0302d7",
+        "type": "switch",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Switch by mode",
+        "property": "payload.label",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "On",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "Off",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 480,
+        "y": 400,
+        "wires": [
+            [
+                "472189d88db546ad"
+            ],
+            [
+                "4c2dbbe4fe9be23a"
+            ]
+        ]
+    },
+    {
+        "id": "472189d88db546ad",
+        "type": "change",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "powerValues",
+                "pt": "flow",
+                "to": "payload.commodityPower",
+                "tot": "msg"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "1",
+                "tot": "num"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 680,
+        "y": 380,
+        "wires": [
+            [
+                "470b14ecebfd3f75"
+            ]
+        ]
+    },
+    {
+        "id": "4c2dbbe4fe9be23a",
+        "type": "change",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "powerValues",
+                "pt": "flow",
+                "to": "payload.commodityPower",
+                "tot": "msg"
+            },
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "0",
+                "tot": "num"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 680,
+        "y": 420,
+        "wires": [
+            [
+                "470b14ecebfd3f75"
+            ]
+        ]
+    },
+    {
+        "id": "15a70e6e7a54892d",
+        "type": "change",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "{\"label\":\"On\"}",
+                "tot": "json"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ModeConfirmation",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 700,
+        "y": 480,
+        "wires": [
+            [
+                "f833126f57ef82cf"
+            ]
+        ]
+    },
+    {
+        "id": "5a14bb87e4531729",
+        "type": "switch",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Switch by relay state",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "1",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 480,
+        "y": 500,
+        "wires": [
+            [
+                "15a70e6e7a54892d"
+            ],
+            [
+                "6f5781033c14c247"
+            ]
+        ]
+    },
+    {
+        "id": "f833126f57ef82cf",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link out 9",
+        "mode": "link",
+        "links": [
+            "35adf1e8fb4a0f14"
+        ],
+        "x": 835,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "35adf1e8fb4a0f14",
+        "type": "link in",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link in 1",
+        "links": [
+            "f833126f57ef82cf",
+            "970f031d8e1b8536",
+            "5af763f979d3e51f"
+        ],
+        "x": 265,
+        "y": 240,
+        "wires": [
+            [
+                "d1b88780d92a73e2"
+            ]
+        ]
+    },
+    {
+        "id": "950402265bfec519",
+        "type": "link in",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link in 2",
+        "links": [
+            "7f4897f2ece47fab"
+        ],
+        "x": 75,
+        "y": 380,
+        "wires": [
+            [
+                "82229921af807e52"
+            ]
+        ]
+    },
+    {
+        "id": "7f4897f2ece47fab",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "cb6b3a96b5b7afb1",
+        "name": "link out 11",
+        "mode": "link",
+        "links": [
+            "950402265bfec519"
+        ],
+        "x": 535,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "470b14ecebfd3f75",
+        "type": "victron-output-relay",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "service": "com.victronenergy.system",
+        "path": "/Relay/1/State",
+        "serviceObj": {
+            "service": "com.victronenergy.system",
+            "name": "Venus device"
+        },
+        "pathObj": {
+            "path": "/Relay/1/State",
+            "type": "enum",
+            "name": "Venus relay 2 state",
+            "enum": {
+                "0": "Open",
+                "1": "Closed"
+            },
+            "mode": "both"
+        },
+        "name": "",
+        "onlyChanges": false,
+        "roundValues": "no",
+        "rateLimit": 0,
+        "conditionalMode": false,
+        "condition1Operator": ">",
+        "condition1HysteresisEnabled": false,
+        "condition1HysteresisThreshold": "",
+        "condition2Enabled": false,
+        "condition2Service": "",
+        "condition2Path": "",
+        "condition2Operator": ">",
+        "logicOperator": "AND",
+        "outputTrue": "true",
+        "outputFalse": "false",
+        "outputOnChange": false,
+        "debounce": 2000,
+        "x": 940,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "6807450e4cbc5377",
+        "type": "victron-input-relay",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "service": "com.victronenergy.system",
+        "path": "/Relay/1/State",
+        "serviceObj": {
+            "service": "com.victronenergy.system",
+            "name": "Venus system",
+            "communityTag": "relay"
+        },
+        "pathObj": {
+            "path": "/Relay/1/State",
+            "type": "enum",
+            "name": "Venus relay 2 state",
+            "enum": {
+                "0": "Open",
+                "1": "Closed"
+            },
+            "mode": "both"
+        },
+        "name": "",
+        "onlyChanges": false,
+        "roundValues": "no",
+        "rateLimit": 0,
+        "conditionalMode": false,
+        "condition1HysteresisEnabled": false,
+        "condition1HysteresisThreshold": "",
+        "outputTrue": "true",
+        "outputFalse": "false",
+        "debounce": "2000",
+        "x": 200,
+        "y": 500,
+        "wires": [
+            [
+                "5a14bb87e4531729"
+            ]
+        ]
+    },
+    {
+        "id": "6f5781033c14c247",
+        "type": "change",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "{\"label\":\"Off\"}",
+                "tot": "json"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "ModeConfirmation",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 700,
+        "y": 520,
+        "wires": [
+            [
+                "f833126f57ef82cf"
+            ]
+        ]
+    },
+    {
+        "id": "cb3d14eecefa1b83",
+        "type": "inject",
+        "z": "89462d0157a97648",
+        "d": true,
+        "g": "2550bfa94693154d",
+        "name": "Default: Off",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"confirmedOperationModeLabel\":\"Off\"}",
+        "payloadType": "json",
+        "x": 150,
+        "y": 740,
+        "wires": [
+            [
+                "970f031d8e1b8536"
+            ]
+        ]
+    },
+    {
+        "id": "cea2d406a9877732",
+        "type": "debug",
+        "z": "89462d0157a97648",
+        "d": true,
+        "g": "2550bfa94693154d",
+        "name": "ModeRequest",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 220,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "b32dad59271ab90f",
+        "type": "comment",
+        "z": "89462d0157a97648",
+        "d": true,
+        "g": "2550bfa94693154d",
+        "name": "Notes on handling ModeRequest",
+        "info": "The ModeRequest is sent when the CEM has selected OMBC but no active operation mode is known yet. Here, this never happens because the Venus Relay state always sets the correct mode when the flow gets deployed.\n\nIf your integration does not automatically provide a status on flow deployment, either:\n\n 1. Use a inject node which fires on deployment to set a default operation mode\n 2. Or better, use the ModeRequest as the trigger to provide the latest operation mode of your device",
+        "x": 190,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "fd13d018fe2e831d",
+        "type": "link in",
+        "z": "89462d0157a97648",
+        "d": true,
+        "g": "2550bfa94693154d",
+        "name": "link in 7",
+        "links": [
+            "4452a3b3320337dd"
+        ],
+        "x": 75,
+        "y": 780,
+        "wires": [
+            [
+                "cea2d406a9877732"
+            ]
+        ]
+    },
+    {
+        "id": "970f031d8e1b8536",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link out 12",
+        "mode": "link",
+        "links": [
+            "35adf1e8fb4a0f14"
+        ],
+        "x": 275,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "7c853d38e88a5118",
+        "type": "inject",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Resend every 3 seconds",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 190,
+        "y": 620,
+        "wires": [
+            [
+                "c4456b97faeec6b4"
+            ]
+        ]
+    },
+    {
+        "id": "c4456b97faeec6b4",
+        "type": "function",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Fake PowerMeasurement",
+        "func": "// Get the S2-shaped commodity power values (one {commodity_quantity, value}\n// pair per phase, L1-L3) expected by the currently active operation mode\nlet powerValues = flow.get(\"powerValues\");\n\n// If power values not yet set, do nothing\nif (powerValues === undefined) return null;\n\nconst s2 = {\n    topic: \"PowerMeasurement\",\n    payload: {\n        values: powerValues\n    }\n}\n\nconst voltage = 230;\nconst power = powerValues[0].value // L1 power\nconst victron = {\n    payload: {\n        \"/Ac/Power\": power,\n        \"/Ac/L1/Power\": power,\n        \"/Ac/L1/Voltage\": voltage,\n        \"/Ac/L1/Current\": power / voltage,\n        \"/Ac/L1/PowerFactor\": 1\n    }\n};\n\nnode.status({\n    shape: \"dot\",\n    fill: \"blue\",\n    text: \"Faked power: \" + JSON.stringify(powerValues).replaceAll(\",\", \", \")\n})\n\nreturn [s2, victron]",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 620,
+        "wires": [
+            [
+                "5af763f979d3e51f"
+            ],
+            [
+                "3e53f971458423ba"
+            ]
+        ]
+    },
+    {
+        "id": "5af763f979d3e51f",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link out 14",
+        "mode": "link",
+        "links": [
+            "35adf1e8fb4a0f14"
+        ],
+        "x": 615,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "3e53f971458423ba",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link out 13",
+        "mode": "link",
+        "links": [
+            "02dfd9d5cb0b55ed"
+        ],
+        "x": 615,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "82229921af807e52",
+        "type": "switch",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Switch by type of message",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "ModeRequest",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "ModeInstruction",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 240,
+        "y": 380,
+        "wires": [
+            [
+                "4452a3b3320337dd"
+            ],
+            [
+                "1398f8e99f0302d7"
+            ]
+        ]
+    },
+    {
+        "id": "4452a3b3320337dd",
+        "type": "link out",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "link out 2",
+        "mode": "link",
+        "links": [
+            "fd13d018fe2e831d"
+        ],
+        "x": 415,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "d5d19656df4b3761",
+        "type": "comment",
+        "z": "89462d0157a97648",
+        "g": "2550bfa94693154d",
+        "name": "Notes on handling PowerMeasurement",
+        "info": "The `Fake PowerMeasurement` node below always sends the power measurements which are expected by the currently active operation mode. This, of course, does not accurately and reliably reflect the real world and can therefore cause Opportunity Loads to not work well.\n\nWhen this is expected to work okay:\n- If this is the only device (next to the battery) that is controlled by Opportunity Loads\n- If the device has a very stable power usage and therefore the configured values in the OMBC System Description closely match the reality\n\nEspecially if the power usage of the device is not stable, it is highly recommended to replace the `Fake PowerMeasurement` by providing actual power  measurements from the device. Those can come from a Victron energy meter, Shelly device or any other source.\n\n### Example for when actual power measurements are recommended\n\nWhen using the Cerbo internal relay to control the SG Ready \"Boost-mode\" of a heat pump; The heat pump will still follow its internal logic to produce heat for a certain comfort level, even if the relay is off. And it might not start or stop after a while to consume extra power even if the relay is still on.",
+        "x": 210,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "dc0c010f94bcf970",
+        "type": "s2-rm-config",
+        "name": "",
+        "resourceId": "b328f444-b04e-4a16-a5ed-498639c79709",
+        "rmName": "SG Ready device (RM)",
+        "roles": "ENERGY_CONSUMER",
+        "controlTypes": "OPERATION_MODE_BASED_CONTROL,NOT_CONTROLABLE",
+        "serialNumber": "",
+        "manufacturer": "Victron Energy",
+        "model": "Virtual RM",
+        "firmwareVersion": "1.0.0",
+        "providesPowerMeasurement": "L1_L2_L3",
+        "providesForecast": false,
+        "instructionPollIntervalMs": 2000,
+        "skipInstructionStatus": false
+    },
+    {
+        "id": "e7246090270480b4",
+        "type": "s2-ombc-config",
+        "name": "Test device System Description",
+        "systemDescription": "{  \"operationModes\": [    {      \"id\": \"36a022ea-fee6-4181-b907-b50b143cd2e0\",      \"diagnostic_label\": \"Off\",      \"power_ranges\": [        {          \"commodity_quantity\": \"ELECTRIC.POWER.3_PHASE_SYMMETRIC\",          \"start_of_range\": 0,          \"end_of_range\": 0        }      ],      \"abnormal_condition_only\": false    },    {      \"id\": \"f9b2db7b-06f5-4d15-ac58-28aab347037a\",      \"diagnostic_label\": \"On\",      \"power_ranges\": [        {          \"commodity_quantity\": \"ELECTRIC.POWER.L1\",          \"start_of_range\": 100,          \"end_of_range\": 100        },        {          \"commodity_quantity\": \"ELECTRIC.POWER.L2\",          \"start_of_range\": 0,          \"end_of_range\": 0        },        {          \"commodity_quantity\": \"ELECTRIC.POWER.L3\",          \"start_of_range\": 0,          \"end_of_range\": 0        }      ],      \"abnormal_condition_only\": false    }  ],  \"transitions\": [    {      \"id\": \"4e71bf54-083c-4a6e-a1bf-aa1ca8d2819b\",      \"from\": \"36a022ea-fee6-4181-b907-b50b143cd2e0\",      \"to\": \"f9b2db7b-06f5-4d15-ac58-28aab347037a\",      \"start_timers\": [],      \"blocking_timers\": [],      \"abnormal_condition_only\": false    },    {      \"id\": \"ca361d19-a1e8-4f2b-8ee8-7ede26685628\",      \"from\": \"f9b2db7b-06f5-4d15-ac58-28aab347037a\",      \"to\": \"36a022ea-fee6-4181-b907-b50b143cd2e0\",      \"start_timers\": [],      \"blocking_timers\": [],      \"abnormal_condition_only\": false    }  ],  \"timers\": []}"
+    },
+    {
+        "id": "5cde3666b37cb91e",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-s2": "0.3.0",
+            "@victronenergy/node-red-contrib-victron": "1.7.22"
+        }
+    }
+]

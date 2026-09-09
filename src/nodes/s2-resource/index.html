@@ -1,0 +1,479 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script src="resources/node-red-contrib-s2/s2-ombc-editor.js"></script>
+<script type="text/javascript">
+  (function () {
+    var ombcEditor = window.__s2OmbcEditor
+
+    function computeOutputs (node) {
+      // "to transport" (only when Transport: External) + "downstream" (always present).
+      return node.transport === 'external' ? 2 : 1
+    }
+
+    RED.nodes.registerType('s2-resource', {
+      category: 's2',
+      color: '#5A8EC2',
+      defaults: {
+        name: { value: '' },
+
+        rmName: { value: '' },
+        resourceId: { value: '' },
+        roles: { value: 'ENERGY_CONSUMER' },
+        controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+        providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
+        providesForecast: { value: false },
+        manufacturer: { value: 'Victron Energy' },
+        model: { value: 'Virtual RM' },
+        serialNumber: { value: '' },
+        firmwareVersion: { value: '1.0.0' },
+        instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() },
+        skipInstructionStatus: { value: false },
+
+        transport: { value: 'websocket' },
+        cem: { value: '', type: 's2-cem-config', required: false },
+        reconnectInterval: { value: 5 },
+        dbusConfig: { value: '', type: 's2-dbus-config', required: false },
+        debug: { value: false },
+
+        controlType: { value: 'ombc' },
+        systemDescription: { value: '' },
+        defaultOperationModeId: { value: '' },
+        autoConfirmInstructions: { value: true },
+
+        outputs: { value: 1 }
+      },
+      inputs: 1,
+      outputs: 1,
+      icon: 's2-logo.svg',
+      outputLabels: function (index) {
+        if (this.transport === 'external' && index === 0) return 'to transport'
+        return 'downstream'
+      },
+      inputLabels: 'from transport / control-type node',
+      label: function () {
+        return this.name || 's2-resource'
+      },
+      labelStyle: function () {
+        return this.name ? 'node_label_italic' : ''
+      },
+      oneditprepare: function () {
+        var node = this
+        var listSel = '#s2-resource-ombc-mode-list'
+
+        // Node-RED applies its own inline min-width to the tray body, which we've confirmed (via
+        // real-world DevTools inspection) does not shrink back down to fit this form's actual
+        // content on reopening a previously-widened node. This marker class + the matching
+        // !important rule in s2-styles.css overrides it - removed again on save/cancel below so
+        // it never leaks onto whatever node type's dialog opens next in the same tray body.
+        $('#node-input-transport').closest('.red-ui-tray-body').addClass('s2-narrow-tray')
+
+        // Dims/disables the OMBC mode list's L1/L2/L3 fields that don't match the referenced
+        // D-Bus config's wired-to phase, for a single-phase device - those fields are never
+        // actually used in that case. Re-run whenever Transport, the referenced s2-dbus-config's
+        // own settings, or the mode list itself (a new row added) might have changed.
+        function refreshActivePhase () {
+          var activePhase = null
+          if ($('#node-input-transport').val() === 'dbus') {
+            var dbusCfg = RED.nodes.node($('#node-input-dbusConfig').val())
+            if (dbusCfg && Number(dbusCfg.nrOfPhases) === 1) {
+              activePhase = Number(dbusCfg.phaseSetting) || 1
+            }
+          }
+          ombcEditor.setActivePhase(listSel, activePhase)
+        }
+
+        // -- inner tabs --
+
+        var tabs = { conn: '#s2-resource-tab-conn', rm: '#s2-resource-tab-rm', ct: '#s2-resource-tab-ct' }
+        var panels = { conn: '#s2-resource-panel-conn', rm: '#s2-resource-panel-rm', ct: '#s2-resource-panel-ct' }
+
+        function showTab (key) {
+          Object.keys(tabs).forEach(function (k) {
+            $(tabs[k]).toggleClass('s2-tab-active', k === key)
+            $(panels[k]).toggle(k === key)
+          })
+          // Catches edits made in the D-Bus config's own sub-dialog (Phases/Wired to) since
+          // this tab was last shown - re-read its current values right before they're visible.
+          if (key === 'ct') refreshActivePhase()
+        }
+        Object.keys(tabs).forEach(function (k) {
+          $(tabs[k]).on('click', function (e) {
+            e.preventDefault()
+            showTab(k)
+          })
+        })
+        showTab('conn')
+
+        // -- Connection tab --
+
+        if (!node.resourceId) {
+          var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            var r = Math.random() * 16 | 0
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+          })
+          $('#node-input-resourceId').val(id)
+        }
+
+        function showTransportSection () {
+          var t = $('#node-input-transport').val()
+          $('#s2-resource-transport-websocket').toggle(t === 'websocket')
+          $('#s2-resource-transport-dbus').toggle(t === 'dbus')
+          $('#s2-resource-transport-external').toggle(t === 'external')
+          $('#s2-resource-transport-debug-row').toggle(t === 'websocket' || t === 'dbus')
+          // Power Meas. on the Resource Manager tab only matters for WebSocket/External - when
+          // Transport: D-Bus, the D-Bus config's own measurement type is the single source of
+          // truth (it also determines the actual declared D-Bus properties), so showing a
+          // second, independent Power Meas. picker here would just invite the two to drift out
+          // of sync.
+          $('#s2-resource-power-meas-row').toggle(t !== 'dbus')
+          $('#s2-resource-power-meas-dbus-hint').toggle(t === 'dbus')
+          refreshActivePhase()
+        }
+        $('#node-input-transport').on('change', showTransportSection)
+        $('#node-input-dbusConfig').on('change', refreshActivePhase)
+        showTransportSection()
+
+        // -- Resource Manager tab --
+
+        var savedCt = (node.controlTypes || '').split(',').map(function (s) { return s.trim() })
+        $('.s2-resource-ct-checkbox').each(function () {
+          $(this).prop('checked', savedCt.indexOf($(this).val()) !== -1)
+        })
+        $('.s2-resource-ct-checkbox').on('change', function () {
+          if ($('.s2-resource-ct-checkbox:checked').length === 0) $(this).prop('checked', true)
+        })
+
+        // Advertised Control Types are picked manually only when Control type: None - when
+        // Control type: OMBC is built in, oneditsave advertises OPERATION_MODE_BASED_CONTROL
+        // automatically, so there's nothing to pick here (it's already chosen on the Control
+        // Type tab).
+        function showControlTypesSection () {
+          $('#s2-resource-controltypes-section').toggle($('#node-input-controlType').val() === 'none')
+        }
+        $('#node-input-controlType').on('change', showControlTypesSection)
+        showControlTypesSection()
+
+        var savedRoles = (node.roles || '').split(',').map(function (s) { return s.trim() })
+        $('.s2-resource-role-checkbox').each(function () {
+          $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
+        })
+        $('.s2-resource-role-checkbox').on('change', function () {
+          if ($('.s2-resource-role-checkbox:checked').length === 0) $(this).prop('checked', true)
+        })
+
+        var hasNonDefaultAdvanced = (node.instructionPollIntervalMs && node.instructionPollIntervalMs !== 2000) ||
+          node.skipInstructionStatus === true
+        if (hasNonDefaultAdvanced) {
+          $('#s2-resource-rm-advanced-section').show()
+          $('#s2-resource-rm-advanced-toggle .s2-advanced-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-up')
+        }
+        $('#s2-resource-rm-advanced-toggle').on('click', function (e) {
+          e.preventDefault()
+          $('#s2-resource-rm-advanced-section').toggle()
+          $(this).find('.s2-advanced-chevron').toggleClass('fa-chevron-down fa-chevron-up')
+        })
+
+        // -- Control Type tab --
+
+        function showControlTypeSection () {
+          var t = $('#node-input-controlType').val()
+          $('#s2-resource-ct-ombc').toggle(t === 'ombc')
+          $('#s2-resource-ct-none').toggle(t === 'none')
+        }
+        $('#node-input-controlType').on('change', showControlTypeSection)
+        showControlTypeSection()
+
+        // Keeps the "Default mode" dropdown in sync with the mode list - it has no static
+        // options of its own since mode ids/labels only exist once the editableList is built.
+        function refreshDefaultModeOptions () {
+          var $select = $('#node-input-defaultOperationModeId')
+          var previous = $select.val()
+          var modes = ombcEditor.getFriendlyModes(listSel)
+          $select.empty()
+          $select.append($('<option/>', { value: '' }).text('None (report no status until confirmed)'))
+          modes.forEach(function (m) {
+            $select.append($('<option/>', { value: m.id }).text(m.label || m.id))
+          })
+          var stillPresent = modes.some(function (m) { return m.id === previous })
+          if (stillPresent) {
+            $select.val(previous)
+          } else if (modes.some(function (m) { return m.id === node.defaultOperationModeId })) {
+            $select.val(node.defaultOperationModeId)
+          } else {
+            $select.val('')
+          }
+        }
+
+        $(listSel).css('min-height', '220px').editableList({
+          addItem: function (container, index, opt) {
+            ombcEditor.addModeItem(container, index, opt)
+            refreshDefaultModeOptions()
+            refreshActivePhase()
+          },
+          removeItem: function (opt) {
+            if (opt && opt.protected) $(listSel).editableList('addItem', opt)
+            refreshDefaultModeOptions()
+          },
+          removable: true,
+          sortable: true
+        })
+        $(listSel).on('input', '.s2-ombc-mode-label', refreshDefaultModeOptions)
+
+        var raw = node.systemDescription
+        var parsed = null
+        if (raw) {
+          try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
+        }
+        if (parsed && ombcEditor.isFriendlyRepresentable(parsed)) {
+          ombcEditor.systemDescriptionToFriendlyState(parsed).forEach(function (m) {
+            $(listSel).editableList('addItem', m)
+          })
+        } else {
+          $(listSel).editableList('addItem', ombcEditor.defaultStandbyMode())
+        }
+
+        window.__s2Common.initializeTooltips()
+
+        // EXPERIMENTAL: Node-RED sets an explicit pixel width directly on the outer .red-ui-tray
+        // (not just the min-width on .red-ui-tray-body handled above) - apparently computed
+        // before this form's content exists, then reused/grown rather than recomputed. Clearing
+        // it once, now that our own tab-toggling/list-population above has already settled, lets
+        // the browser size the tray fresh against this form's actual current content. Not using
+        // !important here (unlike the min-width fix above) since that would also block the user's
+        // own drag-resize handle, which sets this same property the same way.
+        setTimeout(function () {
+          var tray = $('#node-input-transport').closest('.red-ui-tray')
+          if (tray.length) tray.css('width', '')
+        }, 0)
+      },
+      oneditsave: function () {
+        if ($('#node-input-controlType').val() === 'ombc') {
+          // Already chosen on the Control Type tab - advertise it directly rather than reading
+          // the (hidden) Control Types checkboxes.
+          this.controlTypes = 'OPERATION_MODE_BASED_CONTROL'
+        } else {
+          var checkedCt = []
+          $('.s2-resource-ct-checkbox:checked').each(function () { checkedCt.push($(this).val()) })
+          this.controlTypes = checkedCt.join(',')
+        }
+
+        var checkedRoles = []
+        $('.s2-resource-role-checkbox:checked').each(function () { checkedRoles.push($(this).val()) })
+        $('#node-input-roles').val(checkedRoles.join(','))
+
+        if ($('#node-input-controlType').val() === 'ombc') {
+          var sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes('#s2-resource-ombc-mode-list'))
+          this.systemDescription = JSON.stringify(sysDesc)
+        }
+
+        this.outputs = computeOutputs(this)
+        $('.red-ui-tray-body.s2-narrow-tray').removeClass('s2-narrow-tray')
+      },
+      oneditcancel: function () {
+        $('.red-ui-tray-body.s2-narrow-tray').removeClass('s2-narrow-tray')
+      }
+    })
+  })()
+</script>
+
+<script type="text/html" data-template-name="s2-resource">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row s2-full-row">
+      <div class="s2-tabs">
+        <a href="#" id="s2-resource-tab-conn" class="s2-tab s2-tab-active">Connection</a>
+        <a href="#" id="s2-resource-tab-rm" class="s2-tab">Resource Manager</a>
+        <a href="#" id="s2-resource-tab-ct" class="s2-tab">Control Type</a>
+      </div>
+    </div>
+
+    <!-- Connection -->
+    <div id="s2-resource-panel-conn" class="s2-full-row">
+      <div class="form-row">
+        <label for="node-input-transport"><i class="fa fa-plug"></i> Transport</label>
+        <select id="node-input-transport" style="width:70%">
+          <option value="websocket">Built-in - WebSocket to a remote CEM</option>
+          <option value="dbus">Built-in - D-Bus (Venus OS)</option>
+          <option value="external">External - wire it yourself</option>
+        </select>
+      </div>
+
+      <div id="s2-resource-transport-websocket">
+        <div class="form-row">
+          <label for="node-input-cem"><i class="fa fa-globe"></i> CEM<i class="fa fa-info-circle tooltip-icon" data-tooltip="The s2-cem-config node holding the CEM's WebSocket URL and credentials - the same config node s2-websocket uses today, so multiple s2-resource nodes can share one CEM connection."></i></label>
+          <input type="text" id="node-input-cem">
+        </div>
+        <div class="form-row">
+          <label for="node-input-reconnectInterval"><i class="fa fa-refresh"></i> Reconnect<i class="fa fa-info-circle tooltip-icon" data-tooltip="Seconds to wait before reconnecting after the WebSocket connection drops."></i></label>
+          <input type="number" id="node-input-reconnectInterval" min="1" step="1">
+          <span class="s2-unit-label">s</span>
+        </div>
+      </div>
+
+      <div id="s2-resource-transport-dbus">
+        <div class="form-row">
+          <label for="node-input-dbusConfig"><i class="fa fa-plug"></i> D-Bus<i class="fa fa-info-circle tooltip-icon" data-tooltip="The s2-dbus-config node holding the D-Bus connection mode, device type, and Power Meas. (measurement type) - the same config node the standalone s2-dbus node uses. Its Power Meas. field is the only one that applies here (see the Resource Manager tab)."></i></label>
+          <input type="text" id="node-input-dbusConfig">
+        </div>
+        <p class="s2-resource-hint">Feed a power reading to this node's input at any time (e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code>, per the <b>D-Bus config's</b> Power Meas. field - edit it via the pencil above, not the Resource Manager tab). It's set as a real, readable D-Bus BusItem property immediately, and relayed to the CEM while active - same as the standalone <code>s2-dbus</code> node.</p>
+      </div>
+
+      <div id="s2-resource-transport-debug-row" class="form-row s2-full-row">
+        <label class="s2-checkbox-label"><input type="checkbox" id="node-input-debug"> Show raw S2 messages in debug sidebar<i class="fa fa-info-circle tooltip-icon" data-tooltip="Sends every S2 message to/from the CEM straight to the Debug sidebar (the same tab a Debug node's output shows up in) - no need to wire one in yourself."></i></label>
+      </div>
+
+      <div id="s2-resource-transport-external">
+        <p class="s2-resource-hint">No URL or credentials here. This node exposes a "to transport" output and accepts transport commands on its input instead - wire it to anything else that speaks the same protocol s2-websocket/s2-dbus/s2-rm already use.</p>
+      </div>
+    </div>
+
+    <!-- Resource Manager -->
+    <div id="s2-resource-panel-rm" class="s2-full-row" style="display:none">
+      <div class="form-row">
+        <label for="node-input-rmName"><i class="fa fa-tag"></i> RM Name</label>
+        <input type="text" id="node-input-rmName" placeholder="e.g. Boiler RM">
+      </div>
+
+      <div class="form-row">
+        <label for="node-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Auto-generated on first use - do not change after deployment."></i></label>
+        <input type="text" id="node-input-resourceId" placeholder="Auto-generated UUID">
+      </div>
+
+      <div class="form-row">
+        <label class="s2-section-label"><i class="fa fa-bolt"></i> Roles</label>
+      </div>
+      <div class="form-row s2-full-row">
+        <div class="s2-control-types-container">
+          <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-role-checkbox" value="ENERGY_CONSUMER"> Consumer</label>
+          <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-role-checkbox" value="ENERGY_PRODUCER"> Producer</label>
+          <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-role-checkbox" value="ENERGY_STORAGE"> Storage</label>
+        </div>
+        <input type="hidden" id="node-input-roles">
+      </div>
+
+      <div id="s2-resource-controltypes-section">
+        <div class="form-row">
+          <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM, for whatever you wire up yourself under Control type: None. (Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL automatically - nothing to pick here.)"></i></label>
+        </div>
+        <div class="form-row s2-full-row">
+          <div class="s2-control-types-container">
+            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="FILL_RATE_BASED_CONTROL"> FRBC</label>
+            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="DEMAND_DRIVEN_BASED_CONTROL"> DDBC</label>
+            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="POWER_PROFILE_BASED_CONTROL"> PPBC</label>
+            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="POWER_ENVELOPE_BASED_CONTROL"> PEBC</label>
+            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="NOT_CONTROLABLE"> Not Ctrl</label>
+          </div>
+        </div>
+      </div>
+      <input type="hidden" id="node-input-controlTypes">
+
+      <div class="form-row" id="s2-resource-power-meas-row">
+        <label for="node-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Advertised power-measurement capability. With Transport: D-Bus this is set on the Connection tab's D-Bus config instead, so it can't drift out of sync with what's actually declared on D-Bus."></i></label>
+        <select id="node-input-providesPowerMeasurement" style="width:70%">
+          <option value="">None</option>
+          <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+          <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
+        </select>
+      </div>
+
+      <div class="form-row" id="s2-resource-power-meas-dbus-hint" style="display:none">
+        <label class="s2-section-label"><i class="fa fa-bolt"></i> Power Meas.</label>
+        <p class="s2-resource-hint">Set on the Connection tab's D-Bus config instead - it determines both the advertised capability and the actual D-Bus properties.</p>
+      </div>
+
+      <div class="form-row">
+        <label for="node-input-providesForecast"><i class="fa fa-line-chart"></i> Forecast</label>
+        <input type="checkbox" id="node-input-providesForecast" style="width:auto;margin-top:6px;">
+        <span style="margin-left:6px;">Provides power forecast</span>
+      </div>
+
+      <div class="form-row">
+        <label for="node-input-manufacturer"><i class="fa fa-industry"></i> Manufacturer</label>
+        <input type="text" id="node-input-manufacturer">
+      </div>
+      <div class="form-row">
+        <label for="node-input-model"><i class="fa fa-cube"></i> Model</label>
+        <input type="text" id="node-input-model">
+      </div>
+      <div class="form-row">
+        <label for="node-input-serialNumber"><i class="fa fa-barcode"></i> Serial<i class="fa fa-info-circle tooltip-icon" data-tooltip="Supports {{global.xxx}}/{{flow.xxx}} context variables. Defaults to the node id if empty."></i></label>
+        <input type="text" id="node-input-serialNumber">
+      </div>
+      <div class="form-row">
+        <label for="node-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
+        <input type="text" id="node-input-firmwareVersion">
+      </div>
+
+      <div class="form-row">
+        <a href="#" class="s2-advanced-toggle" id="s2-resource-rm-advanced-toggle">
+          <i class="fa fa-cog"></i> Advanced
+          <i class="fa fa-chevron-down s2-advanced-chevron"></i>
+        </a>
+      </div>
+      <div id="s2-resource-rm-advanced-section" style="display:none">
+        <div class="form-row s2-advanced-row">
+          <label for="node-input-instructionPollIntervalMs"><i class="fa fa-clock-o"></i> Poll interval</label>
+          <input type="number" id="node-input-instructionPollIntervalMs" min="100" step="100">
+          <span class="s2-unit-label">ms</span>
+        </div>
+        <div class="form-row s2-full-row">
+          <label class="s2-checkbox-label"><input type="checkbox" id="node-input-skipInstructionStatus"> Skip instruction status updates</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control Type -->
+    <div id="s2-resource-panel-ct" class="s2-full-row" style="display:none">
+      <div class="form-row">
+        <label for="node-input-controlType"><i class="fa fa-sliders"></i> Control type</label>
+        <select id="node-input-controlType" style="width:70%">
+          <option value="ombc">OMBC - Operation Mode Based</option>
+          <option value="none">None - wire manually</option>
+        </select>
+      </div>
+
+      <div id="s2-resource-ct-ombc">
+        <ol id="s2-resource-ombc-mode-list"></ol>
+        <div class="form-row">
+          <label for="node-input-defaultOperationModeId"><i class="fa fa-star"></i> Default mode<i class="fa fa-info-circle tooltip-icon" data-tooltip="Confirmed as this resource's status as soon as a CEM selects OMBC, unless something has already been confirmed (e.g. via a ModeConfirmation sent to this node's input). Optional - leave as 'None' to report no status until something confirms one."></i></label>
+          <select id="node-input-defaultOperationModeId" style="width:70%">
+            <option value="">None (report no status until confirmed)</option>
+          </select>
+        </div>
+        <div class="form-row s2-full-row">
+          <label class="s2-checkbox-label"><input type="checkbox" id="node-input-autoConfirmInstructions"> Auto-confirm mode-switch requests (OMBC.Instruction)<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.Instruction is the message a CEM sends to ask this resource to switch to a specific operation mode. When checked, this node immediately reports that mode as active (OMBC.Status) as if it had switched right away, instead of waiting for your flow to confirm it separately. Suits a resource with no independent way to check its own hardware state. Uncheck if your flow verifies the switch actually happened (e.g. after actuating a relay) before confirming it."></i></label>
+        </div>
+      </div>
+
+      <div id="s2-resource-ct-none">
+        <p class="s2-resource-hint">No control-type UI here. This node's downstream output and input carry the same "from CEM"/command shapes s2-rm exposes today - wire your own s2-ombc/s2-pebc, or handle FRBC/DDBC/PPBC yourself.</p>
+      </div>
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-resource">
+  <p>A composite S2 Resource Manager: combines <b>s2-rm</b>'s session state machine, a built-in transport, and a built-in control type behind one tabbed edit dialog - so a minimal S2 flow needs one node instead of wiring <b>s2-rm</b>, a transport node, and a control-type node together.</p>
+
+  <h3>Connection tab</h3>
+  <p><b>Transport: WebSocket</b> dials out to a CEM using the same <b>s2-cem-config</b> node <b>s2-websocket</b> uses - pick an existing one (or create a new one) to share a single CEM connection across multiple resources. <b>Transport: D-Bus</b> registers a Venus OS D-Bus service the same way the standalone <b>s2-dbus</b> node does, using an <b>s2-dbus-config</b> node - including its power-measurement relay (feed a reading to this node's input at any time, e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code>). <b>Transport: External</b> exposes a "to transport" output and accepts transport commands on this node's input instead, for wiring to anything else that speaks the transport-agnostic protocol.</p>
+
+  <h3>Resource Manager tab</h3>
+  <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync.</p>
+
+  <h3>Control Type tab</h3>
+  <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id | index | label }, cemId? }</code>).</p>
+  <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
+  <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (on by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. With this checked, the requested mode is immediately reported back as active (<code>OMBC.Status</code>), instead of waiting for a <code>ModeConfirmation</code> from the flow - suited to a resource with no independent way to check its own hardware state. Uncheck it if your flow confirms based on real device state (e.g. after actually switching a relay), so the CEM only sees a mode reported active once it truly is.</p>
+  <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>
+
+  <h3>Ports</h3>
+  <p>The input is always present and accepts both transport commands and control-type commands - it figures out which by shape (a <code>command</code> field means "for the RM"; anything else goes to the built-in OMBC controller, if any). With <b>Transport: External</b> and <b>Control type: None</b>, this node's ports and every message shape are identical to <b>s2-rm</b>'s.</p>
+</script>

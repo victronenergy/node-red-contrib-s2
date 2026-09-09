@@ -57,3 +57,20 @@ export interface S2CemConfigNode extends NodeRedNode {
     password: string
   }
 }
+
+/**
+ * Server-side shape of the s2-dbus-config config node.
+ * Use RED.nodes.getNode(id) and cast to this type.
+ */
+export interface S2DbusConfigNode extends NodeRedNode {
+  connectionMode: 'auto' | 'system' | 'tcp'
+  tcpAddress: string | undefined
+  deviceType: string // a product type dbus-victron-virtual recognizes, e.g. 'acload' or 'heatpump'
+  measurementType: '' | '3_PHASE_SYMMETRIC' | 'L1_L2_L3'
+  /** 1-3. Declares the full minimal-meter D-Bus shape for this many phases. */
+  nrOfPhases: number
+  /** AC output (0) or AC input (1), matching node-red-contrib-victron's own Position property. */
+  position: 0 | 1
+  /** Which physical line (1-3) a single-phase device (nrOfPhases 1) is wired to. Ignored when nrOfPhases > 1. */
+  phaseSetting: number
+}

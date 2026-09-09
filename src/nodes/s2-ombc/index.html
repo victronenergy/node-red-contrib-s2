@@ -78,11 +78,11 @@
         <dt>topic <span class="property-type">string</span></dt>
         <dd><code>'ModeInstruction'</code> for a resolved OMBC instruction, or <code>'ModeRequest'</code> sent after a newly OMBC-selecting CEM has neither a persisted status nor a default available.</dd>
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, power }</code> for the resolved mode, where <code>power</code> is <code>[L1, L2, L3]</code> watts derived from the mode's power ranges and factor. For <code>ModeRequest</code>: <code>null</code>.</dd>
+        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, commodityPower }</code> for the resolved mode, where <code>commodityPower</code> is an array of <code>{ commodity_quantity, value }</code> pairs (one per phase, L1/L2/L3, watts) derived from the mode's power ranges and factor - the same shape S2's own PowerMeasurement/PowerRange values use. For <code>ModeRequest</code>: <code>null</code>.</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>The CEM this message applies to.</dd>
-        <dt>rawMessage <span class="property-type">object</span></dt>
-        <dd><code>ModeInstruction</code> only. The original instruction payload received from s2-rm.</dd>
+        <dt>rawS2Message <span class="property-type">object</span></dt>
+        <dd><code>ModeInstruction</code> only. The original S2 instruction message received from the CEM (via s2-rm).</dd>
       </dl>
       Non-OMBC instructions are ignored silently, so this node can be wired in parallel with s2-pebc downstream of the same s2-rm.
     </li>

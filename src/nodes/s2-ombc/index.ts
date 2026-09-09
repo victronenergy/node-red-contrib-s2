@@ -1,22 +1,11 @@
-import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage, DoneFunction } from '../../types/node-red'
+import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2OmbcConfigNode } from '../../types/config-nodes'
-import { ControlType, MessageType, OMBCStatusConfig, OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
+import { OMBCController } from '../../lib/s2/ombc-controller'
+import { OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
 
 interface S2OmbcNodeConfig extends NodeConfig {
   ombcConfig: string
 }
-
-interface CemState {
-  selectedControlType: string | null
-}
-
-type PowerRange = { commodity_quantity: string, start_of_range: number, end_of_range: number }
-type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: PowerRange[] }
-
-const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
-const DEFAULT_STATUS_KEY = 's2OmbcDefaultStatus'
-
-type ModeIdResolution = { id: string } | { error: string }
 
 /**
  * s2-ombc node
@@ -24,6 +13,11 @@ type ModeIdResolution = { id: string } | { error: string }
  * Owns OMBC-specific S2 protocol behavior: declares the OMBC system description,
  * resolves OMBC instructions into actionable output, and confirms operation mode
  * changes back to the CEM once told the hardware state is confirmed.
+ *
+ * This is a thin Node-RED wrapper around OMBCController
+ * (src/lib/s2/ombc-controller.ts), which owns the actual protocol
+ * behavior and is also constructed directly by the s2-resource node's
+ * built-in OMBC control type.
  *
  * Wiring:
  *   [s2-rm output 2 (from CEM)]    -> [s2-ombc input]  (all CEM messages incl. instructions)
@@ -45,8 +39,10 @@ type ModeIdResolution = { id: string } | { error: string }
  *   Legacy format (confirmedOperationModeId/Index/Label) is still accepted.
  *
  * Output port 1 - instructions:
- *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, power }, cemId, rawMessage }
- *     power: [L1, L2, L3] watts, derived from the mode's power_ranges and factor.
+ *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, commodityPower }, cemId, rawS2Message }
+ *     commodityPower: one { commodity_quantity, value } pair per phase (L1/L2/L3, watts),
+ *     derived from the mode's power_ranges and factor - the same shape S2's own
+ *     PowerMeasurement/PowerRange values use.
  *   Non-OMBC instructions: ignored silently.
  *   ModeRequest: { topic: 'ModeRequest', payload: null, cemId }
  *
@@ -75,307 +71,17 @@ export = function (RED: NodeRedApp): void {
       }
     }
 
-    const cemStates = new Map<string, CemState>()
-
-    function getOrCreateState (cemId: string): CemState {
-      let state = cemStates.get(cemId)
-      if (!state) {
-        state = { selectedControlType: null }
-        cemStates.set(cemId, state)
-      }
-      return state
-    }
-
-    function getPersistedStatus (cemId: string): OMBCStatusConfig | null {
-      return (node.context().get(PERSISTED_STATUS_KEY_PREFIX + cemId) as OMBCStatusConfig | undefined) || null
-    }
-
-    function setPersistedStatus (cemId: string, status: OMBCStatusConfig): void {
-      node.context().set(PERSISTED_STATUS_KEY_PREFIX + cemId, status)
-    }
-
-    function getDefaultStatus (): OMBCStatusConfig | null {
-      return (node.context().get(DEFAULT_STATUS_KEY) as OMBCStatusConfig | undefined) || null
-    }
-
-    function setDefaultStatus (status: OMBCStatusConfig): void {
-      node.context().set(DEFAULT_STATUS_KEY, status)
-    }
-
-    // Resolves a mode identifier from payload down to a configured mode's canonical id.
-    // Accepts new format (id/index/label) and legacy format (confirmedOperationModeId/Index/Label).
-    function resolveModeIdentifier (payload: Record<string, unknown>): ModeIdResolution {
-      const idField = payload.id ?? payload.confirmedOperationModeId
-      const indexField = payload.index ?? payload.confirmedOperationModeIndex
-      const labelField = payload.label ?? payload.confirmedOperationModeLabel
-      const providedCount = [idField, indexField, labelField].filter(v => v !== undefined).length
-
-      if (providedCount !== 1) {
-        return { error: 'Confirm message requires exactly one of id, index, or label (or legacy confirmedOperationModeId/Index/Label)' }
-      }
-
-      const modes = (systemDescription.operationModes || []) as Array<Record<string, unknown>>
-
-      if (idField !== undefined) {
-        const modeId = idField as string
-        const match = modes.find(m => m.id === modeId)
-        if (!match) {
-          return { error: `confirmedOperationModeId "${modeId}" does not match any configured operation mode` }
-        }
-        return { id: modeId }
-      }
-
-      if (indexField !== undefined) {
-        const index = indexField as number
-        if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= modes.length) {
-          return { error: `confirmedOperationModeIndex ${String(index)} is out of range (0-${modes.length - 1})` }
-        }
-        return { id: modes[index].id as string }
-      }
-
-      const label = labelField as string
-      const matches = modes.filter(m => m.diagnostic_label === label)
-      if (matches.length === 0) {
-        return { error: `confirmedOperationModeLabel "${label}" does not match any configured operation mode` }
-      }
-      if (matches.length > 1) {
-        return { error: `confirmedOperationModeLabel "${label}" matches more than one configured operation mode` }
-      }
-      return { id: matches[0].id as string }
-    }
-
-    function resolveMode (rawInstr: Record<string, unknown>): ResolvedOMBCMode | null {
-      const modeId = (rawInstr.operation_mode_id || rawInstr.operation_mode) as string | undefined
-      if (!modeId) return null
-      const factor = typeof rawInstr.operation_mode_factor === 'number' ? rawInstr.operation_mode_factor : 1
-      const modes = systemDescription.operationModes as Array<Record<string, unknown>> | undefined
-      const modeIndex = modes?.findIndex(m => m.id === modeId) ?? -1
-      const mode = modeIndex >= 0 ? modes![modeIndex] : undefined
-      return {
-        id: modeId,
-        index: modeIndex,
-        label: (mode?.diagnostic_label as string | undefined) || modeId,
-        factor,
-        powerRanges: (mode?.power_ranges as PowerRange[] | undefined) || []
-      }
-    }
-
-    // Calculate per-phase power [L1, L2, L3] from power ranges and factor.
-    function calculatePower (powerRanges: PowerRange[], factor: number): [number, number, number] {
-      const byCq = new Map<string, PowerRange>()
-      for (const r of powerRanges) byCq.set(r.commodity_quantity, r)
-
-      const sym = byCq.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
-      if (sym) {
-        const total = sym.start_of_range + factor * (sym.end_of_range - sym.start_of_range)
-        const perPhase = Math.round(total / 3)
-        return [perPhase, perPhase, perPhase]
-      }
-
-      function phaseValue (cq: string): number {
-        const r = byCq.get(cq)
-        if (!r) return 0
-        return Math.round(r.start_of_range + factor * (r.end_of_range - r.start_of_range))
-      }
-      return [phaseValue('ELECTRIC.POWER.L1'), phaseValue('ELECTRIC.POWER.L2'), phaseValue('ELECTRIC.POWER.L3')]
-    }
-
-    function modeLabelOrId (modeId: string): string {
-      const modes = (systemDescription.operationModes || []) as Array<Record<string, unknown>>
-      const mode = modes.find(m => m.id === modeId)
-      return (mode?.diagnostic_label as string | undefined) || modeId
-    }
-
-    function handleInstruction (msg: NodeMessage): void {
-      const payload = msg.payload as Record<string, unknown>
-      const messageType = payload.message_type as string
-      if (messageType !== MessageType.OMBC_INSTRUCTION) {
-        return
-      }
-      const resolved = resolveMode(payload)
-      if (resolved) {
-        const power = calculatePower(resolved.powerRanges, resolved.factor)
-        node.status({ fill: 'green', shape: 'dot', text: resolved.label })
-        node.send([{
-          topic: 'ModeInstruction',
-          payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor, power },
-          cemId: msg.cemId,
-          rawMessage: msg.payload
-        }, null])
-      } else {
-        node.send([{ ...msg }, null])
-      }
-    }
-
-    function handleSelectControlType (msg: NodeMessage): void {
-      const cemId = msg.cemId
-      if (!cemId) return
-      const payload = msg.payload as Record<string, unknown>
-      const controlType = payload.control_type as string
-      getOrCreateState(cemId).selectedControlType = controlType
-      if (controlType !== ControlType.OMBC) return
-
-      node.send([null, { payload: { command: 'SystemDescription', cemId, controlType: ControlType.OMBC, ombc: systemDescription } }])
-
-      let status = getPersistedStatus(cemId)
-      if (!status) {
-        const defaultStatus = getDefaultStatus()
-        if (defaultStatus) {
-          setPersistedStatus(cemId, defaultStatus)
-          status = defaultStatus
-        }
-      }
-
-      if (status) {
-        node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } }])
-      } else {
-        node.send([{ topic: 'ModeRequest', payload: null, cemId }, null])
-      }
-    }
-
-    function handleConfirm (msg: NodeMessage, done: DoneFunction): void {
-      const payload = msg.payload as Record<string, unknown>
-
-      const resolution = resolveModeIdentifier(payload)
-      if ('error' in resolution) {
-        done(new Error(resolution.error))
-        return
-      }
-      const modeId = resolution.id
-
-      let cemId = msg.cemId as string | undefined
-      if (!cemId) {
-        const ombcCemIds = Array.from(cemStates.entries())
-          .filter(([, state]) => state.selectedControlType === ControlType.OMBC)
-          .map(([id]) => id)
-        if (ombcCemIds.length > 1) {
-          done(new Error('Confirm message with no cemId is ambiguous - multiple CEMs currently have OMBC selected; specify cemId'))
-          return
-        }
-        if (ombcCemIds.length === 1) {
-          cemId = ombcCemIds[0]
-        }
-      }
-
-      const factor = payload.factor ?? payload.operationModeFactor
-      const operationModeFactor = typeof factor === 'number' ? factor : 1
-
-      if (!cemId) {
-        // No CEM currently has OMBC selected (pre-connection, or after a disconnect) - store as
-        // the default status for whichever CEM next selects OMBC, per "Pre-connection default
-        // status" in the spec.
-        setDefaultStatus({ activeOperationModeId: modeId, operationModeFactor })
-        node.status({ fill: 'blue', shape: 'dot', text: `default: ${modeLabelOrId(modeId)}` })
-        done()
-        return
-      }
-
-      const state = getOrCreateState(cemId)
-      if (state.selectedControlType !== ControlType.OMBC) {
-        node.status({ fill: 'yellow', shape: 'ring', text: 'OMBC not selected - confirm ignored' })
-        done()
-        return
-      }
-
-      const previous = getPersistedStatus(cemId)
-      let status: OMBCStatusConfig = {
-        activeOperationModeId: modeId,
-        operationModeFactor
-      }
-      if (previous && previous.activeOperationModeId !== modeId) {
-        status = {
-          ...status,
-          previousOperationModeId: previous.activeOperationModeId,
-          transitionTimestamp: new Date().toISOString()
-        }
-      }
-      setPersistedStatus(cemId, status)
-      node.status({ fill: 'green', shape: 'dot', text: `Confirmed: ${modeLabelOrId(modeId)}` })
-      node.send([null, { payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } }])
-      done()
-    }
-
-    node.status({ fill: 'grey', shape: 'ring', text: 'idle' })
+    const controller = new OMBCController({
+      systemDescription,
+      onEmitInstruction: (msg) => node.send([msg, null]),
+      onSendCommand: (msg) => node.send([null, msg]),
+      onStatus: (status) => node.status(status),
+      getContextValue: (key) => node.context().get(key),
+      setContextValue: (key, value) => node.context().set(key, value)
+    })
 
     node.on('input', (msg, _send, done) => {
-      const cemId = msg.cemId
-      const topic = msg.topic
-
-      if (topic === 'Disconnected' && cemId) {
-        const state = cemStates.get(cemId)
-        if (state) state.selectedControlType = null
-        done()
-        return
-      }
-
-      const payload = msg.payload as Record<string, unknown> | undefined
-      if (!payload || typeof payload !== 'object') {
-        done()
-        return
-      }
-
-      if (topic === 'ModeConfirmation' ||
-          'confirmedOperationModeId' in payload || 'confirmedOperationModeIndex' in payload || 'confirmedOperationModeLabel' in payload) {
-        handleConfirm(msg, done)
-        return
-      }
-
-      if (topic === 'PowerMeasurement') {
-        let pmCemId = msg.cemId as string | undefined
-        if (!pmCemId) {
-          const ombcCemIds = Array.from(cemStates.entries())
-            .filter(([, state]) => state.selectedControlType === ControlType.OMBC)
-            .map(([id]) => id)
-          if (ombcCemIds.length === 1) {
-            pmCemId = ombcCemIds[0]
-          } else {
-            done()
-            return
-          }
-        }
-        const rawValues = (payload as Record<string, unknown>).values
-        // values: 3000 → 3-phase symmetric; values: [L1, L2, L3] → per-phase
-        let values: unknown[]
-        if (typeof rawValues === 'number') {
-          values = [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: rawValues }]
-        } else if (Array.isArray(rawValues) && rawValues.length === 3 && typeof rawValues[0] === 'number') {
-          values = [
-            { commodity_quantity: 'ELECTRIC.POWER.L1', value: rawValues[0] },
-            { commodity_quantity: 'ELECTRIC.POWER.L2', value: rawValues[1] },
-            { commodity_quantity: 'ELECTRIC.POWER.L3', value: rawValues[2] }
-          ]
-        } else if (Array.isArray(rawValues) && rawValues.length > 0 && typeof rawValues[0] === 'object') {
-          values = rawValues
-        } else {
-          done(new Error('PowerMeasurement values must be a number (3-phase symmetric), a 3-element array [L1, L2, L3], or an array of {commodity_quantity, value} objects'))
-          return
-        }
-        node.send([null, { payload: { command: 'PowerMeasurement', cemId: pmCemId, values } }])
-        done()
-        return
-      }
-
-      if ('controlType' in msg) {
-        // Legacy enriched instruction from s2-rm (pre-v0.3)
-        handleInstruction(msg)
-        done()
-        return
-      }
-
-      const messageType = (payload as Record<string, unknown>).message_type as string | undefined
-      if (messageType && messageType.startsWith('OMBC.')) {
-        handleInstruction(msg)
-        done()
-        return
-      }
-
-      if (payload.message_type === MessageType.SELECT_CONTROL_TYPE) {
-        handleSelectControlType(msg)
-        done()
-        return
-      }
-
-      done()
+      controller.handleInput(msg, done)
     })
   }
 

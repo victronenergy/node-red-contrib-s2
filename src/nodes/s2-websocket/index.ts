@@ -1,6 +1,7 @@
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2CemConfigNode, S2RmConfigNode } from '../../types/config-nodes'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
+import { publishToDebugSidebar, parseForDebugSidebar } from '../../lib/node-red-debug-sidebar'
 
 interface S2WebSocketConfig extends NodeConfig {
   cem: string      // reference to s2-cem-config node
@@ -70,6 +71,7 @@ export = function (RED: NodeRedApp): void {
     transport.on('open', () => {
       hasConnected = true
       node.log(`[s2-websocket] connected to ${url}`)
+      if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${CEM_ID} (Connect)`, { cemId: CEM_ID })
       node.status({ fill: 'green', shape: 'ring', text: 'connected' })
       node.send({ payload: { command: 'Connect', cemId: CEM_ID, keepAliveInterval: 0 } })
     })
@@ -80,7 +82,7 @@ export = function (RED: NodeRedApp): void {
     })
 
     transport.on('message', (raw: string) => {
-      if (config.debug) node.log(`[s2-websocket] <- ${raw}`)
+      if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${CEM_ID}`, parseForDebugSidebar(raw))
       node.send({ payload: { command: 'Message', cemId: CEM_ID, message: raw } })
     })
 
@@ -88,6 +90,7 @@ export = function (RED: NodeRedApp): void {
       node.send({ payload: { command: 'Disconnect', cemId: CEM_ID } })
       const reconnectSec = (config.reconnectInterval || 5)
       if (hasConnected) {
+        if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${CEM_ID} (Disconnect)`, { cemId: CEM_ID })
         node.log(`[s2-websocket] disconnected - reconnecting in ${reconnectSec}s`)
         node.status({ fill: 'yellow', shape: 'ring', text: 'reconnecting...' })
       } else {
@@ -133,7 +136,7 @@ export = function (RED: NodeRedApp): void {
             return
           }
           const raw = JSON.stringify(message)
-          if (config.debug) node.log(`[s2-websocket] -> ${raw}`)
+          if (config.debug) publishToDebugSidebar(RED, node, `-> to CEM ${CEM_ID}`, message)
           try {
             transport.send(raw)
           } catch (err) {

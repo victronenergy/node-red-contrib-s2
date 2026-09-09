@@ -60,6 +60,11 @@ Key s2python files:
 Victron implements S2 over D-Bus instead of WebSocket. The interface is exposed by virtual device services
 (e.g. `com.victronenergy.acload.virtual_*`) at path `/S2/0/Rm`, interface `com.victronenergy.S2`.
 
+The **`s2-dbus`** node implements this transport directly (via `dbus-victron-virtual`/`dbus-native-victron`,
+no dependency on node-red-contrib-victron), producing the exact same output shape `s2-websocket` does - wire
+it to `s2-rm` the same way. `s2-resource`'s Connection tab also offers it as a built-in `Transport: D-Bus`
+option.
+
 ### D-Bus Methods (CEM -> RM)
 
 | Member | Signature | Description |
@@ -226,6 +231,23 @@ The `ID` JSON schema pattern `[a-zA-Z0-9\-_:]{2,64}` is more permissive than `uu
 Always use proper UUIDs for any field that s2python maps to `uuid.UUID`.
 
 ---
+
+## Recommended starting point: s2-resource
+
+For a new flow, start with the `s2-resource` node instead of wiring the individual nodes below
+by hand - it combines `s2-rm`'s session state machine, a built-in transport (WebSocket or D-Bus),
+and a built-in OMBC control type behind one tabbed edit dialog, collapsing the minimal 6-node OMBC
+flow (`s2-rm-config`, `s2-cem-config`, `s2-websocket`, `s2-rm`, `s2-ombc-config`, `s2-ombc`) down
+to one node with no wiring. `Transport: D-Bus` covers the same session, D-Bus registration, and
+power-measurement relay (including exposing the reading as a real D-Bus BusItem property) as the
+standalone `s2-dbus` node below. `Transport: External` and `Control type: None` fall back to the
+exact same ports/message shapes as `s2-rm` below, for anything the built-ins don't cover yet
+(PEBC, FRBC/DDBC/PPBC) - see its own help panel for the full port contract.
+
+The individual nodes documented below remain the manually-wired/advanced path: reach for them
+directly when you need more than one control type on the same RM, a shared CEM connection across
+several `s2-resource`-shaped resources (`s2-cem-config` is still just a config node either way),
+or a transport `s2-resource` doesn't offer a built-in for yet.
 
 ## Planned Architecture (next steps)
 

@@ -16,6 +16,29 @@
   overflow-x: hidden;
 }
 
+/* Node-RED itself applies an inline min-width to the tray body - confirmed via DevTools to be
+   reproducibly different per Transport value, but NOT re-derived when our own content's width
+   needs shrink (it stayed byte-for-byte identical across several rounds of us narrowing our own
+   markup). An !important rule in an external stylesheet is the one case that beats a plain
+   (non-!important) inline style, so this overrides it directly - regardless of when Node-RED
+   (re-)applies its own value. Targets a marker class each s2-form-using node's oneditprepare adds
+   to the tray body itself, rather than :has(.s2-form) - :has() needs a fairly recent browser
+   (Chrome 105+/2022, Firefox 121+/2023) and silently matches nothing at all on anything older,
+   which would make this whole rule a no-op with no visible sign of failure. */
+.red-ui-tray-body.s2-narrow-tray {
+  min-width: 0 !important;
+}
+
+/* Node-RED's own editor CSS sets `code { white-space: nowrap }` globally - fine for a short
+   inline term, but our hint text embeds a full JSON snippet (e.g. { payload: { 'Ac/Power': 1500 } })
+   as prose. Left as nowrap, that snippet can't break, so it (and the tray, which appears to size
+   itself to fit the widest unbroken content on first open) ends up forced wide. Only affects the
+   template itself - the separate help/data-help-name panel keeps Node-RED's default nowrap code
+   styling, which is fine there since it isn't part of the resizable edit form. */
+.s2-form code {
+  white-space: normal;
+}
+
 /* Keep icon + text vertically centred inside labels without overriding the
    width - Node-RED's default ~110px label width is used instead. */
 /* Label width slightly wider than NR default (110px) to accommodate the
@@ -92,13 +115,29 @@
   gap: 6px 8px;
 }
 
-.s2-form .s2-checkbox-label {
-  display: flex;
+/* Selector includes the `label` element type - same specificity-tie-break trick as
+   label.s2-section-label above. Without it, .s2-form .form-row label's width:120px!important
+   (higher specificity: it also matches on the `label` element type) wins over this rule's
+   width:auto!important whenever a checkbox label sits inside a .form-row, silently clipping
+   it to 120px - the text overflows past that width and the tooltip icon (positioned relative
+   to that same clipped box) lands wherever within it, not at the end of the visible text. */
+.s2-form label.s2-checkbox-label {
+  /* inline-flex, not flex - a block-level flex container stretches to fill its row's full
+     width, which (once the 120px clip above was fixed) put the absolutely-positioned tooltip
+     icon at the far right of the whole row instead of snug against this label's own text.
+     label.s2-ombc-mode-checkbox-label below already gets this right - matched here. */
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   width: auto !important;
   font-weight: normal;
   cursor: pointer;
+  /* .tooltip-icon below is absolutely positioned against the nearest positioned ancestor -
+     without this, it falls back to one further up the DOM instead of this label, landing
+     wherever that ancestor happens to be sized rather than at this label's own right edge. */
+  position: relative;
+  padding-right: 20px;
+  box-sizing: border-box;
 }
 
 .s2-form .s2-checkbox-label input[type="checkbox"] {
@@ -172,14 +211,16 @@
    OMBC SYSTEM DESCRIPTION - Friendly/Advanced tabs and operation-mode rows
    ============================================================================ */
 
-.s2-form .s2-ombc-tabs {
+/* Generic tab bar - used by s2-ombc-config's Friendly/Advanced toggle and
+   s2-resource's Connection/Resource Manager/Control Type tabs. */
+.s2-form .s2-tabs {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid #ccc;
   margin-bottom: 8px;
 }
 
-.s2-form .s2-ombc-tab {
+.s2-form .s2-tab {
   padding: 5px 12px;
   color: #666;
   text-decoration: none;
@@ -188,12 +229,12 @@
   border-radius: 3px 3px 0 0;
 }
 
-.s2-form .s2-ombc-tab:hover {
+.s2-form .s2-tab:hover {
   color: #333;
   text-decoration: none;
 }
 
-.s2-form .s2-ombc-tab.s2-ombc-tab-active {
+.s2-form .s2-tab.s2-tab-active {
   color: #333;
   font-weight: 600;
   border-color: #ccc;
@@ -245,6 +286,10 @@
   white-space: nowrap;
 }
 
+.s2-form .s2-ombc-mode-phase-group.s2-ombc-mode-phase-dimmed {
+  opacity: 0.4;
+}
+
 .s2-form .s2-ombc-mode-protected-note {
   color: #888;
   font-size: 0.85em;
@@ -260,4 +305,14 @@
   padding: 6px 10px;
   margin-bottom: 8px;
   font-size: 0.9em;
+}
+
+.s2-form .s2-resource-hint {
+  color: #666;
+  background: #f6f6f2;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 0.9em;
+  line-height: 1.4;
 }
