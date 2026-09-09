@@ -77,8 +77,23 @@ When `Control type: OMBC` and `Transport: D-Bus` are both selected and the refer
 - **THEN** each mode's L1 and L3 power fields are dimmed and disabled, and L2 remains editable
 
 #### Scenario: Multi-phase D-Bus device
-- **WHEN** the referenced `s2-dbus-config` has `Phases: 3` (or `Transport` is not `D-Bus`)
-- **THEN** all three per-phase fields remain enabled, unchanged from today's behavior
+- **WHEN** the referenced `s2-dbus-config` has `Phases: 2` or `Phases: 3` (or `Transport` is not `D-Bus`)
+- **THEN** all three per-phase fields remain enabled (though for `Phases: 3` they are also hidden behind a forced-checked "Same value on all phases" - see the requirement below), unchanged from today's field-enablement behavior
+
+### Requirement: "Same value on all phases" is locked when the D-Bus phase count makes it unambiguous
+When `Control type: OMBC` and `Transport: D-Bus` are both selected and the referenced `s2-dbus-config` node has `nrOfPhases: 1`, each operation mode's "Same value on all phases" checkbox SHALL be forced unchecked and disabled, so the mode's power value is entered through the single active per-phase field (per the dimming requirement above) rather than a separate symmetric field. When `nrOfPhases: 3`, the checkbox SHALL instead be forced checked and disabled, so the mode's power value is entered once and applies to all three phases. For `nrOfPhases: 2`, or any `Transport` other than `D-Bus`, the checkbox SHALL remain freely editable, unchanged from today's behavior. This SHALL update on the same triggers as the per-phase dimming requirement above.
+
+#### Scenario: Single-phase D-Bus device
+- **WHEN** `Transport: D-Bus` references an `s2-dbus-config` with `Phases: 1`
+- **THEN** each mode's "Same value on all phases" checkbox is unchecked and disabled, and the mode's power value is entered through its single active per-phase field
+
+#### Scenario: Exactly-3-phase D-Bus device
+- **WHEN** `Transport: D-Bus` references an `s2-dbus-config` with `Phases: 3`
+- **THEN** each mode's "Same value on all phases" checkbox is checked and disabled, and the per-phase L1/L2/L3 fields are hidden in favor of the single symmetric value field
+
+#### Scenario: Two-phase D-Bus device, or no D-Bus transport
+- **WHEN** the referenced `s2-dbus-config` has `Phases: 2`, or `Transport` is not `D-Bus`
+- **THEN** each mode's "Same value on all phases" checkbox remains freely editable, unchanged from today's behavior
 
 ### Requirement: Default OMBC mode without external wiring
 When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL offer a "Default mode" selection among the tab's own configured operation modes (plus "None"). When set, `s2-resource` SHALL confirm that mode as the resource's default status at deploy time, equivalent to sending `{ confirmedOperationModeId: <id> }` to its own input before any CEM has connected - without requiring a separately-wired node to do so.

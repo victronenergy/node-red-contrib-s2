@@ -290,6 +290,11 @@
   opacity: 0.4;
 }
 
+.s2-form label.s2-ombc-mode-checkbox-label.s2-ombc-mode-symmetric-locked {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .s2-form .s2-ombc-mode-protected-note {
   color: #888;
   font-size: 0.85em;

@@ -11,7 +11,7 @@
 
     RED.nodes.registerType('s2-resource', {
       category: 's2',
-      color: '#5A8EC2',
+      color: '#ffffff',
       defaults: {
         name: { value: '' },
 
@@ -68,17 +68,26 @@
 
         // Dims/disables the OMBC mode list's L1/L2/L3 fields that don't match the referenced
         // D-Bus config's wired-to phase, for a single-phase device - those fields are never
-        // actually used in that case. Re-run whenever Transport, the referenced s2-dbus-config's
-        // own settings, or the mode list itself (a new row added) might have changed.
+        // actually used in that case. Also locks each mode's "Same value on all phases"
+        // checkbox when the referenced device's phase count makes the choice moot (forced off
+        // for single-phase, forced on for exactly 3 phases - see setSymmetricLock). Re-run
+        // whenever Transport, the referenced s2-dbus-config's own settings, or the mode list
+        // itself (a new row added) might have changed.
         function refreshActivePhase () {
           var activePhase = null
+          var forcedSymmetric = null
           if ($('#node-input-transport').val() === 'dbus') {
             var dbusCfg = RED.nodes.node($('#node-input-dbusConfig').val())
-            if (dbusCfg && Number(dbusCfg.nrOfPhases) === 1) {
+            var nrOfPhases = dbusCfg ? Number(dbusCfg.nrOfPhases) : null
+            if (nrOfPhases === 1) {
               activePhase = Number(dbusCfg.phaseSetting) || 1
+              forcedSymmetric = false
+            } else if (nrOfPhases === 3) {
+              forcedSymmetric = true
             }
           }
           ombcEditor.setActivePhase(listSel, activePhase)
+          ombcEditor.setSymmetricLock(listSel, forcedSymmetric)
         }
 
         // -- inner tabs --

@@ -10,7 +10,7 @@ Defines what the published npm tarball must contain so that Node-RED's editor ca
 The npm package SHALL include the `resources/` directory at the package root (sibling to `package.json`), since Node-RED's registry serves `resources/<module-name>/<file>` directly from the installed package root, not from `dist/`.
 
 #### Scenario: Editor loads a node's edit dialog after a fresh install
-- **WHEN** a user runs `npm install node-red-contrib-s2` and opens the edit dialog for any of `s2-rm-config`, `s2-cem-config`, `s2-websocket`, `s2-rm`, `s2-ombc-config`, `s2-ombc`, `s2-pebc-config`, or `s2-pebc` in the Node-RED editor
+- **WHEN** a user runs `npm install node-red-contrib-s2` and opens the edit dialog for any of `s2-rm-config`, `s2-cem-config`, `s2-websocket`, `s2-rm`, `s2-ombc-config`, `s2-ombc`, `s2-pebc-config`, `s2-pebc`, `s2-dbus-config`, `s2-dbus`, or `s2-resource` in the Node-RED editor
 - **THEN** the browser successfully loads `resources/node-red-contrib-s2/s2-common.js` and `resources/node-red-contrib-s2/s2-styles.css` (HTTP 200, not 404), and the edit dialog renders without a JavaScript error
 
 #### Scenario: Packaged tarball contains the resources directory
@@ -22,7 +22,7 @@ The npm package SHALL include, for every node type declared in `package.json`'s 
 
 #### Scenario: Packaged tarball contains each node's edit-dialog HTML
 - **WHEN** `npm pack` is run against this package
-- **THEN** the tarball contains `dist/nodes/<node-name>/index.html` for each of `s2-rm-config`, `s2-cem-config`, `s2-websocket`, `s2-rm`, `s2-ombc-config`, `s2-ombc`, `s2-pebc-config`, and `s2-pebc`
+- **THEN** the tarball contains `dist/nodes/<node-name>/index.html` for each of `s2-rm-config`, `s2-cem-config`, `s2-websocket`, `s2-rm`, `s2-ombc-config`, `s2-ombc`, `s2-pebc-config`, `s2-pebc`, `s2-dbus-config`, `s2-dbus`, and `s2-resource`
 
 ### Requirement: Build fails when a required editor asset is missing
 The build and/or packaging verification SHALL fail (non-zero exit) if a static asset referenced by a shipped node's `index.html` (a `resources/...` reference, an icon, or the HTML file itself) would not be present in what `npm publish` uploads.
