@@ -11,6 +11,7 @@ export = function (RED: NodeRedApp): void {
     this.nrOfPhases = Number(config.nrOfPhases ?? 1)
     this.position = (Number(config.position ?? 0) as 0 | 1)
     this.phaseSetting = Number(config.phaseSetting ?? 1)
+    this.autoCalculateEnergy = config.autoCalculateEnergy !== false
   }
 
   RED.nodes.registerType('s2-dbus-config', S2DbusConfigNodeConstructor)

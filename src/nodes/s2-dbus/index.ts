@@ -31,8 +31,11 @@ interface S2DbusNodeConfig extends NodeConfig {
  *   { payload: { s2Signal: 'PowerMeasurementStop' }, cemId }
  *   { payload: { 'S2/0/Active': 1 | 0 } }
  *   Also accepts a power-measurement value update at any time, cached, exposed as a real D-Bus
- *   BusItem property, and (while active) relayed to the CEM:
+ *   BusItem property, and (while active) relayed to the CEM - two independent, always-both-checked
+ *   input shapes:
  *   { payload: { 'Ac/Power': 1500 } }  (or Ac/L1/Power, Ac/L2/Power, Ac/L3/Power, per configured measurementType)
+ *   { payload: { values: 1500 } }  (or values: [1500, 200, 300] for per-phase/3-phase-symmetric -
+ *   meaning depends on measurementType/nrOfPhases/phaseSetting, see power-measurement-cache.ts)
  *
  * Output (to s2-rm input):
  *   { payload: { command: 'Connect',           cemId: 'cem', keepAliveInterval } }
@@ -58,7 +61,7 @@ export = function (RED: NodeRedApp): void {
     }
 
     const CEM_ID = 'cem'
-    const measurementCache = new PowerMeasurementCache(dbusConfig.measurementType)
+    const measurementCache = new PowerMeasurementCache(dbusConfig.measurementType, dbusConfig.nrOfPhases, dbusConfig.phaseSetting)
     // The RM's own session is always keyed by the fixed CEM_ID above (this node supports one CEM
     // at a time) - this tracks the real D-Bus-supplied cemId separately, purely so outbound debug
     // sidebar entries can show which physical CEM a message is actually going to.
@@ -72,7 +75,8 @@ export = function (RED: NodeRedApp): void {
       measurementType: dbusConfig.measurementType,
       nrOfPhases: dbusConfig.nrOfPhases,
       position: dbusConfig.position,
-      phaseSetting: dbusConfig.phaseSetting
+      phaseSetting: dbusConfig.phaseSetting,
+      autoCalculateEnergy: dbusConfig.autoCalculateEnergy
     })
 
     node.status({ fill: 'yellow', shape: 'ring', text: 'registering...' })
@@ -150,6 +154,7 @@ export = function (RED: NodeRedApp): void {
 
       const update = measurementCache.update(payload)
       if (update) {
+        if (update.warning) node.warn(`[s2-dbus] ${update.warning}`)
         transport.setMeasurementValues(update.raw)
         if (update.s2Values) node.send({ payload: { command: 'PowerMeasurement', cemId: CEM_ID, values: update.s2Values } })
         done()

@@ -55,7 +55,8 @@ const DEFAULT_DBUS_CONFIG = {
   measurementType: '3_PHASE_SYMMETRIC',
   nrOfPhases: 1,
   position: 0,
-  phaseSetting: 1
+  phaseSetting: 1,
+  autoCalculateEnergy: true
 }
 
 function setupNode (config: Record<string, unknown>, cemConfig: unknown = DEFAULT_CEM_CONFIG, dbusConfig: unknown = DEFAULT_DBUS_CONFIG) {
@@ -205,6 +206,24 @@ describe('s2-resource - Transport: WebSocket', () => {
     expect(connected).toBeDefined()
   })
 
+  it('shows the configured CEM URL (not the internal "cem" session id) in status once connected', () => {
+    const { node } = setupNode({ transport: 'websocket', controlType: 'none' })
+    mockTransport.emit('open')
+
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url})` })
+  })
+
+  it('shows the configured CEM config Name (over the URL) in status once connected, when set', () => {
+    const { node } = setupNode({ transport: 'websocket', controlType: 'none' }, { ...DEFAULT_CEM_CONFIG, name: 'My CEM' })
+    mockTransport.emit('open')
+
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM)' })
+  })
+
   it('forwards an outbound s2Signal Message to the WebSocket transport instead of an output port', () => {
     const { node } = setupNode({ transport: 'websocket', controlType: 'none' })
     mockTransport.emit('open')
@@ -329,6 +348,15 @@ describe('s2-resource - Transport: D-Bus', () => {
     const downstream = outputAt(node, 0)
     const connected = downstream.find((m) => (m as { topic?: string }).topic === 'Connected')
     expect(connected).toBeDefined()
+  })
+
+  it('shows the real D-Bus-reported cemId (not the internal "cem" session id) in status once connected', () => {
+    const { node } = setupNode({ transport: 'dbus', controlType: 'none' })
+    mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
+
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1)' })
   })
 
   it('forwards an outbound s2Signal Message to the D-Bus transport instead of an output port', () => {
@@ -488,18 +516,40 @@ describe('s2-resource - Transport: D-Bus power measurement relay', () => {
     expect(findSentPowerMeasurement()).toBeUndefined()
   })
 
-  it('updates the D-Bus BusItem property even before the CEM has started measurement', () => {
+  it('updates the D-Bus BusItem property even before the CEM has started measurement (and splits evenly across per-phase properties, per 3-phase-symmetric)', () => {
     const { handlers } = setupNode({ transport: 'dbus', controlType: 'none' })
 
     handlers.input({ payload: { 'Ac/Power': 900 } }, jest.fn(), jest.fn())
 
-    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 900 })
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 900, 'Ac/L1/Power': 300, 'Ac/L2/Power': 300, 'Ac/L3/Power': 300 })
   })
 
   it('passes measurementType through to S2DbusTransport', () => {
     setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3' })
 
     expect(capturedDbusTransportOptions.measurementType).toBe('L1_L2_L3')
+  })
+
+  it('passes autoCalculateEnergy through to S2DbusTransport', () => {
+    setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, autoCalculateEnergy: false })
+
+    expect(capturedDbusTransportOptions.autoCalculateEnergy).toBe(false)
+  })
+
+  it('maps a scalar `values` input to the wired phase, proving nrOfPhases/phaseSetting reach PowerMeasurementCache', () => {
+    const { handlers } = setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
+
+    handlers.input({ payload: { values: 10 } }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
+  })
+
+  it('warns and does not update the transport when a `values` array is sent to a single-phase device', () => {
+    const { node, handlers } = setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
+
+    handlers.input({ payload: { values: [11, 22, 33] } }, jest.fn(), jest.fn())
+
+    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('single-phase'))
   })
 })
 

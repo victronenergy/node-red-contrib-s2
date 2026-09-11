@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events'
 import * as dbus from 'dbus-native-victron'
 import { addVictronInterfaces, addSettings, VictronInterfaceHandle } from 'dbus-victron-virtual'
-import { MEASUREMENT_TYPE_TO_PROPS } from '../s2/power-measurement-cache'
+import { resolveMeasurementProps } from '../s2/power-measurement-cache'
+import { EnergyAccumulator } from '../s2/energy-accumulator'
 import { buildMinimalMeterShape, MinimalMeterPosition } from './minimal-meter-properties'
 
 export type S2DbusConnectionMode = 'auto' | 'system' | 'tcp'
@@ -34,6 +35,8 @@ export interface S2DbusTransportOptions {
   /** Which physical line (1-3) a single-phase device (nrOfPhases 1) is wired to, reported under
    * Ac/L<phaseSetting>/* instead of always Ac/L1/*. Defaults to 1. Ignored when nrOfPhases > 1. */
   phaseSetting?: number
+  /** Integrates tracked Power into Ac/[L<n>/]Energy/Forward over time (see ../s2/energy-accumulator.ts); false/omitted leaves it at the minimal-meter shape's `null` default. */
+  autoCalculateEnergy?: boolean
 }
 
 const MAX_ADD_SETTINGS_RETRIES = 10
@@ -128,6 +131,9 @@ export class S2DbusTransport extends EventEmitter {
   private bus: dbus.DBusClient | undefined
   private handle: VictronInterfaceHandle | undefined
   private serviceName: string | undefined
+  private readonly energyAccumulator = new EnergyAccumulator()
+  // Per-phase Energy/Forward keys to roll up into Ac/Energy/Forward; empty unless autoCalculateEnergy + 'L1_L2_L3'.
+  private phaseEnergyKeys: string[] = []
 
   constructor (opts: S2DbusTransportOptions) {
     super()
@@ -197,12 +203,33 @@ export class S2DbusTransport extends EventEmitter {
       phaseSetting: this.opts.phaseSetting
     })
 
-    const measurementProps = this.opts.measurementType ? (MEASUREMENT_TYPE_TO_PROPS[this.opts.measurementType] || {}) : {}
+    const measurementProps = this.opts.measurementType
+      ? resolveMeasurementProps(this.opts.measurementType, this.opts.nrOfPhases ?? 1, this.opts.phaseSetting ?? 1)
+      : {}
+    // 3-phase-symmetric also gets a derived, D-Bus-only per-phase breakdown (see PowerMeasurementCache.update()) not in measurementProps.
+    const measurementKeys = new Set(Object.keys(measurementProps))
+    if (this.opts.measurementType === '3_PHASE_SYMMETRIC') {
+      measurementKeys.add('Ac/L1/Power').add('Ac/L2/Power').add('Ac/L3/Power')
+    }
     const measurementPropertyDecls: Record<string, unknown> = {}
     const measurementDefinition: Record<string, unknown> = {}
-    for (const key of Object.keys(measurementProps)) {
+    for (const key of measurementKeys) {
       measurementPropertyDecls[key] = { type: 'd', format: (v: unknown) => v != null ? Number(v).toFixed(2) + 'W' : '' }
       measurementDefinition[key] = 0
+    }
+
+    // Based on measurementProps, not measurementKeys - a 3-phase-symmetric device's derived per-phase Power isn't separately integrated.
+    if (this.opts.autoCalculateEnergy && Object.keys(measurementProps).length > 0) {
+      this.phaseEnergyKeys = Object.keys(measurementProps)
+        .map((key) => key.match(/^Ac\/L(\d)\/Power$/))
+        .filter((m): m is RegExpMatchArray => m !== null)
+        .map((m) => `Ac/L${m[1]}/Energy/Forward`)
+      const energyKeys = new Set(this.phaseEnergyKeys)
+      energyKeys.add('Ac/Energy/Forward')
+      for (const key of energyKeys) {
+        measurementPropertyDecls[key] = { type: 'd', format: (v: unknown) => v != null ? Number(v).toFixed(2) + 'kWh' : '' }
+        measurementDefinition[key] = 0
+      }
     }
 
     const declaration: Record<string, unknown> = {
@@ -278,10 +305,40 @@ export class S2DbusTransport extends EventEmitter {
 
   /** Update the measurement BusItem propert(y/ies) declared via the measurementType option
    * (e.g. { 'Ac/Power': 1800 }). A no-op before registration completes or if measurementType
-   * was not set. */
+   * was not set. When autoCalculateEnergy is on, also integrates the updated Power value(s) into
+   * their running Energy Forward total(s) - see EnergyAccumulator. */
   setMeasurementValues (values: Record<string, number>): void {
     if (!this.handle || Object.keys(values).length === 0) return
     this.handle.setValuesLocally(values)
+    if (!this.opts.autoCalculateEnergy) return
+
+    const now = Date.now()
+    const energyUpdates: Record<string, number> = {}
+
+    if (this.opts.measurementType === '3_PHASE_SYMMETRIC') {
+      if ('Ac/Power' in values) {
+        const total = this.energyAccumulator.accumulate('Ac/Energy/Forward', values['Ac/Power'], now)
+        if (total !== null) energyUpdates['Ac/Energy/Forward'] = total
+      }
+    } else if (this.phaseEnergyKeys.length > 0) {
+      let anyPhaseUpdated = false
+      for (const powerKey of Object.keys(values)) {
+        const m = powerKey.match(/^Ac\/L(\d)\/Power$/)
+        if (!m) continue
+        const energyKey = `Ac/L${m[1]}/Energy/Forward`
+        const total = this.energyAccumulator.accumulate(energyKey, values[powerKey], now)
+        if (total !== null) {
+          energyUpdates[energyKey] = total
+          anyPhaseUpdated = true
+        }
+      }
+      // Rolled up from every tracked phase's current total, mirroring node-red-contrib-victron's acload.js.
+      if (anyPhaseUpdated) {
+        energyUpdates['Ac/Energy/Forward'] = this.phaseEnergyKeys.reduce((sum, key) => sum + this.energyAccumulator.getTotal(key), 0)
+      }
+    }
+
+    if (Object.keys(energyUpdates).length > 0) this.handle.setValuesLocally(energyUpdates)
   }
 
   disconnect (): void {

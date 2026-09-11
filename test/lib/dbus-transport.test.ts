@@ -311,23 +311,40 @@ describe('S2DbusTransport - measurement properties', () => {
     expect(definition['Ac/Power']).toBeNull()
   })
 
-  it('declares Ac/Power (initial value 0) when measurementType is 3_PHASE_SYMMETRIC', async () => {
-    makeTransport({ measurementType: '3_PHASE_SYMMETRIC' }).connect()
+  it('declares Ac/Power, and also Ac/L1-3/Power (derived per-phase breakdown), when measurementType is 3_PHASE_SYMMETRIC', async () => {
+    makeTransport({ measurementType: '3_PHASE_SYMMETRIC', nrOfPhases: 3 }).connect()
     await flush()
 
     const [, declaration, definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, { properties: Record<string, unknown> }, Record<string, unknown>]
     expect(declaration.properties['Ac/Power']).toBeDefined()
     expect(definition['Ac/Power']).toBe(0)
+    expect(definition['Ac/L1/Power']).toBe(0)
+    expect(definition['Ac/L2/Power']).toBe(0)
+    expect(definition['Ac/L3/Power']).toBe(0)
   })
 
-  it('gives each tracked phase power property an initial value of 0 when measurementType is L1_L2_L3', async () => {
-    makeTransport({ measurementType: 'L1_L2_L3' }).connect()
+  it('gives each tracked phase power property an initial value of 0 when measurementType is L1_L2_L3 with nrOfPhases: 3', async () => {
+    makeTransport({ measurementType: 'L1_L2_L3', nrOfPhases: 3 }).connect()
     await flush()
 
     const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
     expect(definition['Ac/L1/Power']).toBe(0)
     expect(definition['Ac/L2/Power']).toBe(0)
     expect(definition['Ac/L3/Power']).toBe(0)
+  })
+
+  it('declares only the wired phase\'s Power property when measurementType is L1_L2_L3 with nrOfPhases: 1 (bug 1 regression)', async () => {
+    makeTransport({ measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 }).connect()
+    await flush()
+
+    const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
+    expect(definition['Ac/L2/Power']).toBe(0)
+    // The "minimal meter" shape only ever declares the single wired phase for a single-phase
+    // device (see minimal-meter-properties.ts) - L1/L3 aren't declared at all here, not even as
+    // null placeholders, so the point of this regression test is that the measurement-tracked
+    // override doesn't (re-)introduce them either.
+    expect(definition['Ac/L1/Power']).toBeUndefined()
+    expect(definition['Ac/L3/Power']).toBeUndefined()
   })
 
   it('setMeasurementValues updates the declared properties via setValuesLocally', async () => {
@@ -345,6 +362,65 @@ describe('S2DbusTransport - measurement properties', () => {
 
     expect(() => transport.setMeasurementValues({ 'Ac/Power': 1800 })).not.toThrow()
     expect(fakeHandle.setValuesLocally).not.toHaveBeenCalled()
+  })
+})
+
+describe('S2DbusTransport - energy auto-calculation', () => {
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  it('declares Ac/Energy/Forward and per-phase Energy/Forward (initial 0) when autoCalculateEnergy is true', async () => {
+    makeTransport({ measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2, autoCalculateEnergy: true }).connect()
+    await flush()
+
+    const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
+    expect(definition['Ac/L2/Energy/Forward']).toBe(0)
+    expect(definition['Ac/Energy/Forward']).toBe(0)
+  })
+
+  it('leaves Energy/Forward properties at their null default when autoCalculateEnergy is false', async () => {
+    makeTransport({ measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2, autoCalculateEnergy: false }).connect()
+    await flush()
+
+    const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
+    expect(definition['Ac/L2/Energy/Forward']).toBeNull()
+    expect(definition['Ac/Energy/Forward']).toBeNull()
+  })
+
+  it('integrates Power over time into Energy/Forward via setValuesLocally, using the previous power value', async () => {
+    const nowSpy = jest.spyOn(Date, 'now')
+    const transport = makeTransport({ measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2, autoCalculateEnergy: true })
+    transport.connect()
+    await flush()
+    fakeHandle.setValuesLocally.mockClear()
+
+    nowSpy.mockReturnValue(0)
+    transport.setMeasurementValues({ 'Ac/L2/Power': 100 })
+    expect(fakeHandle.setValuesLocally).not.toHaveBeenCalledWith(expect.objectContaining({ 'Ac/L2/Energy/Forward': expect.anything() }))
+
+    nowSpy.mockReturnValue(3_600_000) // 1 hour later
+    transport.setMeasurementValues({ 'Ac/L2/Power': 150 })
+
+    expect(fakeHandle.setValuesLocally).toHaveBeenCalledWith({ 'Ac/L2/Energy/Forward': 0.1, 'Ac/Energy/Forward': 0.1 })
+  })
+
+  it('accumulates 3-phase-symmetric energy once from Ac/Power, not per derived phase', async () => {
+    const nowSpy = jest.spyOn(Date, 'now')
+    const transport = makeTransport({ measurementType: '3_PHASE_SYMMETRIC', nrOfPhases: 3, autoCalculateEnergy: true })
+    transport.connect()
+    await flush()
+
+    nowSpy.mockReturnValue(0)
+    transport.setMeasurementValues({ 'Ac/Power': 300, 'Ac/L1/Power': 100, 'Ac/L2/Power': 100, 'Ac/L3/Power': 100 })
+    fakeHandle.setValuesLocally.mockClear()
+
+    nowSpy.mockReturnValue(3_600_000)
+    transport.setMeasurementValues({ 'Ac/Power': 300, 'Ac/L1/Power': 100, 'Ac/L2/Power': 100, 'Ac/L3/Power': 100 })
+
+    const energyCall = fakeHandle.setValuesLocally.mock.calls.find((c) => 'Ac/Energy/Forward' in (c[0] as Record<string, unknown>))
+    expect(energyCall?.[0]).toEqual({ 'Ac/Energy/Forward': 0.3 })
+    expect((energyCall?.[0] as Record<string, unknown>)['Ac/L1/Energy/Forward']).toBeUndefined()
   })
 })
 

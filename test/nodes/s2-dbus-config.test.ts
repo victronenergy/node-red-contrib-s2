@@ -61,4 +61,14 @@ describe('s2-dbus-config', () => {
     expect(node.position).toBe(1)
     expect(node.phaseSetting).toBe(2)
   })
+
+  it('defaults autoCalculateEnergy to true', () => {
+    const node = setupNode({})
+    expect(node.autoCalculateEnergy).toBe(true)
+  })
+
+  it('reads autoCalculateEnergy: false', () => {
+    const node = setupNode({ autoCalculateEnergy: false })
+    expect(node.autoCalculateEnergy).toBe(false)
+  })
 })

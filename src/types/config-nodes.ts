@@ -73,4 +73,6 @@ export interface S2DbusConfigNode extends NodeRedNode {
   position: 0 | 1
   /** Which physical line (1-3) a single-phase device (nrOfPhases 1) is wired to. Ignored when nrOfPhases > 1. */
   phaseSetting: number
+  /** Integrates each tracked Power property over time into a running Energy Forward total. */
+  autoCalculateEnergy: boolean
 }

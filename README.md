@@ -13,6 +13,7 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 
 | Node | Description |
 |------|-------------|
+| **s2-resource** | Composite S2 Resource Manager - combines `s2-rm`, a built-in transport (`WebSocket`, `D-Bus`, or `External`), and a built-in control type (`OMBC` or `None`) behind one tabbed edit dialog. Recommended starting point: a minimal S2 flow needs just this one node instead of wiring the nodes below together. |
 | **s2-rm** | S2 Resource Manager - generic S2 protocol state machine (handshake, control-type selection, instruction ack/routing) for one or more CEMs, independent of any specific control type |
 | **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
 | **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
@@ -21,13 +22,17 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 | **s2-pebc-config** | Configuration for `s2-pebc`: default power constraints (grid connection preset or custom wattage) |
 | **s2-cem-config** | Configuration for CEM connection (WebSocket URL and credentials) |
 | **s2-websocket** | WebSocket transport for S2 communication with a CEM |
+| **s2-dbus** | Venus OS D-Bus transport for S2 - registers a `com.victronenergy.<deviceType>.virtual_s2_<nodeId>` D-Bus service for a CEM on the same GX device to call into directly, with the same message shapes `s2-websocket` uses. Also relays power measurement as real, readable D-Bus BusItem properties - see [Sending power measurements over D-Bus](#sending-power-measurements-over-d-bus) |
+| **s2-dbus-config** | Configuration for `s2-dbus`: D-Bus connection mode, device type (`acload`/`heatpump`), phases/wiring, power measurement type, and energy auto-calculation |
 
 ## Features
 
 - S2 protocol handshake and session management
+- A composite **s2-resource** node for a minimal, single-node S2 flow, alongside the fully wired-together `s2-rm` + transport + control-type model
 - Operation Mode Based Control (OMBC), via the dedicated **s2-ombc** node
 - Power Envelope Based Control (PEBC) with configurable power constraints, via the dedicated **s2-pebc** node
-- PowerMeasurement forwarding (3-phase symmetric or per-phase L1/L2/L3)
+- WebSocket and Venus OS D-Bus transports (**s2-websocket** / **s2-dbus**), with no dependency on node-red-contrib-victron
+- PowerMeasurement forwarding (3-phase symmetric or per-phase L1/L2/L3), including live D-Bus BusItem properties and optional energy (kWh) auto-calculation over the D-Bus transport
 - PowerForecast support
 - Multiple concurrent CEM sessions
 - Configurable RM roles (Consumer, Producer, Storage)
@@ -45,6 +50,8 @@ npm install node-red-contrib-s2
 ```
 
 ## Quick start
+
+For the simplest possible flow, drag in a single **s2-resource** node instead: pick `Transport: WebSocket`, `D-Bus`, or `External` and `Control type: OMBC` or `None` on its tabbed edit dialog, and it behaves like steps 1-5 below wired together (see the node's own help panel for its full tabbed configuration). The rest of this section covers the fully wired-together model, which `s2-resource` builds on and which you'd still use if you want OMBC/PEBC as separate nodes, or multiple resources sharing one CEM connection.
 
 1. Add an **s2-rm-config** node and configure your Resource Manager identity (name, roles, control types).
 2. Add an **s2-cem-config** node with the WebSocket URL and credentials of your CEM.
@@ -79,6 +86,23 @@ To send power measurements to the CEM, inject a message into the s2-rm input:
 ```
 
 The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM selects a control type, so you can use that to trigger periodic measurements.
+
+## Sending power measurements over D-Bus
+
+`s2-dbus` and `s2-resource` (`Transport: D-Bus`) accept a power reading on their input at any time, independent of the message above - it's set as a real, readable D-Bus BusItem property immediately (visible to VRM/the GX device list/any other D-Bus consumer), and relayed to the CEM as a `PowerMeasurement` command while one has an active `PowerMeasurementStart`. Two input shapes are recognized, either of which may be used:
+
+- **Raw D-Bus key**, matching the configured `Power Meas.` type exactly, e.g. `{ payload: { 'Ac/Power': 1500 } }` (3-phase symmetric) or `{ payload: { 'Ac/L2/Power': 1500 } }` (per phase).
+- **`values`**, a friendlier shape whose meaning depends on `Power Meas.`/`Phases`/`Wired to`:
+
+  | Power Meas. | Phases | `values` scalar | `values` array |
+  |---|---|---|---|
+  | Per phase | 1 | the wired line's power (e.g. `Wired to: L2` -> `ELECTRIC.POWER.L2`) | rejected (only one real line to attribute elements to) |
+  | Per phase | 2 or 3 | broadcast to every phase | one element per phase, in `L1`/`L2`/`L3` order |
+  | 3-phase symmetric | 3 | sent as-is, and split evenly across `Ac/L1-3/Power` | must have exactly 3 elements - summed for the CEM/`Ac/Power`, written directly (unsplit) to `Ac/L1-3/Power` |
+
+`Ac/Power` is always kept as the live sum of whatever per-phase readings are currently known when `Power Meas.: Per phase`.
+
+`s2-dbus-config`'s "Auto-calculate energy" setting (on by default) integrates each tracked `Power` reading over time into a running `Ac/[L<n>/]Energy/Forward` total - the same approach node-red-contrib-victron's own virtual `acload`/`heatpump` devices use (forward/import energy only, no Reverse tracking).
 
 ### Direction-aware limiting with s2-pebc
 

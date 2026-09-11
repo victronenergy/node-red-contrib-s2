@@ -1,17 +1,23 @@
 export type PowerMeasurementValue = { commodity_quantity: string, value: number }
 
-/** Maps a configured measurement type to the D-Bus-style property keys it reads from input
- * messages, and the S2 commodity quantity each one reports as. Same vocabulary
- * node-red-contrib-victron's s2-support.js uses, for consistency of shape - these keys are also
- * the ones exposed as real D-Bus BusItem properties (see S2DbusTransport's measurementType
- * option), unlike s2-support.js's own measurement handling which is S2-only. */
-export const MEASUREMENT_TYPE_TO_PROPS: Record<string, Record<string, string>> = {
-  '3_PHASE_SYMMETRIC': { 'Ac/Power': 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' },
-  L1_L2_L3: {
-    'Ac/L1/Power': 'ELECTRIC.POWER.L1',
-    'Ac/L2/Power': 'ELECTRIC.POWER.L2',
-    'Ac/L3/Power': 'ELECTRIC.POWER.L3'
+/** Maps a measurement type (plus, for `L1_L2_L3`, phase count/wiring) to the D-Bus property
+ * key(s) read from input and sent to S2, and each one's S2 commodity quantity. A single-phase
+ * device resolves `L1_L2_L3` to just its wired line, never a fabricated `Ac/L1/Power`/`Ac/L3/Power`. */
+export function resolveMeasurementProps (measurementType: string, nrOfPhases = 1, phaseSetting = 1): Record<string, string> {
+  if (measurementType === '3_PHASE_SYMMETRIC') {
+    return { 'Ac/Power': 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }
   }
+  if (measurementType === 'L1_L2_L3') {
+    if (nrOfPhases === 1) {
+      return { [`Ac/L${phaseSetting}/Power`]: `ELECTRIC.POWER.L${phaseSetting}` }
+    }
+    const props: Record<string, string> = {}
+    for (let i = 1; i <= nrOfPhases; i++) {
+      props[`Ac/L${i}/Power`] = `ELECTRIC.POWER.L${i}`
+    }
+    return props
+  }
+  return {}
 }
 
 export interface PowerMeasurementUpdate {
@@ -19,8 +25,10 @@ export interface PowerMeasurementUpdate {
    * whether S2 measurement is currently active. Only the keys this call actually changed. */
   raw: Record<string, number>
   /** S2-shaped snapshot of every cached value, to relay to the CEM - null if measurement isn't
-   * currently active for a CEM. */
+   * currently active for a CEM, or if this call changed nothing. */
   s2Values: PowerMeasurementValue[] | null
+  /** Set when `values` couldn't be applied (e.g. an array on a single-phase device); callers should surface this via their own node.warn(). */
+  warning?: string
 }
 
 /**
@@ -30,28 +38,85 @@ export interface PowerMeasurementUpdate {
  * update; (2) always, regardless of S2 activity, the raw values are available for exposing as
  * real D-Bus BusItem properties. Shared by s2-dbus and s2-resource's Transport: D-Bus path so
  * both relay measurements identically without duplicating the logic.
+ *
+ * Accepts either the raw D-Bus-key shape (`{ 'Ac/Power': 1800 }`) or a friendlier `values` shape
+ * (`{ values: 10 | [11, 22, 33] }`) whose meaning depends on measurement type/phase count - see update() below.
  */
 export class PowerMeasurementCache {
+  private readonly measurementType: string
   private readonly props: Record<string, string>
   private active = false
   private readonly values = new Map<string, number>()
 
-  constructor (measurementType: string) {
-    this.props = MEASUREMENT_TYPE_TO_PROPS[measurementType] || {}
+  constructor (measurementType: string, nrOfPhases = 1, phaseSetting = 1) {
+    this.measurementType = measurementType
+    this.props = resolveMeasurementProps(measurementType, nrOfPhases, phaseSetting)
   }
 
-  /** Cache any matching keys in the payload. Returns null if the payload matched none of the
-   * configured measurement keys. */
+  /** Caches matching keys (either input shape) and derives Ac/Power <-> per-phase; null if the payload matched neither shape. */
   update (payload: Record<string, unknown>): PowerMeasurementUpdate | null {
     const raw: Record<string, number> = {}
+    let valuesArrayRejected = false
+    const setValue = (key: string, value: number): void => {
+      this.values.set(key, value)
+      raw[key] = value
+    }
+
+    // Raw D-Bus-key shape - whatever's actually sent to S2 as an independent commodity.
     for (const key of Object.keys(this.props)) {
-      if (typeof payload[key] === 'number') {
-        this.values.set(key, payload[key] as number)
-        raw[key] = payload[key] as number
+      if (typeof payload[key] === 'number') setValue(key, payload[key] as number)
+    }
+
+    // `values` shape.
+    const values = (payload as { values?: unknown }).values
+    if (values !== undefined) {
+      if (this.measurementType === 'L1_L2_L3') {
+        const phaseKeys = Object.keys(this.props)
+        if (typeof values === 'number') {
+          phaseKeys.forEach((key) => setValue(key, values))
+        } else if (Array.isArray(values)) {
+          if (phaseKeys.length > 1 && values.length === phaseKeys.length && values.every((v) => typeof v === 'number')) {
+            phaseKeys.forEach((key, i) => setValue(key, values[i] as number))
+          } else {
+            // Also catches a single-phase device (phaseKeys.length === 1): no second/third line to attribute elements to.
+            valuesArrayRejected = true
+          }
+        }
+      } else if (this.measurementType === '3_PHASE_SYMMETRIC') {
+        if (typeof values === 'number') {
+          setValue('Ac/Power', values)
+        } else if (Array.isArray(values) && values.length === 3 && values.every((v) => typeof v === 'number')) {
+          const [l1, l2, l3] = values as number[]
+          setValue('Ac/L1/Power', l1)
+          setValue('Ac/L2/Power', l2)
+          setValue('Ac/L3/Power', l3)
+          setValue('Ac/Power', l1 + l2 + l3)
+        }
       }
     }
-    if (Object.keys(raw).length === 0) return null
-    return { raw, s2Values: this.active ? this.buildS2Values() : null }
+
+    // Ac/Power is recomputed from every cached per-phase value, never tracked as independent state.
+    if (this.measurementType === 'L1_L2_L3') {
+      const phaseKeys = Object.keys(this.props)
+      if (phaseKeys.some((key) => key in raw)) {
+        setValue('Ac/Power', phaseKeys.reduce((sum, key) => sum + (this.values.get(key) || 0), 0))
+      }
+    }
+
+    // Skipped when an array already set the per-phase values directly above.
+    if (this.measurementType === '3_PHASE_SYMMETRIC' && 'Ac/Power' in raw && !('Ac/L1/Power' in raw)) {
+      const perPhase = raw['Ac/Power'] / 3
+      setValue('Ac/L1/Power', perPhase)
+      setValue('Ac/L2/Power', perPhase)
+      setValue('Ac/L3/Power', perPhase)
+    }
+
+    if (Object.keys(raw).length === 0 && !valuesArrayRejected) return null
+    return {
+      raw,
+      s2Values: Object.keys(raw).length > 0 && this.active ? this.buildS2Values() : null,
+      ...(valuesArrayRejected ? { warning: 'values array input is not supported for a single-phase device (nrOfPhases: 1) - use a scalar value instead' } : {})
+    }
   }
 
   /** Mark measurement as active; returns the current S2-shaped snapshot immediately, if any

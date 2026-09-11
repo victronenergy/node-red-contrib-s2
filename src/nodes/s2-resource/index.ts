@@ -57,8 +57,8 @@ interface S2ResourceConfig extends NodeConfig {
  *     control-type node, in the exact shapes s2-rm's single input accepts
  *     today, PLUS ModeConfirmation messages for a built-in OMBC control type
  *     (matching s2-ombc's input contract), PLUS - when Transport: D-Bus - a
- *     power-measurement value update at any time (e.g. `{ payload: { 'Ac/Power': 1500 } }`,
- *     matching s2-dbus's own input contract). Messages with a `command` field always go
+ *     power-measurement value update at any time (e.g. `{ payload: { 'Ac/Power': 1500 } }` or
+ *     `{ payload: { values: 1500 } }`, matching s2-dbus's own input contract). Messages with a `command` field always go
  *     to the RM; a recognized measurement-value update is cached (and relayed if active);
  *     everything else goes to the built-in OMBC controller, if any.
  *   Output "to transport" (present only when Transport: External): identical
@@ -132,13 +132,13 @@ export = function (RED: NodeRedApp): void {
       node.send(arr)
     }
 
-    // Fixed cemId used in commands emitted toward the RM for either built-in transport
-    // (only one CEM per node, matching s2-websocket's and s2-dbus's own convention).
+    // Internal session key only (only one CEM per node) - never shown to the user, see cemStatusLabel() below.
     const TRANSPORT_CEM_ID = 'cem'
 
     // -- built-in WebSocket transport (Transport: WebSocket) --
 
     let wsTransport: S2WebSocketTransport | undefined
+    let wsCemConfig: S2CemConfigNode | null = null
 
     function routeToWebSocketTransport (msg: NodeMessage): void {
       if (!wsTransport) return
@@ -214,6 +214,13 @@ export = function (RED: NodeRedApp): void {
     // color the node starts in before anything has happened.
     let transportReady = false
 
+    // Real, user-facing CEM identifier to show instead of the internal TRANSPORT_CEM_ID placeholder.
+    function cemStatusLabel (): string | undefined {
+      if (isDbusTransport) return currentDbusCemId
+      if (isWebSocketTransport) return wsCemConfig?.name || wsCemConfig?.url
+      return undefined
+    }
+
     // -- resource manager (always present) --
 
     const rm = new S2ResourceManager({
@@ -242,6 +249,9 @@ export = function (RED: NodeRedApp): void {
       onStatus: (status) => {
         if (transportReady && status.fill === 'grey' && status.text === 'waiting for CEM') {
           node.status({ ...status, fill: 'green' })
+        } else if (status.text === `CEM connected (${TRANSPORT_CEM_ID})`) {
+          const label = cemStatusLabel()
+          node.status({ ...status, text: label ? `CEM connected (${label})` : 'CEM connected' })
         } else {
           node.status(status)
         }
@@ -295,6 +305,7 @@ export = function (RED: NodeRedApp): void {
       if (!cemConfig) {
         node.status({ fill: 'red', shape: 'dot', text: 'CEM config missing' })
       } else {
+        wsCemConfig = cemConfig
         const resourceId = rmDetails.resourceId
         const url = cemConfig.url.includes('{resourceId}')
           ? cemConfig.url.replace('{resourceId}', resourceId)
@@ -357,7 +368,7 @@ export = function (RED: NodeRedApp): void {
         node.error(`s2-resource: unrecognized deviceType "${dbusConfig.deviceType}" - expected one of ${KNOWN_DBUS_DEVICE_TYPES.join(', ')}`)
         node.status({ fill: 'red', shape: 'dot', text: `invalid deviceType: ${dbusConfig.deviceType}` })
       } else {
-        measurementCache = new PowerMeasurementCache(dbusConfig.measurementType)
+        measurementCache = new PowerMeasurementCache(dbusConfig.measurementType, dbusConfig.nrOfPhases, dbusConfig.phaseSetting)
         dbusTransport = new S2DbusTransport({
           connectionMode: dbusConfig.connectionMode,
           tcpAddress: dbusConfig.tcpAddress,
@@ -366,7 +377,8 @@ export = function (RED: NodeRedApp): void {
           measurementType: dbusConfig.measurementType,
           nrOfPhases: dbusConfig.nrOfPhases,
           position: dbusConfig.position,
-          phaseSetting: dbusConfig.phaseSetting
+          phaseSetting: dbusConfig.phaseSetting,
+          autoCalculateEnergy: dbusConfig.autoCalculateEnergy
         })
 
         node.status({ fill: 'yellow', shape: 'ring', text: 'registering...' })
@@ -413,6 +425,7 @@ export = function (RED: NodeRedApp): void {
       if (!hasCommand && measurementCache && payloadObj) {
         const update = measurementCache.update(payloadObj)
         if (update) {
+          if (update.warning) node.warn(`[s2-resource] ${update.warning}`)
           dbusTransport?.setMeasurementValues(update.raw)
           if (update.s2Values) rm.handleInput({ payload: { command: 'PowerMeasurement', cemId: TRANSPORT_CEM_ID, values: update.s2Values } }, () => {})
           done()

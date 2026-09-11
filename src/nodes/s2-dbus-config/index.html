@@ -10,7 +10,8 @@
       measurementType: { value: 'L1_L2_L3' },
       nrOfPhases: { value: 1 },
       position: { value: 0 },
-      phaseSetting: { value: 1 }
+      phaseSetting: { value: 1 },
+      autoCalculateEnergy: { value: true }
     },
     label: function () {
       return this.name || 's2-dbus-config'
@@ -90,12 +91,16 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-measurementType"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="How power measurement values fed to s2-dbus's input are reported to the CEM - and which property key(s) (e.g. Ac/Power) get a live value instead of the usual 'unknown' placeholder (see Position below)."></i></label>
+      <label for="node-config-input-measurementType"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="How power measurement values fed to s2-dbus's input are reported to the CEM - and which property key(s) (e.g. Ac/Power) get a live value instead of the usual 'unknown' placeholder (see Position below). Ac/Power is always kept as the live sum of whatever per-phase readings are known."></i></label>
       <select id="node-config-input-measurementType" style="width:70%">
         <option value="">None</option>
         <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
         <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
       </select>
+    </div>
+
+    <div class="form-row s2-full-row">
+      <label class="s2-checkbox-label"><input type="checkbox" id="node-config-input-autoCalculateEnergy"> Auto-calculate energy (Ac/Energy/Forward)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Integrates power over time to estimate energy. Precision improves with higher update frequency."></i></label>
     </div>
 
     <div class="form-row" id="s2-dbus-config-phasesetting-row">
@@ -122,7 +127,8 @@
   <p>Configuration for <b>s2-dbus</b>: the D-Bus connection and registered device identity.</p>
   <p><b>Connection</b> mirrors node-red-contrib-victron's own connection modes (auto/system/TCP) for the same underlying <code>dbus-native-victron</code> library.</p>
   <p><b>Device type</b> determines the registered D-Bus service name and its advertised product. The DeviceInstance itself is claimed automatically via <code>com.victronenergy.settings</code>, the same mechanism and default (<code>&lt;deviceType&gt;:100</code>) node-red-contrib-victron's own virtual devices use - it's persisted and stable across redeploys/restarts, not something to configure here.</p>
-  <p>The registered service always declares the full "minimal meter" D-Bus shape node-red-contrib-victron's own virtual acload/heatpump devices expose (Position, NrOfPhases, per-phase Voltage/Current/Power/PowerFactor/Energy, ...), since the Victron UI (VRM, the GX device list) expects those paths to be present. <b>Phases</b>, <b>Wired to</b>, and <b>Position</b> are genuinely known at deploy time, so they get real values; everything else stays an "unknown" placeholder until <b>Power Meas.</b> (or a future input) actually reports one - values are never fabricated.</p>
+  <p>The registered service always declares the full "minimal meter" D-Bus shape node-red-contrib-victron's own virtual acload/heatpump devices expose (Position, NrOfPhases, per-phase Voltage/Current/Power/PowerFactor/Energy, ...), since the Victron UI (VRM, the GX device list) expects those paths to be present. <b>Phases</b>, <b>Wired to</b>, and <b>Position</b> are genuinely known at deploy time, so they get real values; everything else stays an "unknown" placeholder until <b>Power Meas.</b> (or a future input) actually reports one - values are never fabricated. When <b>Power Meas.: Per phase</b> is active, <code>Ac/Power</code> is always kept as the live sum of whatever per-phase readings are currently known; with <b>3-phase symmetric</b>, a single value is also split evenly (or, for per-phase array input, applied directly) across <code>Ac/L1/Power</code>/<code>Ac/L2/Power</code>/<code>Ac/L3/Power</code>.</p>
+  <p><b>Auto-calculate energy</b> (on by default) integrates each tracked Power property over time into a running <code>Ac/[L&lt;n&gt;/]Energy/Forward</code> total, the same approach node-red-contrib-victron's own virtual acload/heatpump devices use - forward (import) energy only, no Reverse tracking. Turn it off to leave those properties at their "unknown" placeholder, as before.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

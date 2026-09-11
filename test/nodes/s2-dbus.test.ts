@@ -17,7 +17,8 @@ const DEFAULT_DBUS_CONFIG = {
   measurementType: '3_PHASE_SYMMETRIC',
   nrOfPhases: 1,
   position: 0,
-  phaseSetting: 1
+  phaseSetting: 1,
+  autoCalculateEnergy: true
 }
 
 function setupNode (
@@ -81,7 +82,8 @@ describe('s2-dbus - initialization', () => {
       measurementType: '3_PHASE_SYMMETRIC',
       nrOfPhases: 1,
       position: 0,
-      phaseSetting: 1
+      phaseSetting: 1,
+      autoCalculateEnergy: true
     })
   })
 
@@ -187,12 +189,12 @@ describe('s2-dbus - power measurement cache', () => {
     expect(node.send as jest.Mock).not.toHaveBeenCalled()
   })
 
-  it('updates the D-Bus BusItem property even before PowerMeasurementStart', () => {
+  it('updates the D-Bus BusItem property even before PowerMeasurementStart (and splits evenly across per-phase properties, per 3-phase-symmetric)', () => {
     const { handlers } = setupNode({})
 
     handlers.input({ payload: { 'Ac/Power': 900 } }, jest.fn(), jest.fn())
 
-    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 900 })
+    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 900, 'Ac/L1/Power': 300, 'Ac/L2/Power': 300, 'Ac/L3/Power': 300 })
   })
 
   it('updates the D-Bus BusItem property on every value update, independent of S2 activity', () => {
@@ -202,11 +204,11 @@ describe('s2-dbus - power measurement cache', () => {
 
     handlers.input({ payload: { 'Ac/Power': 2100 } }, jest.fn(), jest.fn())
 
-    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 2100 })
+    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/Power': 2100, 'Ac/L1/Power': 700, 'Ac/L2/Power': 700, 'Ac/L3/Power': 700 })
   })
 
   it('reads per-phase values when measurementType is L1_L2_L3', () => {
-    const { node, handlers } = setupNode({}, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3' })
+    const { node, handlers } = setupNode({}, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 3 })
     handlers.input({ payload: { s2Signal: 'PowerMeasurementStart' } }, jest.fn(), jest.fn())
     ;(node.send as jest.Mock).mockClear()
 
@@ -223,6 +225,25 @@ describe('s2-dbus - power measurement cache', () => {
         ]
       }
     })
+  })
+
+  it('maps a scalar `values` input to the wired phase, proving nrOfPhases/phaseSetting reach PowerMeasurementCache', () => {
+    const { handlers } = setupNode({}, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
+
+    handlers.input({ payload: { values: 10 } }, jest.fn(), jest.fn())
+
+    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
+  })
+
+  it('warns and does not update the transport when a `values` array is sent to a single-phase device', () => {
+    const { node, handlers } = setupNode({}, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
+
+    handlers.input({ payload: { values: [11, 22, 33] } }, jest.fn(), jest.fn())
+
+    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('single-phase'))
+    // Called with an empty object (a harmless no-op - S2DbusTransport.setMeasurementValues
+    // itself ignores an empty update) since nothing was actually cached from the rejected array.
+    expect(mockTransport.setMeasurementValues).toHaveBeenCalledWith({})
   })
 })
 
