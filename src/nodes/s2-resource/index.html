@@ -266,17 +266,20 @@
 
         window.__s2Common.initializeTooltips()
 
-        // EXPERIMENTAL: Node-RED sets an explicit pixel width directly on the outer .red-ui-tray
-        // (not just the min-width on .red-ui-tray-body handled above) - apparently computed
-        // before this form's content exists, then reused/grown rather than recomputed. Clearing
-        // it once, now that our own tab-toggling/list-population above has already settled, lets
-        // the browser size the tray fresh against this form's actual current content. Not using
-        // !important here (unlike the min-width fix above) since that would also block the user's
-        // own drag-resize handle, which sets this same property the same way.
+        // Sizes the tray to the widest tab instead of just whichever opened first; 280ms delay clears Node-RED's own width/transition timers (see commit message).
         setTimeout(function () {
           var tray = $('#node-input-transport').closest('.red-ui-tray')
-          if (tray.length) tray.css('width', '')
-        }, 0)
+          if (!tray.length) return
+          var panelKeys = Object.keys(panels)
+          tray.css('width', 'fit-content')
+          var maxWidth = 0
+          panelKeys.forEach(function (k) {
+            panelKeys.forEach(function (other) { $(panels[other]).toggle(other === k) })
+            maxWidth = Math.max(maxWidth, tray.width())
+          })
+          showTab('conn')
+          tray.width(maxWidth)
+        }, 280)
       },
       oneditsave: function () {
         if ($('#node-input-controlType').val() === 'ombc') {
@@ -321,8 +324,8 @@
     <div class="form-row s2-full-row">
       <div class="s2-tabs">
         <a href="#" id="s2-resource-tab-conn" class="s2-tab s2-tab-active">Connection</a>
-        <a href="#" id="s2-resource-tab-rm" class="s2-tab">Resource Manager</a>
-        <a href="#" id="s2-resource-tab-ct" class="s2-tab">Control Type</a>
+        <a href="#" id="s2-resource-tab-rm" class="s2-tab">RM</a>
+        <a href="#" id="s2-resource-tab-ct" class="s2-tab">Control</a>
       </div>
     </div>
 

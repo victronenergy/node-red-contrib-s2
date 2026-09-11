@@ -227,6 +227,10 @@
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 3px 3px 0 0;
+  /* Without this, a tab label (e.g. "Resource Manager") wraps to two lines whenever the
+     tray happens to be narrower than its text - including the initial width Node-RED
+     measures before s2-resource's own width fix (below) has run. */
+  white-space: nowrap;
 }
 
 .s2-form .s2-tab:hover {
