@@ -11,6 +11,8 @@ S2 is a European standard for demand-side energy flexibility. It defines how a C
 
 ## Nodes
 
+Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for identification, as it appears in flow JSON and this documentation. In the Node-RED palette and on the canvas, they're shown without the redundant "s2-" prefix (e.g. `s2-resource` as just "resource") - all of them already sit under the "s2" palette category, and carry the S2 logo icon. **resource** is additionally shown with a blue background and white icon (instead of every other node's white background/colored icon), since it's the recommended starting point.
+
 | Node | Description |
 |------|-------------|
 | **s2-resource** | Composite S2 Resource Manager - combines `s2-rm`, a built-in transport (`WebSocket`, `D-Bus`, or `External`), and a built-in control type (`OMBC` or `None`) behind one tabbed edit dialog. Recommended starting point: a minimal S2 flow needs just this one node instead of wiring the nodes below together. |

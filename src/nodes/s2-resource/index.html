@@ -11,7 +11,8 @@
 
     RED.nodes.registerType('s2-resource', {
       category: 's2',
-      color: '#ffffff',
+      // Blue background + white icon (unique among s2-* nodes) so this recommended starting point stands out.
+      color: '#1158A3',
       defaults: {
         name: { value: '' },
 
@@ -43,17 +44,19 @@
       },
       inputs: 1,
       outputs: 1,
-      icon: 's2-logo.svg',
+      icon: 's2-logo-white.svg',
+      paletteLabel: 'resource',
       outputLabels: function (index) {
         if (this.transport === 'external' && index === 0) return 'to transport'
         return 'downstream'
       },
       inputLabels: 'from transport / control-type node',
       label: function () {
-        return this.name || 's2-resource'
+        return this.name || 'resource'
       },
       labelStyle: function () {
-        return this.name ? 'node_label_italic' : ''
+        // Light label text for the blue background, on top of the existing conditional italic.
+        return 'red-ui-flow-node-label-white' + (this.name ? ' node_label_italic' : '')
       },
       oneditprepare: function () {
         var node = this

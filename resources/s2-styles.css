@@ -316,3 +316,15 @@
   font-size: 0.9em;
   line-height: 1.4;
 }
+
+/* ============================================================================
+   PALETTE - s2-resource's blue background needs a light label
+   ============================================================================ */
+
+/* Node-RED's palette label color comes from a fixed theme variable with no
+   per-node override (unlike a node's own labelStyle, which only affects the
+   canvas label) - s2-resource is the only node here with a colored (not
+   white) palette background, so it needs its own rule here. */
+.red-ui-palette-node[data-palette-type="s2-resource"] .red-ui-palette-label {
+  color: #ffffff;
+}

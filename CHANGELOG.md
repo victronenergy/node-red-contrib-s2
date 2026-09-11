@@ -11,11 +11,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-dbus`/`s2-resource` (`Transport: D-Bus`): a single-phase device no longer declares bogus `Ac/L1/Power`/`Ac/L3/Power` D-Bus properties for lines it doesn't have; `Ac/Power` is now always kept as the live sum of known per-phase readings; `3-phase symmetric` measurement now also populates per-phase D-Bus properties (evenly split for a scalar reading, written directly for a per-phase array).
 - `s2-resource`'s Connection tab: alignment/layout fixes, `Transport` defaults to `D-Bus`, and the D-Bus config picker is labeled "Virtual Device"; Resource Manager tab fields (`Manufacturer`/`Model`/`Serial`/`Firmware`) are grouped under a "Device" heading, blank by default, and pre-fill from the node's own `Name`.
 - `s2-dbus-config`: "3-phase symmetric" is only selectable when `Phases: 3`; `Power Meas.` defaults to "Per phase"; a newly added config node's `Name` pre-fills from the parent `s2-resource` node.
+- Label text on `s2-resource`'s blue canvas/palette entries is now white, for readable contrast against the blue background (was black).
 
 ### Added
 
 - `s2-dbus`/`s2-resource`: a simpler `{ payload: { values: <number | number[]> } }` input shape for power measurement, alongside the existing raw D-Bus-key shape (`{ payload: { 'Ac/Power': 1500 } }`) - see [Sending power measurements over D-Bus](README.md#sending-power-measurements-over-d-bus).
 - `s2-dbus-config`: "Auto-calculate energy" setting (on by default) - integrates power over time into `Ac/Energy/Forward` (and per-phase `Ac/L<n>/Energy/Forward`), the same approach node-red-contrib-victron's own virtual `acload`/`heatpump` devices use.
+
+### Changed
+
+- Every node's palette/canvas display label drops the redundant "s2-" prefix (e.g. `s2-resource` shows as "resource") - internal type names (used in flow JSON) are unchanged, so existing flows are unaffected.
+- `s2-resource` now shows with a blue background and white icon (`icons/s2-logo-white.svg`), instead of the white background/colored icon every other node uses, so it stands out as the recommended starting point.
 
 ## [0.4.1]
 

@@ -11,10 +11,11 @@
     inputs: 1,
     outputs: 1,
     icon: 's2-logo.svg',
+    paletteLabel: 'dbus',
     outputLabels: ['to s2-rm'],
     inputLabels: ['from s2-rm'],
     label: function () {
-      return this.name || 's2-dbus'
+      return this.name || 'dbus'
     },
     oneditprepare: function () {
       window.__s2Common.initializeTooltips()
