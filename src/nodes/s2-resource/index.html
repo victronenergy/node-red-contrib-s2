@@ -21,14 +21,14 @@
         controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
         providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
         providesForecast: { value: false },
-        manufacturer: { value: 'Victron Energy' },
-        model: { value: 'Virtual RM' },
+        manufacturer: { value: 'Custom (Node-RED)' },
+        model: { value: '' },
         serialNumber: { value: '' },
-        firmwareVersion: { value: '1.0.0' },
+        firmwareVersion: { value: '' },
         instructionPollIntervalMs: { value: 2000, validate: RED.validators.number() },
         skipInstructionStatus: { value: false },
 
-        transport: { value: 'websocket' },
+        transport: { value: 'dbus' },
         cem: { value: '', type: 's2-cem-config', required: false },
         reconnectInterval: { value: 5 },
         dbusConfig: { value: '', type: 's2-dbus-config', required: false },
@@ -83,7 +83,8 @@
               activePhase = Number(dbusCfg.phaseSetting) || 1
               forcedSymmetric = false
             } else if (nrOfPhases === 3) {
-              forcedSymmetric = true
+              // A 3-phase device only forces the symmetric field when its own measurement is itself symmetric.
+              forcedSymmetric = dbusCfg.measurementType === '3_PHASE_SYMMETRIC'
             }
           }
           ombcEditor.setActivePhase(listSel, activePhase)
@@ -141,7 +142,27 @@
         $('#node-input-dbusConfig').on('change', refreshActivePhase)
         showTransportSection()
 
+        // Stashes this node's Name so the new s2-dbus-config tray's oneditprepare can pre-fill it.
+        $('#node-input-btn-dbusConfig-add').on('click', function () {
+          var name = $('#node-input-name').val()
+          if (name) window.__s2Common.setPendingConfigName('s2-dbus-config', name)
+        })
+
         // -- Resource Manager tab --
+
+        // Follows Name into RM Name only while RM Name is empty or still equals our own last write - not a plain "is empty" check or a one-way touched flag (see commit message).
+        var lastAutoFilled = null
+        function prefillRmName () {
+          var currentRmName = $('#node-input-rmName').val()
+          if (currentRmName !== '' && currentRmName !== lastAutoFilled) return
+          var name = $('#node-input-name').val()
+          if (name) {
+            lastAutoFilled = name
+            $('#node-input-rmName').val(name)
+          }
+        }
+        $('#node-input-name').on('input change', prefillRmName)
+        prefillRmName()
 
         var savedCt = (node.controlTypes || '').split(',').map(function (s) { return s.trim() })
         $('.s2-resource-ct-checkbox').each(function () {
@@ -276,9 +297,11 @@
 
         this.outputs = computeOutputs(this)
         $('.red-ui-tray-body.s2-narrow-tray').removeClass('s2-narrow-tray')
+        window.__s2Common.takePendingConfigName('s2-dbus-config')
       },
       oneditcancel: function () {
         $('.red-ui-tray-body.s2-narrow-tray').removeClass('s2-narrow-tray')
+        window.__s2Common.takePendingConfigName('s2-dbus-config')
       }
     })
   })()
@@ -301,12 +324,12 @@
     </div>
 
     <!-- Connection -->
-    <div id="s2-resource-panel-conn" class="s2-full-row">
+    <div id="s2-resource-panel-conn">
       <div class="form-row">
         <label for="node-input-transport"><i class="fa fa-plug"></i> Transport</label>
         <select id="node-input-transport" style="width:70%">
           <option value="websocket">Built-in - WebSocket to a remote CEM</option>
-          <option value="dbus">Built-in - D-Bus (Venus OS)</option>
+          <option value="dbus">Built-in - D-Bus (Victron Energy)</option>
           <option value="external">External - wire it yourself</option>
         </select>
       </div>
@@ -325,7 +348,7 @@
 
       <div id="s2-resource-transport-dbus">
         <div class="form-row">
-          <label for="node-input-dbusConfig"><i class="fa fa-plug"></i> D-Bus<i class="fa fa-info-circle tooltip-icon" data-tooltip="The s2-dbus-config node holding the D-Bus connection mode, device type, and Power Meas. (measurement type) - the same config node the standalone s2-dbus node uses. Its Power Meas. field is the only one that applies here (see the Resource Manager tab)."></i></label>
+          <label for="node-input-dbusConfig"><i class="fa fa-plug"></i> Virtual Device<i class="fa fa-info-circle tooltip-icon" data-tooltip="The s2-dbus-config node holding the D-Bus connection mode, device type, and Power Meas. (measurement type) - the same config node the standalone s2-dbus node uses. Its Power Meas. field is the only one that applies here (see the Resource Manager tab)."></i></label>
           <input type="text" id="node-input-dbusConfig">
         </div>
         <p class="s2-resource-hint">Feed a power reading to this node's input at any time (e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code>, per the <b>D-Bus config's</b> Power Meas. field - edit it via the pencil above, not the Resource Manager tab). It's set as a real, readable D-Bus BusItem property immediately, and relayed to the CEM while active - same as the standalone <code>s2-dbus</code> node.</p>
@@ -341,7 +364,7 @@
     </div>
 
     <!-- Resource Manager -->
-    <div id="s2-resource-panel-rm" class="s2-full-row" style="display:none">
+    <div id="s2-resource-panel-rm" style="display:none">
       <div class="form-row">
         <label for="node-input-rmName"><i class="fa fa-tag"></i> RM Name</label>
         <input type="text" id="node-input-rmName" placeholder="e.g. Boiler RM">
@@ -350,6 +373,26 @@
       <div class="form-row">
         <label for="node-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Stable UUID identifying this Resource Manager. Auto-generated on first use - do not change after deployment."></i></label>
         <input type="text" id="node-input-resourceId" placeholder="Auto-generated UUID">
+      </div>
+
+      <div class="form-row">
+        <label class="s2-section-label"><i class="fa fa-microchip"></i> Device</label>
+      </div>
+      <div class="form-row">
+        <label for="node-input-manufacturer"><i class="fa fa-industry"></i> Manufacturer</label>
+        <input type="text" id="node-input-manufacturer">
+      </div>
+      <div class="form-row">
+        <label for="node-input-model"><i class="fa fa-cube"></i> Model</label>
+        <input type="text" id="node-input-model">
+      </div>
+      <div class="form-row">
+        <label for="node-input-serialNumber"><i class="fa fa-barcode"></i> Serial<i class="fa fa-info-circle tooltip-icon" data-tooltip="Supports {{global.xxx}}/{{flow.xxx}} context variables. Defaults to the node id if empty."></i></label>
+        <input type="text" id="node-input-serialNumber">
+      </div>
+      <div class="form-row">
+        <label for="node-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
+        <input type="text" id="node-input-firmwareVersion">
       </div>
 
       <div class="form-row">
@@ -401,23 +444,6 @@
       </div>
 
       <div class="form-row">
-        <label for="node-input-manufacturer"><i class="fa fa-industry"></i> Manufacturer</label>
-        <input type="text" id="node-input-manufacturer">
-      </div>
-      <div class="form-row">
-        <label for="node-input-model"><i class="fa fa-cube"></i> Model</label>
-        <input type="text" id="node-input-model">
-      </div>
-      <div class="form-row">
-        <label for="node-input-serialNumber"><i class="fa fa-barcode"></i> Serial<i class="fa fa-info-circle tooltip-icon" data-tooltip="Supports {{global.xxx}}/{{flow.xxx}} context variables. Defaults to the node id if empty."></i></label>
-        <input type="text" id="node-input-serialNumber">
-      </div>
-      <div class="form-row">
-        <label for="node-input-firmwareVersion"><i class="fa fa-code-fork"></i> Firmware</label>
-        <input type="text" id="node-input-firmwareVersion">
-      </div>
-
-      <div class="form-row">
         <a href="#" class="s2-advanced-toggle" id="s2-resource-rm-advanced-toggle">
           <i class="fa fa-cog"></i> Advanced
           <i class="fa fa-chevron-down s2-advanced-chevron"></i>
@@ -436,7 +462,7 @@
     </div>
 
     <!-- Control Type -->
-    <div id="s2-resource-panel-ct" class="s2-full-row" style="display:none">
+    <div id="s2-resource-panel-ct" style="display:none">
       <div class="form-row">
         <label for="node-input-controlType"><i class="fa fa-sliders"></i> Control type</label>
         <select id="node-input-controlType" style="width:70%">

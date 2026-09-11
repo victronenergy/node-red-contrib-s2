@@ -2,6 +2,19 @@
 
 window.__s2Common = window.__s2Common || {}
 
+// Pre-fill handoff for a new config node's Name, keyed per config type to avoid cross-type leaks.
+window.__s2Common._pendingConfigNames = window.__s2Common._pendingConfigNames || {}
+
+window.__s2Common.setPendingConfigName = function (configType, name) {
+  window.__s2Common._pendingConfigNames[configType] = name
+}
+
+window.__s2Common.takePendingConfigName = function (configType) {
+  const name = window.__s2Common._pendingConfigNames[configType]
+  delete window.__s2Common._pendingConfigNames[configType]
+  return name
+}
+
 window.__s2Common.initializeTooltips = function () {
   $('.s2-tooltip-container').remove()
   $('.s2-form .tooltip-icon').off('mouseenter.s2 mouseleave.s2')

@@ -403,23 +403,16 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     })
   }
 
-  // Forces every mode row's "Same value on all phases" checkbox to a fixed state and disables
-  // it when the referenced D-Bus device's phase count makes the choice moot: a single-phase
-  // device only ever has one active phase (see setActivePhase above), so "symmetric" vs.
-  // "per-phase" is a distinction without a difference - forced off, leaving the one active
-  // per-phase field as the only thing to fill in. An exactly-3-phase device is the reverse -
-  // forced on, since per-phase entry would just duplicate the (already 3-phase) symmetric
-  // value. Pass null to leave the checkbox freely editable (Transport other than D-Bus, or a
-  // 2-phase device, where neither extreme applies).
+  // Hides (not just disables) "Same value on all phases" when forced non-null; forced/null is computed by refreshActivePhase() in s2-resource/index.html.
   function setSymmetricLock (listSel, forced) {
     $(listSel).find('.s2-ombc-mode-symmetric').each(function () {
       var $checkbox = $(this)
-      $checkbox.prop('disabled', forced !== null)
-      if (forced !== null && $checkbox.prop('checked') !== forced) {
+      var isForced = forced !== null
+      $checkbox.prop('disabled', isForced)
+      if (isForced && $checkbox.prop('checked') !== forced) {
         $checkbox.prop('checked', forced).trigger('change')
       }
-      $checkbox.closest('label.s2-ombc-mode-checkbox-label')
-        .toggleClass('s2-ombc-mode-symmetric-locked', forced !== null)
+      $checkbox.closest('.s2-ombc-mode-row').toggle(!isForced)
     })
   }
 

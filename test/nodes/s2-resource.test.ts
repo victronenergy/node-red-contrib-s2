@@ -159,6 +159,25 @@ describe('s2-resource - RM identity', () => {
     expect(rmd).toBeDefined()
     expect(rmd!.payload.message.roles.map((r) => r.role)).toEqual(['ENERGY_CONSUMER', 'ENERGY_PRODUCER'])
   })
+
+  it('defaults manufacturer to "Custom (Node-RED)" and leaves model/firmwareVersion blank when not configured', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+
+    const rmd = outputAt(node, 0).find((m) => {
+      const payload = (m as { payload?: { message?: { message_type?: string } } }).payload
+      return payload?.message?.message_type === MessageType.RESOURCE_MANAGER_DETAILS
+    }) as { payload: { message: Record<string, unknown> } } | undefined
+
+    expect(rmd).toBeDefined()
+    expect(rmd!.payload.message.manufacturer).toBe('Custom (Node-RED)')
+    expect(rmd!.payload.message.model).toBe('')
+    expect(rmd!.payload.message.firmware_version).toBe('')
+  })
 })
 
 // --- Transport (task 3.2) ---
@@ -279,6 +298,12 @@ describe('s2-resource - Transport: D-Bus', () => {
       position: 0,
       phaseSetting: 1
     })
+  })
+
+  it('defaults to Transport: D-Bus when transport is not configured', () => {
+    setupNode({ controlType: 'none' })
+
+    expect(capturedDbusTransportOptions).toMatchObject({ deviceType: 'acload' })
   })
 
   it('shows an error status and does not connect when the D-Bus config is missing', () => {

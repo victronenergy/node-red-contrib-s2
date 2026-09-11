@@ -43,9 +43,9 @@ describe('s2-dbus-config', () => {
     expect(node.deviceType).toBe('heatpump')
   })
 
-  it('defaults measurementType to 3_PHASE_SYMMETRIC', () => {
+  it('defaults measurementType to L1_L2_L3', () => {
     const node = setupNode({})
-    expect(node.measurementType).toBe('3_PHASE_SYMMETRIC')
+    expect(node.measurementType).toBe('L1_L2_L3')
   })
 
   it('defaults nrOfPhases to 1, position to 0, and phaseSetting to 1', () => {

@@ -7,7 +7,7 @@
       connectionMode: { value: 'auto' },
       tcpAddress: { value: '' },
       deviceType: { value: 'acload' },
-      measurementType: { value: '3_PHASE_SYMMETRIC' },
+      measurementType: { value: 'L1_L2_L3' },
       nrOfPhases: { value: 1 },
       position: { value: 0 },
       phaseSetting: { value: 1 }
@@ -27,6 +27,23 @@
       }
       $('#node-config-input-nrOfPhases').on('change', showPhaseSettingRow)
       showPhaseSettingRow()
+
+      // Hides (not removes, to keep the <select>'s value list stable) "3-phase symmetric" unless Phases: 3, falling back to "Per phase".
+      function updateSymmetricOptionAvailability () {
+        var isThreePhase = $('#node-config-input-nrOfPhases').val() === '3'
+        var $symmetricOption = $('#node-config-input-measurementType option[value="3_PHASE_SYMMETRIC"]')
+        $symmetricOption.prop('disabled', !isThreePhase).toggle(isThreePhase)
+        if (!isThreePhase && $('#node-config-input-measurementType').val() === '3_PHASE_SYMMETRIC') {
+          $('#node-config-input-measurementType').val('L1_L2_L3')
+        }
+      }
+      $('#node-config-input-nrOfPhases').on('change', updateSymmetricOptionAvailability)
+      updateSymmetricOptionAvailability()
+
+      var pendingName = window.__s2Common.takePendingConfigName('s2-dbus-config')
+      if (pendingName && !$('#node-config-input-name').val()) {
+        $('#node-config-input-name').val(pendingName)
+      }
 
       window.__s2Common.initializeTooltips()
     }
@@ -64,20 +81,20 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-measurementType"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="How power measurement values fed to s2-dbus's input are reported to the CEM - and which property key(s) (e.g. Ac/Power) get a live value instead of the usual 'unknown' placeholder (see Position below)."></i></label>
-      <select id="node-config-input-measurementType" style="width:70%">
-        <option value="">None</option>
-        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
-        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
-      </select>
-    </div>
-
-    <div class="form-row">
       <label for="node-config-input-nrOfPhases"><i class="fa fa-plug"></i> Phases<i class="fa fa-info-circle tooltip-icon" data-tooltip="Number of AC phases this device reports - determines which Ac/L<n>/* paths are declared on D-Bus."></i></label>
       <select id="node-config-input-nrOfPhases" style="width:70%">
         <option value="1">1</option>
         <option value="2">2</option>
         <option value="3">3</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-measurementType"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="How power measurement values fed to s2-dbus's input are reported to the CEM - and which property key(s) (e.g. Ac/Power) get a live value instead of the usual 'unknown' placeholder (see Position below)."></i></label>
+      <select id="node-config-input-measurementType" style="width:70%">
+        <option value="">None</option>
+        <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
+        <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
       </select>
     </div>
 

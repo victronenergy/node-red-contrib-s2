@@ -82,7 +82,7 @@ export = function (RED: NodeRedApp): void {
       return []
     }
 
-    const transportMode: Transport = config.transport || 'websocket'
+    const transportMode: Transport = config.transport || 'dbus'
     const isWebSocketTransport = transportMode === 'websocket'
     const isDbusTransport = transportMode === 'dbus'
     const isOmbcBuiltIn = config.controlType !== 'none'
@@ -107,10 +107,10 @@ export = function (RED: NodeRedApp): void {
         ? parsePowerMeasurementTypes(dbusConfig?.measurementType)
         : parsePowerMeasurementTypes(config.providesPowerMeasurement),
       instructionProcessingDelay: 0,
-      manufacturer: config.manufacturer || 'Victron Energy',
-      model: config.model || 'Virtual RM',
+      manufacturer: config.manufacturer || 'Custom (Node-RED)',
+      model: config.model || '',
       serialNumber: config.serialNumber || node.id,
-      firmwareVersion: config.firmwareVersion || '1.0.0'
+      firmwareVersion: config.firmwareVersion || ''
     }
 
     // Output layout: "to transport" (only when Transport: External) followed by
