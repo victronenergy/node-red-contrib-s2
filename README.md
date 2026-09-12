@@ -4,6 +4,10 @@ Node-RED nodes for the [S2 energy management protocol](https://s2standard.org/) 
 
 S2 is a European standard for demand-side energy flexibility. It defines how a Customer Energy Manager (CEM) communicates with Resource Managers (RMs) to coordinate energy consumption, production, and storage.
 
+The recommended starting point is a single **s2-resource** node - one node instead of wiring five together:
+
+![The s2-resource node on the canvas](screenshots/s2-resource-canvas.png)
+
 ## Requirements
 
 - Node-RED >= 4.1.0
@@ -26,6 +30,10 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 | **s2-websocket** | WebSocket transport for S2 communication with a CEM |
 | **s2-dbus** | Venus OS D-Bus transport for S2 - registers a `com.victronenergy.<deviceType>.virtual_s2_<nodeId>` D-Bus service for a CEM on the same GX device to call into directly, with the same message shapes `s2-websocket` uses. Also relays power measurement as real, readable D-Bus BusItem properties - see [Sending power measurements over D-Bus](#sending-power-measurements-over-d-bus) |
 | **s2-dbus-config** | Configuration for `s2-dbus`: D-Bus connection mode, device type (`acload`/`heatpump`), phases/wiring, power measurement type, and energy auto-calculation |
+
+`s2-resource`'s tabbed edit dialog - Connection (transport), RM (identity and capabilities), and Control (e.g. OMBC operation modes):
+
+<img src="screenshots/s2-resource-connection-tab.png" alt="s2-resource Connection tab" width="32%"> <img src="screenshots/s2-resource-rm-tab.png" alt="s2-resource RM tab" width="32%"> <img src="screenshots/s2-resource-control-tab.png" alt="s2-resource Control tab" width="32%">
 
 ## Features
 
@@ -69,7 +77,17 @@ For the simplest possible flow, drag in a single **s2-resource** node instead: p
 
    If you're sending PowerForecasts and using `s2-pebc`, route your Forecast command into `s2-pebc`'s input too (instead of directly into s2-rm) - see [Sending PowerForecasts](#sending-powerforecasts).
 
-See `examples/boiler-ombc-demo.json` for a complete working OMBC flow.
+## Examples
+
+Import any of these from the Node-RED palette manager's "Import Examples" menu (or via **Menu -> Import -> Examples -> node-red-contrib-s2**):
+
+| Example | Demonstrates |
+|---------|--------------|
+| `s2-resource-quickstart` | The recommended starting point: the same boiler-OMBC scenario below, collapsed to a single **s2-resource** node (`Transport: WebSocket`, `Control type: OMBC`) plus the **s2-cem-config** it shares its CEM connection with. |
+| `boiler-ombc-demo` | The fully wired-together model: **s2-rm-config** + **s2-cem-config** + **s2-websocket** + **s2-rm** + **s2-ombc-config** + **s2-ombc**, simulating a single-phase electric boiler with two operation modes (Standby/off, Normal 2500W) - no real hardware required. |
+| `s2-dbus-quickstart` | The same boiler-OMBC scenario as `boiler-ombc-demo`, but over the **s2-dbus** transport (Venus OS D-Bus) instead of WebSocket - for a CEM running on the same GX device. |
+| `opportunity-loads-sg-ready-ombc` | Models an SG-Ready-style heat pump/load as an OMBC resource, driven by a real Venus OS relay state instead of a fake trigger. |
+| `pebc-instruction-tester` | A standalone CEM-side tester (no S2 nodes involved) that POSTs `PEBC.Instruction` bodies at a resource manager's REST endpoint - useful for exercising **s2-pebc** without a real CEM. |
 
 ## Sending PowerMeasurements
 
