@@ -7,7 +7,7 @@
 
 The following rules override all other preferences.
 
-- Never suggest working directly on the `master` branch.
+- Never suggest working directly on the `main` branch.
 - Do not refactor code unless explicitly asked
 - Do not reformat code for style
 - Do not replace existing patterns with “modern” ones
