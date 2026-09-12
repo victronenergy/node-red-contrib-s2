@@ -32,11 +32,14 @@
       // Hides (not removes, to keep the <select>'s value list stable) "3-phase symmetric" unless Phases: 3, falling back to "Per phase".
       function updateSymmetricOptionAvailability () {
         var isThreePhase = $('#node-config-input-nrOfPhases').val() === '3'
-        var $symmetricOption = $('#node-config-input-measurementType option[value="3_PHASE_SYMMETRIC"]')
-        $symmetricOption.prop('disabled', !isThreePhase).toggle(isThreePhase)
-        if (!isThreePhase && $('#node-config-input-measurementType').val() === '3_PHASE_SYMMETRIC') {
-          $('#node-config-input-measurementType').val('L1_L2_L3')
+        var $measurementType = $('#node-config-input-measurementType')
+        // Must reset the value before disabling the option below - once disabled, the select's
+        // own .val() returns null/'' for it (a disabled option has no submittable value), so
+        // checking .val() afterward can never see '3_PHASE_SYMMETRIC' to reset away from it.
+        if (!isThreePhase && $measurementType.val() === '3_PHASE_SYMMETRIC') {
+          $measurementType.val('L1_L2_L3')
         }
+        $measurementType.find('option[value="3_PHASE_SYMMETRIC"]').prop('disabled', !isThreePhase).toggle(isThreePhase)
       }
       $('#node-config-input-nrOfPhases').on('change', updateSymmetricOptionAvailability)
       updateSymmetricOptionAvailability()
@@ -85,7 +88,6 @@
       <label for="node-config-input-nrOfPhases"><i class="fa fa-plug"></i> Phases<i class="fa fa-info-circle tooltip-icon" data-tooltip="Number of AC phases this device reports - determines which Ac/L<n>/* paths are declared on D-Bus."></i></label>
       <select id="node-config-input-nrOfPhases" style="width:70%">
         <option value="1">1</option>
-        <option value="2">2</option>
         <option value="3">3</option>
       </select>
     </div>

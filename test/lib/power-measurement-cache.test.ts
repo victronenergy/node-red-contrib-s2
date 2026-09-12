@@ -5,13 +5,6 @@ describe('resolveMeasurementProps', () => {
     expect(resolveMeasurementProps('L1_L2_L3', 1, 2)).toEqual({ 'Ac/L2/Power': 'ELECTRIC.POWER.L2' })
   })
 
-  it('resolves L1_L2_L3 with nrOfPhases: 2 to two keys', () => {
-    expect(resolveMeasurementProps('L1_L2_L3', 2)).toEqual({
-      'Ac/L1/Power': 'ELECTRIC.POWER.L1',
-      'Ac/L2/Power': 'ELECTRIC.POWER.L2'
-    })
-  })
-
   it('resolves L1_L2_L3 with nrOfPhases: 3 to three keys', () => {
     expect(resolveMeasurementProps('L1_L2_L3', 3)).toEqual({
       'Ac/L1/Power': 'ELECTRIC.POWER.L1',
@@ -72,24 +65,25 @@ describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 1', () => 
   })
 })
 
-describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 2/3', () => {
+describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 3', () => {
   it('array values of matching length maps element-by-element and aggregates', () => {
     const cache = new PowerMeasurementCache('L1_L2_L3', 3)
     const update = cache.update({ values: [11, 22, 33] })
     expect(update?.raw).toEqual({ 'Ac/L1/Power': 11, 'Ac/L2/Power': 22, 'Ac/L3/Power': 33, 'Ac/Power': 66 })
   })
 
-  it('scalar values broadcasts to every declared phase', () => {
-    const cache = new PowerMeasurementCache('L1_L2_L3', 2)
+  it('a scalar is rejected, not broadcast, with a warning and no cache changes', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 3)
     const update = cache.update({ values: 7 })
-    expect(update?.raw).toEqual({ 'Ac/L1/Power': 7, 'Ac/L2/Power': 7, 'Ac/Power': 14 })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/exactly 3 numbers/)
   })
 
-  it('an array of the wrong length is rejected', () => {
+  it('an array of the wrong length is rejected with a warning', () => {
     const cache = new PowerMeasurementCache('L1_L2_L3', 3)
     const update = cache.update({ values: [1, 2] })
     expect(update?.raw).toEqual({})
-    expect(update?.warning).toBeDefined()
+    expect(update?.warning).toMatch(/exactly 3 numbers/)
   })
 })
 
@@ -134,6 +128,20 @@ describe('PowerMeasurementCache - 3_PHASE_SYMMETRIC', () => {
     cache.start()
     const update = cache.update({ values: [11, 22, 33] })
     expect(update?.s2Values).toEqual([{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 66 }])
+  })
+
+  it('an array of the wrong length is rejected with a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ values: [1, 2] })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/exactly 3 numbers/)
+  })
+
+  it('a single-element array is rejected with a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ values: [1] })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/exactly 3 numbers/)
   })
 })
 

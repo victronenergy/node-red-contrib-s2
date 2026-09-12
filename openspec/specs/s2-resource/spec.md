@@ -110,6 +110,17 @@ When `Transport: D-Bus` is selected, `s2-resource`'s Resource Manager tab's Powe
 - **WHEN** the Resource Manager tab is rendered
 - **THEN** the "Device" section heading and its Manufacturer/Model/Serial/Firmware fields appear above the `Roles` checkboxes
 
+### Requirement: Resource ID is not shown on the RM tab
+`s2-resource`'s `resourceId` SHALL NOT be shown as a visible field on the Resource Manager tab - it is an internal identifier the S2 protocol needs, not something the user is expected to read or edit, consistent with other auto-generated internal identifiers this node doesn't surface (e.g. the D-Bus `DeviceInstance`). It SHALL still be auto-generated once (on first add, if not already set) and persisted unchanged across redeploys, exactly as before.
+
+#### Scenario: RM tab has no visible Resource ID field
+- **WHEN** the Resource Manager tab is rendered
+- **THEN** no visible field shows or edits `resourceId`
+
+#### Scenario: Resource ID is still generated and stable
+- **WHEN** a new `s2-resource` node is added, and later redeployed one or more times
+- **THEN** `resourceId` is generated once on the first add and never changes on subsequent redeploys
+
 ### Requirement: Inapplicable per-phase OMBC fields are dimmed for a single-phase D-Bus device
 When `Control type: OMBC` and `Transport: D-Bus` are both selected and the referenced `s2-dbus-config` node has `nrOfPhases: 1`, the OMBC tab's per-phase L1/L2/L3 power fields SHALL be dimmed and disabled for every phase except the configured `phaseSetting` ("Wired to"), on every operation mode row - since a single-phase device never reports the other two. This SHALL update if the `s2-dbus-config` reference, its `Phases`/`Wired to` values, or `Transport` change while the dialog is open.
 

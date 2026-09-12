@@ -331,6 +331,9 @@ describe('S2DbusTransport - measurement properties', () => {
     expect(definition['Ac/L1/Power']).toBe(0)
     expect(definition['Ac/L2/Power']).toBe(0)
     expect(definition['Ac/L3/Power']).toBe(0)
+    // Ac/Power is live-tracked (aggregated) alongside the per-phase properties, so it should start
+    // at the same 0 default, not the minimal-meter shape's generic null placeholder.
+    expect(definition['Ac/Power']).toBe(0)
   })
 
   it('declares only the wired phase\'s Power property when measurementType is L1_L2_L3 with nrOfPhases: 1 (bug 1 regression)', async () => {
@@ -345,6 +348,9 @@ describe('S2DbusTransport - measurement properties', () => {
     // override doesn't (re-)introduce them either.
     expect(definition['Ac/L1/Power']).toBeUndefined()
     expect(definition['Ac/L3/Power']).toBeUndefined()
+    // Ac/Power itself was previously left at the minimal-meter shape's null default even for a
+    // single-phase device, inconsistent with the wired phase's own 0 default (bug 2 regression).
+    expect(definition['Ac/Power']).toBe(0)
   })
 
   it('setMeasurementValues updates the declared properties via setValuesLocally', async () => {

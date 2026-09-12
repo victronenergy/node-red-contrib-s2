@@ -56,7 +56,7 @@ export class PowerMeasurementCache {
   /** Caches matching keys (either input shape) and derives Ac/Power <-> per-phase; null if the payload matched neither shape. */
   update (payload: Record<string, unknown>): PowerMeasurementUpdate | null {
     const raw: Record<string, number> = {}
-    let valuesArrayRejected = false
+    let warning: string | undefined
     const setValue = (key: string, value: number): void => {
       this.values.set(key, value)
       raw[key] = value
@@ -72,15 +72,19 @@ export class PowerMeasurementCache {
     if (values !== undefined) {
       if (this.measurementType === 'L1_L2_L3') {
         const phaseKeys = Object.keys(this.props)
-        if (typeof values === 'number') {
-          phaseKeys.forEach((key) => setValue(key, values))
-        } else if (Array.isArray(values)) {
-          if (phaseKeys.length > 1 && values.length === phaseKeys.length && values.every((v) => typeof v === 'number')) {
-            phaseKeys.forEach((key, i) => setValue(key, values[i] as number))
+        if (phaseKeys.length === 1) {
+          if (typeof values === 'number') {
+            setValue(phaseKeys[0], values)
           } else {
-            // Also catches a single-phase device (phaseKeys.length === 1): no second/third line to attribute elements to.
-            valuesArrayRejected = true
+            // A genuinely single-phase device has no second/third line to attribute array elements to.
+            warning = 'values array input is not supported for a single-phase device (nrOfPhases: 1) - use a scalar value instead'
           }
+        } else if (Array.isArray(values) && values.length === phaseKeys.length && values.every((v) => typeof v === 'number')) {
+          phaseKeys.forEach((key, i) => setValue(key, values[i] as number))
+        } else {
+          // A scalar is deliberately rejected too (not broadcast) - which line each phase should
+          // report is ambiguous for a per-phase measurement, unlike 3-phase-symmetric below.
+          warning = `values must be an array of exactly ${phaseKeys.length} numbers (one per phase) for a per-phase measurement`
         }
       } else if (this.measurementType === '3_PHASE_SYMMETRIC') {
         if (typeof values === 'number') {
@@ -91,6 +95,8 @@ export class PowerMeasurementCache {
           setValue('Ac/L2/Power', l2)
           setValue('Ac/L3/Power', l3)
           setValue('Ac/Power', l1 + l2 + l3)
+        } else {
+          warning = 'values array for 3-phase symmetric measurement must have exactly 3 numbers'
         }
       }
     }
@@ -111,11 +117,11 @@ export class PowerMeasurementCache {
       setValue('Ac/L3/Power', perPhase)
     }
 
-    if (Object.keys(raw).length === 0 && !valuesArrayRejected) return null
+    if (Object.keys(raw).length === 0 && !warning) return null
     return {
       raw,
       s2Values: Object.keys(raw).length > 0 && this.active ? this.buildS2Values() : null,
-      ...(valuesArrayRejected ? { warning: 'values array input is not supported for a single-phase device (nrOfPhases: 1) - use a scalar value instead' } : {})
+      ...(warning ? { warning } : {})
     }
   }
 

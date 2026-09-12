@@ -9,14 +9,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['18.x', '20.x', '22.x', '24.x']
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Use Node.js 24.x
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v6
         with:
-          node-version: 24.x
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - run: npm install
@@ -34,6 +37,7 @@ jobs:
         run: npm run test:unit -- --coverage
 
       - name: Coverage summary
+        if: matrix.node-version == '24.x'
         run: |
           if [ -f coverage/coverage-summary.json ]; then
             node -e "

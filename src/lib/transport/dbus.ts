@@ -208,6 +208,13 @@ export class S2DbusTransport extends EventEmitter {
       : {}
     // 3-phase-symmetric also gets a derived, D-Bus-only per-phase breakdown (see PowerMeasurementCache.update()) not in measurementProps.
     const measurementKeys = new Set(Object.keys(measurementProps))
+    // Ac/Power is always live-tracked once any measurement type is configured (see
+    // setMeasurementValues()'s aggregation), even for a single measured line - so it should
+    // start at the same 0 default as the per-phase keys below it, not the minimal-meter shape's
+    // generic `null` ("unknown") placeholder.
+    if (this.opts.measurementType) {
+      measurementKeys.add('Ac/Power')
+    }
     if (this.opts.measurementType === '3_PHASE_SYMMETRIC') {
       measurementKeys.add('Ac/L1/Power').add('Ac/L2/Power').add('Ac/L3/Power')
     }

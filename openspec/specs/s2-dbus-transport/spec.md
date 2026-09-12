@@ -46,20 +46,27 @@ The `s2-dbus-config` node SHALL support connecting via auto-detected session/sys
 - **WHEN** `s2-dbus-config`'s edit dialog is rendered
 - **THEN** `Phases` appears above `Power Meas.`
 
+### Requirement: Phases offers only 1 or 3
+`s2-dbus-config`'s `Phases` field SHALL offer only `1` and `3` - not `2`. S2 has no commodity quantity defined for a 2-phase (split-phase) device, so there is no correct way to relay a `Phases: 2` device's measurement to a CEM.
+
+#### Scenario: Phases dropdown options
+- **WHEN** `s2-dbus-config`'s edit dialog is rendered
+- **THEN** the `Phases` dropdown offers exactly `1` and `3`
+
 ### Requirement: "3-phase symmetric" power measurement requires exactly 3 phases
-`s2-dbus-config`'s `Power Meas.` field SHALL offer "3-phase symmetric" (`3_PHASE_SYMMETRIC`) only when `Phases: 3`. For `Phases: 1` or `Phases: 2`, that option SHALL be unavailable, and if `Power Meas.` was previously set to `3_PHASE_SYMMETRIC` and `Phases` changes away from `3`, `Power Meas.` SHALL fall back to another valid option for the new `Phases` value rather than silently keeping an inapplicable selection.
+`s2-dbus-config`'s `Power Meas.` field SHALL offer "3-phase symmetric" (`3_PHASE_SYMMETRIC`) only when `Phases: 3`. For `Phases: 1`, that option SHALL be unavailable, and if `Power Meas.` was previously set to `3_PHASE_SYMMETRIC` and `Phases` changes away from `3`, `Power Meas.` SHALL fall back to another valid option for the new `Phases` value rather than silently keeping an inapplicable selection - including visibly, in the dropdown itself, the moment `Phases` changes, not only after the next redeploy.
 
 #### Scenario: Phases: 3
 - **WHEN** `Phases` is set to `3`
 - **THEN** the `Power Meas.` dropdown offers "None", "3-phase symmetric", and "Per phase"
 
-#### Scenario: Phases: 1 or 2
-- **WHEN** `Phases` is set to `1` or `2`
+#### Scenario: Phases: 1
+- **WHEN** `Phases` is set to `1`
 - **THEN** the `Power Meas.` dropdown offers only "None" and "Per phase" - "3-phase symmetric" is not selectable
 
 #### Scenario: Changing Phases away from 3 while 3-phase symmetric is selected
-- **WHEN** `Power Meas.: 3-phase symmetric` is selected and `Phases` is changed from `3` to `1` or `2`
-- **THEN** `Power Meas.` no longer reads "3-phase symmetric"
+- **WHEN** `Power Meas.: 3-phase symmetric` is selected and `Phases` is changed from `3` to `1`
+- **THEN** `Power Meas.` immediately reads "Per phase" in the still-open dialog, not just after the next redeploy
 
 ### Requirement: New config nodes default to per-phase power measurement
 `s2-dbus-config`'s `Power Meas.` field SHALL default to "Per phase" (`L1_L2_L3`) for a newly added node, not "3-phase symmetric".
@@ -80,7 +87,13 @@ When an `s2-dbus-config` node is created via the "add new" flow from inside an `
 - **THEN** its `Name` field is empty, unchanged from today's behavior
 
 ### Requirement: Power measurement relay to the CEM
-The `s2-dbus` node SHALL cache the latest power value(s) received on its input (keyed by `Ac/Power` or `Ac/L{1,2,3}/Power`, matching its configured measurement type) and, while power measurement is active for a CEM, SHALL emit them as `{ command: 'PowerMeasurement', cemId, values }` for `s2-rm` to convert into S2 messages.
+The `s2-dbus` node SHALL cache the latest power value(s) received on its input and, while power measurement is active for a CEM, SHALL emit them as `{ command: 'PowerMeasurement', cemId, values }` for `s2-rm` to convert into S2 messages. Two independent input shapes SHALL be recognized on every message, checked independently (a message can use either):
+- **Raw D-Bus-key shape**: keyed by `Ac/Power` or `Ac/L{1,2,3}/Power`, matching the configured measurement type - e.g. `{ payload: { 'Ac/Power': 1800 } }`.
+- **`values` shape**: `{ payload: { values: <number | number[]> } }`, whose meaning is derived from the configured `measurementType`/`nrOfPhases`/`phaseSetting`:
+  - `measurementType: L1_L2_L3`, `nrOfPhases: 1`: a scalar `values` is the single wired phase's power (`phaseSetting` names which S2 commodity, e.g. `ELECTRIC.POWER.L2`). An array `values` SHALL be rejected (a `node.warn` and no cache update) - a genuinely single-phase device has no second or third line to attribute array elements to.
+  - `measurementType: L1_L2_L3`, `nrOfPhases: 3`: only an array `values` of length exactly 3 is accepted, mapping element-by-element to `ELECTRIC.POWER.L1`, `L2`, `L3` in order. A scalar `values` SHALL be rejected (a `node.warn` and no cache update), not broadcast - which single phase a lone value belongs to is ambiguous for a per-phase measurement.
+  - `measurementType: 3_PHASE_SYMMETRIC` (only valid at `nrOfPhases: 3`): a scalar `values` is sent as a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value. An array `values` of length 3 is summed into a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value for S2 (the array elements individually affect only the D-Bus per-phase properties - see the BusItem requirement below). An array of any other length SHALL be rejected (a `node.warn` and no cache update).
+  - `measurementType: ''` (None): `values` has nothing configured to map to - no-op, matching the raw-key shape's own behavior with no measurement type configured.
 
 #### Scenario: CEM starts power measurement
 - **WHEN** the node receives `{ payload: { s2Signal: 'PowerMeasurementStart' }, cemId }` and has a cached value for its configured measurement type
@@ -94,16 +107,70 @@ The `s2-dbus` node SHALL cache the latest power value(s) received on its input (
 - **WHEN** the node receives `{ payload: { s2Signal: 'PowerMeasurementStop' }, cemId }`
 - **THEN** it stops emitting `PowerMeasurement` commands for that CEM until measurement is started again
 
+#### Scenario: Scalar `values` on a single-phase, per-phase-measured device
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`, and the node receives `{ payload: { values: 10 } }` while measurement is active
+- **THEN** it emits a `PowerMeasurement` with a single `{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 10 }`
+
+#### Scenario: Array `values` rejected on a single-phase device
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, and the node receives `{ payload: { values: [11, 22, 33] } }`
+- **THEN** the cache is not updated, a warning is logged, and no `PowerMeasurement` reflecting those values is ever emitted
+
+#### Scenario: Array `values` on a 3-phase, per-phase-measured device
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 3`, and the node receives `{ payload: { values: [11, 22, 33] } }` while measurement is active
+- **THEN** it emits a `PowerMeasurement` with `{ commodity_quantity: 'ELECTRIC.POWER.L1', value: 11 }`, `{ ...L2, value: 22 }`, `{ ...L3, value: 33 }`
+
+#### Scenario: Scalar `values` rejected on a 3-phase, per-phase-measured device
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 3`, and the node receives `{ payload: { values: 10 } }`
+- **THEN** the cache is not updated, a warning is logged, and no `PowerMeasurement` reflecting that value is ever emitted
+
+#### Scenario: Scalar `values` under 3-phase symmetric measurement
+- **WHEN** `measurementType: 3_PHASE_SYMMETRIC` and the node receives `{ payload: { values: 10 } }` while measurement is active
+- **THEN** it emits a `PowerMeasurement` with a single `{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 10 }`
+
+#### Scenario: Array `values` under 3-phase symmetric measurement is summed for S2
+- **WHEN** `measurementType: 3_PHASE_SYMMETRIC` and the node receives `{ payload: { values: [11, 22, 33] } }` while measurement is active
+- **THEN** it emits a `PowerMeasurement` with a single `{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 66 }`
+
+#### Scenario: Array `values` of the wrong length rejected under 3-phase symmetric measurement
+- **WHEN** `measurementType: 3_PHASE_SYMMETRIC` and the node receives `{ payload: { values: [11, 22] } }`
+- **THEN** the cache is not updated, a warning is logged, and no `PowerMeasurement` reflecting those values is ever emitted
+
 ### Requirement: Power measurement exposed as a D-Bus BusItem property
-The `s2-dbus` node SHALL declare the property key(s) matching its configured measurement type (`Ac/Power`, or `Ac/L1/Power`/`Ac/L2/Power`/`Ac/L3/Power`) as real, readable D-Bus BusItem properties on its registered service, and SHALL update them on every value received on its input - independent of whether power measurement is currently active for any CEM.
+The `s2-dbus` node SHALL declare and update, as real readable D-Bus BusItem properties, exactly the property key(s) that correspond to its configured `measurementType`/`nrOfPhases`/`phaseSetting` - independent of whether power measurement is currently active for any CEM:
+- `measurementType: L1_L2_L3`, `nrOfPhases: 1`: exactly one property, `Ac/L<phaseSetting>/Power` - never `Ac/L1/Power` or `Ac/L3/Power` when wired to a different line.
+- `measurementType: L1_L2_L3`, `nrOfPhases: 3`: `Ac/L1/Power`, `Ac/L2/Power`, `Ac/L3/Power`.
+- `measurementType: 3_PHASE_SYMMETRIC`: `Ac/Power`, plus `Ac/L1/Power`, `Ac/L2/Power`, `Ac/L3/Power` (derived - see the scenarios below).
+- `measurementType: ''` (None): no measurement-tracked properties; the minimal-meter shape's own defaults apply (see "Full node-red-contrib-victron-compatible D-Bus shape" below).
+
+Whenever any measurement type is configured, `Ac/Power` SHALL start at `0` (not the minimal-meter shape's generic `null` "unknown" placeholder) and SHALL be kept as the live sum of every currently-known per-phase `Power` value for that device (not just the one that changed) - including for a single-phase device, whose only known line contributes the whole sum.
+
+#### Scenario: Single-phase device declares only its wired line
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`
+- **THEN** the registered service declares `Ac/L2/Power` as a measurement-tracked property, and neither `Ac/L1/Power` nor `Ac/L3/Power` is declared as one (they may still exist as `null`-defaulted "minimal meter" placeholders per the shape requirement below, but are never written to by measurement input)
+
+#### Scenario: Single-phase device's Ac/Power starts at 0, consistent with its wired line
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`, and the node has just registered with no measurement received yet
+- **THEN** both `Ac/L2/Power` and `Ac/Power` read `0` - never one at `0` and the other at `null`/unknown
 
 #### Scenario: Value fed to the node's input
 - **WHEN** the node receives `{ payload: { 'Ac/Power': 1800 } }` (or the per-phase equivalent) on its input
 - **THEN** the corresponding D-Bus property is updated to that value, readable via `GetValue` by anything else on the Venus system
 
+#### Scenario: Per-phase value updates keep Ac/Power in sync
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 3`, and the node receives `Ac/L1/Power: 100`, then later `Ac/L2/Power: 200` (via either input shape)
+- **THEN** after the first update `Ac/Power` reads `100`, and after the second it reads `300` (both known phases summed; `Ac/L3/Power` still unset contributes `0`)
+
+#### Scenario: 3-phase-symmetric scalar splits evenly across per-phase properties
+- **WHEN** `measurementType: 3_PHASE_SYMMETRIC` and the node receives a scalar measurement of `9` (via either input shape)
+- **THEN** `Ac/Power` reads `9`, and `Ac/L1/Power`, `Ac/L2/Power`, `Ac/L3/Power` each read `3` (one third)
+
+#### Scenario: 3-phase-symmetric array writes per-phase properties directly, unsplit
+- **WHEN** `measurementType: 3_PHASE_SYMMETRIC` and the node receives `{ payload: { values: [11, 22, 33] } }`
+- **THEN** `Ac/Power` reads `66` (the sum), and `Ac/L1/Power`, `Ac/L2/Power`, `Ac/L3/Power` read `11`, `22`, `33` respectively (not each divided by 3 again)
+
 #### Scenario: Value updated before any CEM has started measurement
 - **WHEN** the node receives a measurement value update and no CEM currently has power measurement active
-- **THEN** the D-Bus property is still updated, even though no `PowerMeasurement` command is emitted to `s2-rm`
+- **THEN** every corresponding D-Bus property (including `Ac/Power` aggregation/distribution above) is still updated, even though no `PowerMeasurement` command is emitted to `s2-rm`
 
 #### Scenario: No measurement type configured
 - **WHEN** `s2-dbus-config`'s measurement type is set to "None"
@@ -123,6 +190,32 @@ The `s2-dbus` node SHALL declare the same "minimal meter" D-Bus BusItem properti
 #### Scenario: Unknown numeric paths are never fabricated
 - **WHEN** the node registers and has no data source for a given path (e.g. `Ac/L1/Voltage`, with no configured measurement covering it)
 - **THEN** that property's initial value is `null`, not `0` or any other guessed number
+
+### Requirement: Auto-calculated Energy (kWh) from Power over time
+`s2-dbus-config` SHALL offer an "Auto-calculate energy" setting, defaulting to enabled for a newly added node, mirroring node-red-contrib-victron's own virtual `acload`/`heatpump` devices (same integration approach as their `accumulateDelta` helper: on every `Power` update, before applying the new value, the time elapsed since that same property's last update is multiplied by `max(0, previous power)` and added, converted to kWh, onto that property's running Energy Forward total - never negative, so only forward/import energy is tracked, matching `acload`'s own one-directional behavior with no Reverse tracking). When enabled, the `s2-dbus` node SHALL:
+- Accumulate each declared `Ac/L{1,2,3}/Power` property's integrated energy into the corresponding `Ac/L{1,2,3}/Energy/Forward` property, and roll the per-phase totals up into `Ac/Energy/Forward` as their sum.
+- For `measurementType: 3_PHASE_SYMMETRIC`, accumulate once directly from `Ac/Power` into `Ac/Energy/Forward` (not separately from each derived per-phase value, which would triple-count the same underlying reading).
+- Leave `Ac/Energy/Forward`/`Ac/L{1,2,3}/Energy/Forward` at their `null` ("unknown") default when the setting is disabled, unchanged from today's behavior.
+
+#### Scenario: Newly added config node has auto-calculation enabled
+- **WHEN** a new `s2-dbus-config` node's edit dialog is opened for the first time
+- **THEN** "Auto-calculate energy" is checked
+
+#### Scenario: Per-phase energy accumulates from per-phase power
+- **WHEN** "Auto-calculate energy" is enabled, `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`, and `Ac/L2/Power` is updated to `100` at time T0 and again to `150` at time T0+3600000ms (1 hour)
+- **THEN** at the second update, `Ac/L2/Energy/Forward` has increased by `0.1` kWh (100W for 1 hour), using the *previous* power value (100), and `Ac/Energy/Forward` reflects the same increase
+
+#### Scenario: 3-phase-symmetric energy accumulates once from Ac/Power
+- **WHEN** "Auto-calculate energy" is enabled and `measurementType: 3_PHASE_SYMMETRIC`
+- **THEN** `Ac/Energy/Forward` accumulates directly from `Ac/Power`'s own value-over-time, not as a sum of three separately-accumulated derived per-phase values
+
+#### Scenario: Negative power never decreases Energy Forward
+- **WHEN** "Auto-calculate energy" is enabled and a tracked `Power` property's previous value was negative
+- **THEN** no energy is subtracted for the interval since that value applied (only non-negative power contributes)
+
+#### Scenario: Setting disabled
+- **WHEN** "Auto-calculate energy" is unchecked
+- **THEN** `Ac/Energy/Forward` and every `Ac/L{1,2,3}/Energy/Forward` stay at their `null` default, unchanged from today's behavior
 
 ### Requirement: Persisted DeviceInstance
 The `s2-dbus` node SHALL claim its D-Bus `DeviceInstance` via `AddSettings` against `com.victronenergy.settings` (path `/Settings/Devices/virtual_s2_<nodeId>/ClassAndVrmInstance`, default `<deviceType>:100`), the same mechanism node-red-contrib-victron's virtual devices use, rather than a user-configured fixed number - so the instance is stable across redeploys and restarts and cannot collide with another device's user-picked value.

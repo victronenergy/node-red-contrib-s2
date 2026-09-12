@@ -8,11 +8,6 @@ The recommended starting point is a single **s2-resource** node - one node inste
 
 ![The s2-resource node on the canvas](screenshots/s2-resource-canvas.png)
 
-## Requirements
-
-- Node-RED >= 4.1.0
-- Node.js >= 24
-
 ## Nodes
 
 Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for identification, as it appears in flow JSON and this documentation. In the Node-RED palette and on the canvas, they're shown without the redundant "s2-" prefix (e.g. `s2-resource` as just "resource") - all of them already sit under the "s2" palette category, and carry the S2 logo icon. **resource** is additionally shown with a blue background and white icon (instead of every other node's white background/colored icon), since it's the recommended starting point.
@@ -117,7 +112,7 @@ The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM s
   | Power Meas. | Phases | `values` scalar | `values` array |
   |---|---|---|---|
   | Per phase | 1 | the wired line's power (e.g. `Wired to: L2` -> `ELECTRIC.POWER.L2`) | rejected (only one real line to attribute elements to) |
-  | Per phase | 2 or 3 | broadcast to every phase | one element per phase, in `L1`/`L2`/`L3` order |
+  | Per phase | 3 | rejected (ambiguous which line a lone value belongs to) | one element per phase, in `L1`/`L2`/`L3` order |
   | 3-phase symmetric | 3 | sent as-is, and split evenly across `Ac/L1-3/Power` | must have exactly 3 elements - summed for the CEM/`Ac/Power`, written directly (unsplit) to `Ac/L1-3/Power` |
 
 `Ac/Power` is always kept as the live sum of whatever per-phase readings are currently known when `Power Meas.: Per phase`.
