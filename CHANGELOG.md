@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-dbus-config`: changing `Phases` away from `3` while `Power Meas.: 3-phase symmetric` is selected now immediately updates the `Power Meas.` dropdown's own displayed value in the still-open dialog, instead of only after the next redeploy.
 - `s2-resource`'s OMBC tab no longer silently discards a saved `systemDescription` it can't represent in Friendly mode (a genuine power range from before this release's modulation support, a blocked transition, a custom timer, or hand-edited JSON) - it now opens as editable raw JSON in a new Advanced (JSON) mode, the same escape hatch `s2-ombc-config` already had. **If you suspect this already happened to one of your `s2-resource` nodes** (opening and saving it silently replaced your configuration with a default "Standby/off" mode) **before this fix, that configuration cannot be recovered from within Node-RED** - check your flow's version control history or backups.
 - `s2-dbus`/`s2-resource` (`Transport: D-Bus`): the registered device's `CustomName` (what the GX device list/VRM actually display, in preference to the generic `ProductName`) now reflects the node's own configured `Name` (`s2-resource`'s `RM Name` if set, otherwise falls back to `Virtual <deviceType>`) instead of always showing the generic "Virtual AC load"/"Virtual heat pump".
+- `s2-dbus`/`s2-resource` (`Power Meas.: Per phase`, single-phase device): the raw D-Bus-key input `{ payload: { 'Ac/Power': ... } }` is now accepted as an alias for that device's one wired-phase key (e.g. `Ac/L2/Power`) - previously only the phase-specific key worked, silently rejecting the generic key the node's own help text already documented as valid. A multi-phase device still requires the phase-specific key(s), since `Ac/Power` alone would be ambiguous there.
+- `s2-resource`'s canvas icon no longer bleeds to the node's edge - it's now inset a few px, matching the palette icon's proportions instead of stretching to fill its full 30x30 box.
 
 ### Added
 
@@ -25,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-dbus-config`: "Auto-calculate energy" setting (on by default) - integrates power over time into `Ac/Energy/Forward` (and per-phase `Ac/L<n>/Energy/Forward`), the same approach node-red-contrib-victron's own virtual `acload`/`heatpump` devices use.
 - `s2-ombc`/`s2-resource`'s `ModeInstruction` output payload gains a `values` field, in the same convenience shape `PowerMeasurement` input already accepts - feed it straight in to report back exactly the power you were just instructed to produce, with no shape conversion needed.
 - `s2-ombc-config`'s (and `s2-resource`'s built-in OMBC) friendly operation-mode editor gains a per-mode "Support power modulation" option, for a mode whose power ranges between a "from" and "to" value (e.g. a continuously-modulating load) instead of a single fixed value - no longer requires switching to Advanced/JSON mode.
+- `s2-rm`/`s2-resource` accept a new `SetAvailableControlTypes` command (`{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }`, no `cemId`) that replaces the advertised control types at runtime and re-sends `ResourceManagerDetails` to every connected CEM, without redeploying - e.g. to make an OMBC resource controllable only during a time window.
 
 ### Changed
 
@@ -37,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-dbus`/`s2-resource` (`Power Meas.: Per phase`, `Phases: 3`): a scalar `values` input is now rejected (with a warning) instead of being broadcast to every phase - which single line a lone value belongs to was ambiguous.
 - `s2-resource`'s Resource Manager tab no longer shows the `Resource ID` field - it's still generated once and persisted unchanged across redeploys, just not something the user needs to see or edit.
 - `s2-ombc`/`s2-resource`: a `ModeConfirmation` (or legacy confirm) message may now include more than one of `id`/`index`/`label` at once, resolved by priority (`id` wins over `index`, which wins over `label`) instead of being rejected - so a previously-emitted `ModeInstruction` payload (which already carries all three, plus `factor`) can be wired straight back in as its own confirmation.
+- **Every** `s2-rm`/`s2-resource` now always advertises `NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types`, regardless of configured/selected control types - a CEM can always choose not to control the resource. It's no longer offered as a checkbox (removed from both `s2-rm-config`'s and `s2-resource`'s control-types lists), since it's no longer a configurable option. Existing flows will advertise this additional value on their next redeploy.
 
 ## [0.4.1]
 
