@@ -130,7 +130,7 @@ describe('s2-resource - RM identity', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -148,7 +148,7 @@ describe('s2-resource - RM identity', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', roles: 'ENERGY_CONSUMER,ENERGY_PRODUCER' })
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -165,7 +165,7 @@ describe('s2-resource - RM identity', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -187,7 +187,7 @@ describe('s2-resource - NOT_CONTROLABLE always advertised', () => {
   function connectAndHandshake (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -258,7 +258,7 @@ describe('s2-resource - Transport: WebSocket', () => {
     const { node } = setupNode({ transport: 'websocket', controlType: 'none' })
     mockTransport.emit('open')
 
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url})` })
   })
@@ -267,7 +267,7 @@ describe('s2-resource - Transport: WebSocket', () => {
     const { node } = setupNode({ transport: 'websocket', controlType: 'none' }, { ...DEFAULT_CEM_CONFIG, name: 'My CEM' })
     mockTransport.emit('open')
 
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM)' })
   })
@@ -277,7 +277,7 @@ describe('s2-resource - Transport: WebSocket', () => {
     mockTransport.emit('open')
 
     // Trigger a message the RM sends outbound (ResourceManagerDetails, via HandshakeResponse)
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(mockTransport.send).toHaveBeenCalled()
     // Only one output exists (downstream) when Transport: WebSocket - nothing sent with a
@@ -301,7 +301,7 @@ describe('s2-resource - Transport: WebSocket', () => {
     const { RED } = setupNode({ transport: 'websocket', controlType: 'none', debug: true })
     mockTransport.emit('open')
 
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
       'debug',
@@ -319,7 +319,7 @@ describe('s2-resource - Transport: WebSocket', () => {
     const { RED } = setupNode({ transport: 'websocket', controlType: 'none', debug: false })
     mockTransport.emit('open')
 
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(RED.comms.publish as jest.Mock).not.toHaveBeenCalled()
   })
@@ -343,7 +343,7 @@ describe('s2-resource - Transport: External', () => {
 
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -402,7 +402,7 @@ describe('s2-resource - Transport: D-Bus', () => {
     const { node } = setupNode({ transport: 'dbus', controlType: 'none' })
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
 
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1)' })
   })
@@ -411,7 +411,7 @@ describe('s2-resource - Transport: D-Bus', () => {
     const { node } = setupNode({ transport: 'dbus', controlType: 'none' })
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
 
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(mockDbusTransport.send).toHaveBeenCalled()
     expect((node.send as jest.Mock).mock.calls.every((c: unknown[]) => (c[0] as unknown[]).length === 1)).toBe(true)
@@ -421,7 +421,7 @@ describe('s2-resource - Transport: D-Bus', () => {
     const { RED } = setupNode({ transport: 'dbus', controlType: 'none', debug: true })
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
 
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     expect(RED.comms.publish as jest.Mock).toHaveBeenCalledWith(
       'debug',
@@ -438,7 +438,7 @@ describe('s2-resource - Transport: D-Bus', () => {
   it('sets S2/0/Active via the D-Bus transport on SelectControlType', () => {
     setupNode({ transport: 'dbus', controlType: 'none' })
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }))
 
@@ -502,7 +502,7 @@ describe('s2-resource - power measurement advertised capability follows the acti
     )
 
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     const rmd = findResourceManagerDetailsSentVia(mockDbusTransport.send as jest.Mock)
     expect(rmd?.provides_power_measurement_types).toEqual(['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3'])
@@ -512,7 +512,7 @@ describe('s2-resource - power measurement advertised capability follows the acti
     setupNode({ transport: 'websocket', controlType: 'none', providesPowerMeasurement: '3_PHASE_SYMMETRIC' })
 
     mockTransport.emit('open')
-    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
     const rmd = findResourceManagerDetailsSentVia(mockTransport.send as jest.Mock)
     expect(rmd?.provides_power_measurement_types).toEqual(['ELECTRIC.POWER.3_PHASE_SYMMETRIC'])
@@ -522,7 +522,7 @@ describe('s2-resource - power measurement advertised capability follows the acti
 describe('s2-resource - Transport: D-Bus power measurement relay', () => {
   function connectAndSelect (): void {
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
-    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }))
   }
 
@@ -607,7 +607,7 @@ describe('s2-resource - Control type: OMBC', () => {
   function connectAndSelectOmbc (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
     handlers.input(
@@ -750,7 +750,7 @@ describe('s2-resource - Control type: None', () => {
 
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -764,7 +764,7 @@ describe('s2-resource - Control type: None', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
     ;(node.send as jest.Mock).mockClear()

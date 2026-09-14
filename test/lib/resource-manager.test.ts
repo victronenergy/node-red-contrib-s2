@@ -43,7 +43,7 @@ function setup (overrides: Partial<S2ResourceManagerOptions> = {}) {
 function connectAndHandshake (rm: S2ResourceManager, cemId = 'cem-1'): void {
   rm.handleInput({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn())
   rm.handleInput(
-    { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+    { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
     jest.fn()
   )
 }
@@ -119,7 +119,16 @@ describe('S2ResourceManager - UpdateStatus / SystemDescription commands', () => 
         command: 'SystemDescription',
         cemId: 'cem-1',
         controlType: 'OPERATION_MODE_BASED_CONTROL',
-        ombc: { operationModes: [{ id: 'mode-on', diagnostic_label: 'On', power_ranges: [], abnormal_condition_only: false }], transitions: [], timers: [] }
+        ombc: {
+          operationModes: [{
+            id: 'mode-on',
+            diagnostic_label: 'On',
+            power_ranges: [{ start_of_range: 0, end_of_range: 1000, commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }],
+            abnormal_condition_only: false
+          }],
+          transitions: [],
+          timers: []
+        }
       }
     }, jest.fn())
 

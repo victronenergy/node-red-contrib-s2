@@ -60,7 +60,7 @@ describe('s2-rm - config node reference', () => {
 
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 60 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(),
       jest.fn()
     )
@@ -163,7 +163,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -174,7 +174,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
     ;(node.status as jest.Mock).mockClear()
 
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, message_id: 'rs1', subject_message_id: 'orig1', status: 'TEMPORARY_ERROR' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'orig1', status: 'TEMPORARY_ERROR' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -187,7 +187,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
     connectCem(handlers)
 
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, message_id: 'rs1', subject_message_id: 'orig1', status: 'TEMPORARY_ERROR' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'orig1', status: 'TEMPORARY_ERROR' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -203,7 +203,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
     ;(node.status as jest.Mock).mockClear()
 
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, message_id: 'rs1', subject_message_id: 'orig1', status: 'OK' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'orig1', status: 'OK' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -226,7 +226,7 @@ describe('s2-rm - flow context tracking', () => {
   function connectAndSelectPebc (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
     handlers.input(
@@ -319,7 +319,7 @@ describe('s2-rm - pending instructions context', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -603,8 +603,13 @@ describe('s2-rm - pending instructions context', () => {
           message_id: 'msg-pebc',
           id: 'instr-pebc',
           execution_time: new Date(Date.now() + 60000).toISOString(),
+          abnormal_condition: false,
           power_constraints_id: 'cid-1',
-          power_envelopes: []
+          power_envelopes: [{
+            id: 'env-1',
+            commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+            power_envelope_elements: [{ duration: 60000, upper_limit: 1000, lower_limit: -1000 }]
+          }]
         })
       }
     }, jest.fn(), jest.fn())
@@ -630,7 +635,7 @@ describe('s2-rm - UpdateStatus / SystemDescription commands', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -673,7 +678,16 @@ describe('s2-rm - UpdateStatus / SystemDescription commands', () => {
         command: 'SystemDescription',
         cemId: 'cem-1',
         controlType: 'OPERATION_MODE_BASED_CONTROL',
-        ombc: { operationModes: [{ id: 'mode-on', diagnostic_label: 'On', power_ranges: [], abnormal_condition_only: false }], transitions: [], timers: [] }
+        ombc: {
+          operationModes: [{
+            id: 'mode-on',
+            diagnostic_label: 'On',
+            power_ranges: [{ start_of_range: 0, end_of_range: 1000, commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }],
+            abnormal_condition_only: false
+          }],
+          transitions: [],
+          timers: []
+        }
       }
     }, jest.fn(), jest.fn())
 
@@ -736,7 +750,7 @@ describe('s2-rm - RevokeObject handling', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -923,7 +937,7 @@ describe('s2-rm - InstructionStatus command', () => {
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }
@@ -1026,7 +1040,7 @@ describe('s2-rm - lifecycle events and msg.topic', () => {
     ;(node.send as jest.Mock).mockClear()
 
     handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
 
@@ -1050,7 +1064,7 @@ describe('s2-rm - S2/0/Active transport flag', () => {
   function connectAndHandshake (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
-      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      { payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
       jest.fn(), jest.fn()
     )
   }

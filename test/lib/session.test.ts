@@ -153,13 +153,13 @@ describe('S2Session HandshakeResponse', () => {
     const onError = jest.fn()
     const session = new S2Session({ cemId: 'cem-1', onSend, onError })
     session.start()
-    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('rmDetails') }))
   })
 
   it('calls onError if HandshakeResponse arrives when already CONNECTED', () => {
     const { session, onError } = startedSession()
-    const hr = raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' })
+    const hr = raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' })
     session.handleMessage(hr)
     session.handleMessage(hr)
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('HandshakeResponse') }))
@@ -170,7 +170,7 @@ describe('S2Session SelectControlType', () => {
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     mocks.onMessage.mockClear()
     return mocks
@@ -182,10 +182,10 @@ describe('S2Session SelectControlType', () => {
     session.handleMessage(raw({
       message_type: MessageType.SELECT_CONTROL_TYPE,
       message_id: 'sc1',
-      control_type: 'FRBC'
+      control_type: 'FILL_RATE_BASED_CONTROL'
     }))
 
-    expect(session.selectedControlType).toBe('FRBC')
+    expect(session.selectedControlType).toBe('FILL_RATE_BASED_CONTROL')
 
     const ack = onSend.mock.calls[0][0]
     expect(ack.message_type).toBe(MessageType.RECEPTION_STATUS)
@@ -231,7 +231,7 @@ describe('S2Session updateStatus', () => {
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     return mocks
   }
@@ -289,7 +289,7 @@ describe('S2Session sendSystemDescription', () => {
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     return mocks
   }
@@ -299,7 +299,12 @@ describe('S2Session sendSystemDescription', () => {
 
     session.sendSystemDescription(ControlType.OMBC, {
       ombc: {
-        operationModes: [{ id: 'normal', diagnostic_label: 'Normal', power_ranges: [], abnormal_condition_only: false }],
+        operationModes: [{
+          id: 'normal',
+          diagnostic_label: 'Normal',
+          power_ranges: [{ start_of_range: 0, end_of_range: 1000, commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }],
+          abnormal_condition_only: false
+        }],
         transitions: [],
         timers: []
       }
@@ -331,18 +336,38 @@ describe('S2Session sendSystemDescription', () => {
 })
 
 describe('S2Session instruction handling', () => {
-  const instructionTypes = [
-    MessageType.FRBC_INSTRUCTION,
-    MessageType.DDBC_INSTRUCTION,
-    MessageType.OMBC_INSTRUCTION,
-    MessageType.PEBC_INSTRUCTION,
-    MessageType.PPBC_SCHEDULE_INSTRUCTION
-  ]
+  const executionTime = new Date(Date.now() + 60000).toISOString()
+
+  // Each instruction message type has its own required fields per the S2 schema - these are the
+  // minimum extra fields (beyond message_type/message_id/id) each needs to pass validation.
+  const instructionFixtures: Record<string, Record<string, unknown>> = {
+    [MessageType.FRBC_INSTRUCTION]: {
+      actuator_id: 'act-1', operation_mode: 'mode-1', operation_mode_factor: 1, execution_time: executionTime, abnormal_condition: false
+    },
+    [MessageType.DDBC_INSTRUCTION]: {
+      execution_time: executionTime, abnormal_condition: false, actuator_id: 'act-1', operation_mode_id: 'mode-1', operation_mode_factor: 1
+    },
+    [MessageType.OMBC_INSTRUCTION]: {
+      execution_time: executionTime, operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false
+    },
+    [MessageType.PEBC_INSTRUCTION]: {
+      execution_time: executionTime, abnormal_condition: false, power_constraints_id: 'pc-1',
+      power_envelopes: [{
+        id: 'env-1',
+        commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+        power_envelope_elements: [{ duration: 60000, upper_limit: 1000, lower_limit: -1000 }]
+      }]
+    },
+    [MessageType.PPBC_SCHEDULE_INSTRUCTION]: {
+      power_profile_id: 'pp-1', sequence_container_id: 'sc-1', power_sequence_id: 'ps-1', execution_time: executionTime, abnormal_condition: false
+    }
+  }
+  const instructionTypes = Object.keys(instructionFixtures)
 
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     mocks.onMessage.mockClear()
     return mocks
@@ -351,7 +376,7 @@ describe('S2Session instruction handling', () => {
   instructionTypes.forEach((type) => {
     it(`acks and forwards ${type}`, () => {
       const { session, onSend, onMessage } = connectedSession()
-      session.handleMessage(raw({ message_type: type, message_id: 'i1' }))
+      session.handleMessage(raw({ message_type: type, message_id: 'i1', id: 'instr-1', ...instructionFixtures[type] }))
       const ack = onSend.mock.calls[0][0]
       expect(ack.message_type).toBe(MessageType.RECEPTION_STATUS)
       expect(ack.subject_message_id).toBe('i1')
@@ -364,10 +389,15 @@ describe('S2Session send', () => {
   it('calls onSend when CONNECTED', () => {
     const { session, onSend } = makeSession()
     session.start()
-    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     onSend.mockClear()
 
-    const msg = { message_type: MessageType.POWER_MEASUREMENT, message_id: 'pm1' }
+    const msg = {
+      message_type: MessageType.POWER_MEASUREMENT,
+      message_id: 'pm1',
+      measurement_timestamp: new Date().toISOString(),
+      values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1500 }]
+    }
     session.send(msg)
     expect(onSend).toHaveBeenCalledWith(msg)
   })
@@ -392,11 +422,11 @@ describe('S2Session ReceptionStatus', () => {
   it('forwards ReceptionStatus via onMessage without sending a response', () => {
     const { session, onSend, onMessage } = makeSession()
     session.start()
-    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     onSend.mockClear()
     onMessage.mockClear()
 
-    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, message_id: 'rs1', subject_message_id: 'pm1', result: 'OK' }))
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm1', status: 'OK' }))
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ message_type: MessageType.RECEPTION_STATUS }))
     expect(onSend).not.toHaveBeenCalled()
   })
@@ -406,7 +436,7 @@ describe('S2Session handleMessage accepts objects', () => {
   it('processes a message passed as an object (D-Bus transport)', () => {
     const { session, onMessage } = makeSession()
     session.start()
-    session.handleMessage({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' })
+    session.handleMessage({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' })
     expect(session.state).toBe(State.CONNECTED)
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ message_type: MessageType.HANDSHAKE_RESPONSE }))
   })
@@ -437,7 +467,7 @@ describe('S2Session invalid input', () => {
 function connectSession (session: S2Session, onSend: jest.Mock): void {
   session.start()
   onSend.mockClear()
-  session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+  session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
   onSend.mockClear()
 }
 
@@ -615,17 +645,41 @@ describe('S2Session TEMPORARY_ERROR retry', () => {
 })
 
 describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
+  const executionTime = new Date(Date.now() + 60000).toISOString()
+  const instructionFixtures: Record<string, Record<string, unknown>> = {
+    [MessageType.OMBC_INSTRUCTION]: {
+      execution_time: executionTime, operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false
+    },
+    [MessageType.FRBC_INSTRUCTION]: {
+      actuator_id: 'act-1', operation_mode: 'mode-1', operation_mode_factor: 1, execution_time: executionTime, abnormal_condition: false
+    },
+    [MessageType.DDBC_INSTRUCTION]: {
+      execution_time: executionTime, abnormal_condition: false, actuator_id: 'act-1', operation_mode_id: 'mode-1', operation_mode_factor: 1
+    },
+    [MessageType.PEBC_INSTRUCTION]: {
+      execution_time: executionTime, abnormal_condition: false, power_constraints_id: 'pc-1',
+      power_envelopes: [{
+        id: 'env-1',
+        commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+        power_envelope_elements: [{ duration: 60000, upper_limit: 1000, lower_limit: -1000 }]
+      }]
+    },
+    [MessageType.PPBC_SCHEDULE_INSTRUCTION]: {
+      power_profile_id: 'pp-1', sequence_container_id: 'sc-1', power_sequence_id: 'ps-1', execution_time: executionTime, abnormal_condition: false
+    }
+  }
+
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     return mocks
   }
 
   it('sends InstructionStatusUpdate(ACCEPTED) after ReceptionStatus when instruction has id field', () => {
     const { session, onSend } = connectedSession()
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1', ...instructionFixtures[MessageType.OMBC_INSTRUCTION] }))
 
     const statusUpdate = onSend.mock.calls[1][0]
     expect(statusUpdate.message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
@@ -635,18 +689,22 @@ describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
 
   it('sends ReceptionStatus before InstructionStatusUpdate', () => {
     const { session, onSend } = connectedSession()
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1', ...instructionFixtures[MessageType.OMBC_INSTRUCTION] }))
 
     expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
     expect(onSend.mock.calls[1][0].message_type).toBe(MessageType.INSTRUCTION_STATUS_UPDATE)
   })
 
-  it('does not send InstructionStatusUpdate when instruction has no id field', () => {
-    const { session, onSend } = connectedSession()
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1' }))
+  it('rejects an instruction missing the required id field instead of acking it', () => {
+    // `id` is a required field on every *.Instruction schema (an RM must be able to track/ack
+    // instructions), so a schema-invalid instruction missing it is now rejected by validation
+    // before it ever reaches the ACCEPTED logic - it gets neither a ReceptionStatus ack nor an
+    // InstructionStatusUpdate.
+    const { session, onSend, onError } = connectedSession()
+    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', ...instructionFixtures[MessageType.OMBC_INSTRUCTION] }))
 
-    expect(onSend).toHaveBeenCalledTimes(1)
-    expect(onSend.mock.calls[0][0].message_type).toBe(MessageType.RECEPTION_STATUS)
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalled()
   })
 
   it('sends ACCEPTED for all instruction types that have an id field', () => {
@@ -658,7 +716,7 @@ describe('S2Session InstructionStatusUpdate - auto ACCEPTED', () => {
     ]
     for (const type of types) {
       const { session, onSend } = connectedSession()
-      session.handleMessage(raw({ message_type: type, message_id: 'msg-x', id: 'instr-x' }))
+      session.handleMessage(raw({ message_type: type, message_id: 'msg-x', id: 'instr-x', ...instructionFixtures[type] }))
       const hasStatusUpdate = onSend.mock.calls.some(
         (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE
       )
@@ -671,17 +729,27 @@ describe('S2Session ACCEPTED is not configurable off', () => {
   // The S2 spec requires an InstructionStatusUpdate for every instruction until it reaches
   // a terminal state, so ACCEPTED (unlike s2-rm-config's STARTED-only skipInstructionStatus
   // setting, tested at the s2-rm node level) cannot be suppressed on S2Session.
+  const executionTime = new Date(Date.now() + 60000).toISOString()
+
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     return mocks
   }
 
   it('always sends InstructionStatusUpdate(ACCEPTED) for an instruction with an id field', () => {
     const { session, onSend } = connectedSession()
-    session.handleMessage(raw({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-1', id: 'instr-1' }))
+    session.handleMessage(raw({
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: executionTime,
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }))
 
     const hasAccepted = onSend.mock.calls.some(
       (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE &&
@@ -695,7 +763,7 @@ describe('S2Session RevokeObject', () => {
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     mocks.onMessage.mockClear()
     return mocks
@@ -757,7 +825,7 @@ describe('S2Session sendInstructionStatus', () => {
   function connectedSession () {
     const mocks = makeSession()
     mocks.session.start()
-    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }))
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
     mocks.onSend.mockClear()
     return mocks
   }
