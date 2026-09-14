@@ -467,7 +467,8 @@ export function makePEBCPowerConstraints (input: PEBCPowerConstraintsInput): obj
     message_id: generateId(),
     id: generateId(),
     valid_from: validFrom,
-    valid_until: null,
+    // No valid_until field at all (not `null`) - per the S2 schema, its absence itself means "no
+    // determined end time"; `null` doesn't type-check as the string the schema requires.
     consequence_type: 'DEFER',
     allowed_limit_ranges: [
       { commodity_quantity: input.commodityQuantity, limit_type: 'LOWER_LIMIT', range_boundary: rangeBoundary, abnormal_condition_only: false },
