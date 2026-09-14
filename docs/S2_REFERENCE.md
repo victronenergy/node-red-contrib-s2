@@ -32,7 +32,7 @@ This package currently implements **OMBC** as RM.
 |---|---|
 | S2 standard website | https://s2standard.org/ |
 | S2 model reference docs | https://docs.s2standard.org/model-reference/reading-this-documentation/ |
-| s2-ws-json (AsyncAPI + JSON Schema) | https://github.com/flexiblepower/s2-ws-json - checked out at `~/git/s2-ws-json` |
+| s2-ws-json (AsyncAPI + JSON Schema) | https://github.com/flexiblepower/s2-json (renamed from `s2-ws-json` - GitHub redirects the old URL) - checked out locally at `~/git/s2-ws-json` |
 | s2python (CEM-side pydantic models) | https://github.com/flexiblepower/s2python - checked out at `~/git/s2-python` |
 | Venus OS D-Bus S2 Interface wiki | https://github.com/victronenergy/venus/wiki/Venus-OS-D%E2%80%90Bus-S2-Interface |
 | venus-s2-tools (sniffer + CEM CLI) | `~/git/venus-s2-tools` |
@@ -40,6 +40,13 @@ This package currently implements **OMBC** as RM.
 The `s2-ws-json` JSON schemas and `s2python` pydantic models are both authoritative sources and
 **must be consulted together** - the schemas define the wire format, but s2python adds stricter
 Python type constraints that can cause validation failures not visible in the JSON schema alone.
+
+This repo now also carries its own vendored, pinned copy of the `v0.0.2-beta`-tagged schema set at
+`src/lib/s2/s2-json-schema/` (see `VENDORED.md` there), precompiled into a runtime validator that
+`s2-rm`'s session layer and the Advanced-mode JSON editors validate against - see the
+`s2-message-validation` capability under `openspec/specs/`. Prefer that vendored copy over the live
+checkout below when checking what this package actually validates against; use the live checkout
+for researching newer/different protocol versions.
 
 Key s2-ws-json files:
 - `s2-asyncapi/s2-rm-ombc-only.yaml` - AsyncAPI spec for an RM implementing OMBC only

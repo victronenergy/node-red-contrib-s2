@@ -42,6 +42,7 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 - Multiple concurrent CEM sessions
 - Configurable RM roles (Consumer, Producer, Storage)
 - Context variable templates in serial number (e.g. `{{global.vrmId}}`)
+- S2 messages are validated against the real S2 JSON schema on both the message path (`s2-rm`) and at config-save time (`s2-ombc-config`'s Advanced/JSON mode) - a malformed message or system description is caught with a specific error instead of only failing downstream on the CEM side
 
 Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its "from CEM" output, as raw S2 messages, for you to handle in your own flow.
 
