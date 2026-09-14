@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0]
+
 ### Fixed
 
 - `s2-dbus`/`s2-resource` (`Transport: D-Bus`): a single-phase device no longer declares bogus `Ac/L1/Power`/`Ac/L3/Power` D-Bus properties for lines it doesn't have; `Ac/Power` is now always kept as the live sum of known per-phase readings; `3-phase symmetric` measurement now also populates per-phase D-Bus properties (evenly split for a scalar reading, written directly for a per-phase array).
