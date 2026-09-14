@@ -497,7 +497,7 @@
 
       <div id="s2-resource-controltypes-section">
         <div class="form-row">
-          <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM, for whatever you wire up yourself under Control type: None. (Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL automatically - nothing to pick here.)"></i></label>
+          <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM, for whatever you wire up yourself under Control type: None. (Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL automatically - nothing to pick here.) NOT_CONTROLABLE is always advertised in addition, so the CEM can always choose not to control this resource - it isn't a checkbox here."></i></label>
         </div>
         <div class="form-row s2-full-row">
           <div class="s2-control-types-container">
@@ -505,7 +505,6 @@
             <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="DEMAND_DRIVEN_BASED_CONTROL"> DDBC</label>
             <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="POWER_PROFILE_BASED_CONTROL"> PPBC</label>
             <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="POWER_ENVELOPE_BASED_CONTROL"> PEBC</label>
-            <label class="s2-checkbox-label"><input type="checkbox" class="s2-resource-ct-checkbox" value="NOT_CONTROLABLE"> Not Ctrl</label>
           </div>
         </div>
       </div>
@@ -604,7 +603,7 @@
   <p><b>Transport: WebSocket</b> dials out to a CEM using the same <b>s2-cem-config</b> node <b>s2-websocket</b> uses - pick an existing one (or create a new one) to share a single CEM connection across multiple resources. <b>Transport: D-Bus</b> registers a Venus OS D-Bus service the same way the standalone <b>s2-dbus</b> node does, using an <b>s2-dbus-config</b> node - including its power-measurement relay (feed a reading to this node's input at any time, e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code> or <code>{ payload: { values: 1500 } }</code>). <b>Transport: External</b> exposes a "to transport" output and accepts transport commands on this node's input instead, for wiring to anything else that speaks the transport-agnostic protocol.</p>
 
   <h3>Resource Manager tab</h3>
-  <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync.</p>
+  <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync. <code>NOT_CONTROLABLE</code> is always advertised in addition to whatever's configured, so a CEM can always choose not to control this resource - it isn't a checkbox here either.</p>
 
   <h3>Control Type tab</h3>
   <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is).</p>
@@ -614,4 +613,5 @@
 
   <h3>Ports</h3>
   <p>The input is always present and accepts both transport commands and control-type commands - it figures out which by shape (a <code>command</code> field means "for the RM"; anything else goes to the built-in OMBC controller, if any). With <b>Transport: External</b> and <b>Control type: None</b>, this node's ports and every message shape are identical to <b>s2-rm</b>'s.</p>
+  <p>Among the RM commands is <code>SetAvailableControlTypes</code> (<code>{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }</code>, no <code>cemId</code>): replaces the advertised control types at runtime and re-sends <code>ResourceManagerDetails</code> to every connected CEM, without redeploying (<code>NOT_CONTROLABLE</code> is always included, even if omitted). E.g. to make an OMBC resource controllable only 10:00-18:00, wire a time-window check that sends <code>{ command: 'SetAvailableControlTypes', availableControlTypes: ['OPERATION_MODE_BASED_CONTROL'] }</code> at 10:00 and <code>{ command: 'SetAvailableControlTypes', availableControlTypes: [] }</code> at 18:00.</p>
 </script>

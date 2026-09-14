@@ -58,7 +58,10 @@ export class S2ResourceManager {
 
   constructor (opts: S2ResourceManagerOptions) {
     this.opts = opts
-    this.rmDetails = opts.rmDetails
+    // Shallow-copy rather than mutate opts.rmDetails in place - availableControlTypes
+    // is updated over this instance's lifetime (see SetAvailableControlTypes), and the
+    // caller's own object shouldn't change out from under it as a side effect.
+    this.rmDetails = { ...opts.rmDetails, availableControlTypes: this.withNotControlable(opts.rmDetails.availableControlTypes) }
     this.pollIntervalMs = opts.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS
     this.isSkipInstructionStatus = opts.skipInstructionStatus === true
 
@@ -67,6 +70,15 @@ export class S2ResourceManager {
     // Poll at the configured interval: dispatch due non-PEBC instructions, prune expired entries.
     // PEBC instructions bypass this queue entirely (see onInstruction) - their timing is owned by s2-pebc.
     this.pollTimer = setInterval(() => this.pollPending(), this.pollIntervalMs).unref()
+  }
+
+  /**
+   * A CEM must always be able to select NOT_CONTROLABLE for this resource - every RM
+   * advertises it regardless of configured control types, and it cannot be removed
+   * via config or the SetAvailableControlTypes command.
+   */
+  private withNotControlable (types: string[]): string[] {
+    return types.includes(ControlType.NOT_CONTROLABLE) ? types : [...types, ControlType.NOT_CONTROLABLE]
   }
 
   private getPending (): PendingInstruction[] {
@@ -126,11 +138,16 @@ export class S2ResourceManager {
     }
   }
 
-  private createSession (cemId: string): S2Session {
-    // Resolve context variable templates at connect time (not at init)
-    const resolvedDetails = this.rmDetails.serialNumber && this.rmDetails.serialNumber.includes('{{')
+  /** Resolve context variable templates (e.g. `rmDetails.serialNumber`) against their current value. */
+  private resolveRmDetails (): RmDetails {
+    return this.rmDetails.serialNumber && this.rmDetails.serialNumber.includes('{{')
       ? { ...this.rmDetails, serialNumber: this.opts.resolveContextTemplate(this.rmDetails.serialNumber) || this.opts.nodeId }
       : this.rmDetails
+  }
+
+  private createSession (cemId: string): S2Session {
+    // Resolve context variable templates at connect time (not at init)
+    const resolvedDetails = this.resolveRmDetails()
 
     const session = new S2Session({
       cemId,
@@ -271,6 +288,23 @@ export class S2ResourceManager {
       this.pendingPEBCConstraints = constraints
       for (const session of this.sessions.values()) {
         session.setPEBCPowerConstraints(constraints)
+      }
+      done()
+      return
+    }
+
+    // SetAvailableControlTypes applies globally (all current + future sessions), so like
+    // PowerConstraints it does not require a cemId - it changes what the RM itself
+    // advertises, not something addressed to one CEM's session.
+    if (command === 'SetAvailableControlTypes') {
+      const { availableControlTypes } = msg.payload as { availableControlTypes?: string[] }
+      if (!Array.isArray(availableControlTypes)) {
+        done(new Error('SetAvailableControlTypes requires an availableControlTypes array'))
+        return
+      }
+      this.rmDetails.availableControlTypes = this.withNotControlable(availableControlTypes)
+      for (const session of this.sessions.values()) {
+        session.resendResourceManagerDetails(this.resolveRmDetails())
       }
       done()
       return

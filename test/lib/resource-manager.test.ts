@@ -176,3 +176,97 @@ describe('S2ResourceManager - close', () => {
     expect(() => rm.close()).not.toThrow()
   })
 })
+
+function rmdMessages (msgs: Msg[]): Record<string, unknown>[] {
+  return msgs
+    .map(m => (m?.payload as { message?: Record<string, unknown> } | undefined)?.message)
+    .filter((m): m is Record<string, unknown> => !!m && m.message_type === MessageType.RESOURCE_MANAGER_DETAILS)
+}
+
+describe('S2ResourceManager - available control types', () => {
+  it('always includes NOT_CONTROLABLE even when the configured list omits it', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('SetAvailableControlTypes replaces the list, re-including NOT_CONTROLABLE, and resends ResourceManagerDetails to a connected session', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, done)
+
+    expect(done).toHaveBeenCalledWith()
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd).toBeDefined()
+    expect(rmd.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('applies before any CEM connects and is reflected in the next handshake', () => {
+    const { rm, transportMsgs } = setup()
+
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['FILL_RATE_BASED_CONTROL'] } }, jest.fn())
+    expect(rmdMessages(transportMsgs).length).toBe(0)
+
+    connectAndHandshake(rm)
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('resends ResourceManagerDetails to every connected CEM', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm, 'cem-1')
+    connectAndHandshake(rm, 'cem-2')
+    transportMsgs.length = 0
+
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, jest.fn())
+
+    const resent = rmdMessages(transportMsgs)
+    expect(resent.length).toBe(2)
+    const cemIds = transportMsgs.filter(m => rmdMessages([m]).length > 0).map(m => m?.cemId)
+    expect(cemIds.sort()).toEqual(['cem-1', 'cem-2'])
+  })
+
+  it('does not force a deselect or disconnect when the CEM\'s active control type becomes unavailable', () => {
+    const { rm, transportMsgs, cemMsgs, warnings } = setup()
+    connectAndHandshake(rm)
+    rm.handleInput({
+      payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }) }
+    }, jest.fn())
+    transportMsgs.length = 0
+    cemMsgs.length = 0
+
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, jest.fn())
+
+    // Only the RMD resend happens - no S2/0/Active flip, no Disconnected event.
+    expect(transportMsgs.some(m => (m?.payload as Record<string, unknown>)?.['S2/0/Active'] !== undefined)).toBe(false)
+    expect(cemMsgs.some(m => m?.topic === 'Disconnected')).toBe(false)
+
+    // The session itself is still usable afterward.
+    const pmDone = jest.fn()
+    rm.handleInput({ payload: { command: 'PowerMeasurement', cemId: 'cem-1', values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 100 }] } }, pmDone)
+    expect(pmDone).toHaveBeenCalledWith()
+    expect(warnings.length).toBe(0)
+  })
+
+  it('resent ResourceManagerDetails carries a fresh message_id and unchanged identity/capability fields', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    const [initialRmd] = rmdMessages(transportMsgs)
+    transportMsgs.length = 0
+
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, jest.fn())
+
+    const [resentRmd] = rmdMessages(transportMsgs)
+    expect(resentRmd.message_id).not.toBe(initialRmd.message_id)
+    expect(resentRmd.resource_id).toBe(RM_DETAILS.resourceId)
+    expect(resentRmd.roles).toEqual(initialRmd.roles)
+    expect(resentRmd.instruction_processing_delay).toBe(initialRmd.instruction_processing_delay)
+    expect(resentRmd.provides_forecast).toBe(initialRmd.provides_forecast)
+    expect(resentRmd.provides_power_measurement_types).toEqual(initialRmd.provides_power_measurement_types)
+  })
+})

@@ -181,6 +181,54 @@ describe('s2-resource - RM identity', () => {
   })
 })
 
+// --- NOT_CONTROLABLE always advertised (control-type-availability change) ---
+
+describe('s2-resource - NOT_CONTROLABLE always advertised', () => {
+  function connectAndHandshake (handlers: Record<string, (...args: unknown[]) => void>): void {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1' }) } },
+      jest.fn(), jest.fn()
+    )
+  }
+
+  function findRmd (node: Record<string, unknown>): { available_control_types: string[] } | undefined {
+    const found = outputAt(node, 0).find((m) => {
+      const payload = (m as { payload?: { message?: { message_type?: string } } }).payload
+      return payload?.message?.message_type === MessageType.RESOURCE_MANAGER_DETAILS
+    }) as { payload: { message: { available_control_types: string[] } } } | undefined
+    return found?.payload.message
+  }
+
+  it('Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL and NOT_CONTROLABLE', () => {
+    // Editor's oneditsave forces controlTypes to 'OPERATION_MODE_BASED_CONTROL' when Control type: OMBC is selected.
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('Control type: None with a manual selection advertises that selection plus NOT_CONTROLABLE', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', controlTypes: 'POWER_ENVELOPE_BASED_CONTROL' })
+    connectAndHandshake(handlers)
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('a SetAvailableControlTypes command omitting NOT_CONTROLABLE still results in it being advertised', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['FILL_RATE_BASED_CONTROL'] } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+})
+
 // --- Transport (task 3.2) ---
 
 describe('s2-resource - Transport: WebSocket', () => {

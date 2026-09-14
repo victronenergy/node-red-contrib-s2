@@ -77,7 +77,7 @@ export interface S2SessionOptions {
  */
 export class S2Session {
   private readonly _cemId: string
-  private readonly _rmDetails: RmDetails | undefined
+  private _rmDetails: RmDetails | undefined
   private readonly _onSend: (msg: object) => void
   private readonly _onStateChange: (state: StateValue) => void
   private readonly _onMessage: (msg: S2IncomingMessage) => void
@@ -229,6 +229,19 @@ export class S2Session {
       return
     }
     this._send(msg)
+  }
+
+  /**
+   * Re-send ResourceManagerDetails with updated details (e.g. after available_control_types
+   * changes at runtime) - only while CONNECTED, since a session still HANDSHAKING sends its
+   * ResourceManagerDetails once the handshake completes, via the stored `_rmDetails` this
+   * also updates.
+   */
+  resendResourceManagerDetails (rmDetails: RmDetails): void {
+    this._rmDetails = rmDetails
+    if (this._state === State.CONNECTED) {
+      this._send(makeResourceManagerDetails(rmDetails))
+    }
   }
 
   /**

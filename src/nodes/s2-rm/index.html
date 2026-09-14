@@ -58,8 +58,9 @@
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload <span class="property-type">object</span></dt>
-    <dd>Command from transport or a control-type node: <code>{ command, cemId, ... }</code>. Commands: <code>Connect</code>, <code>Message</code>, <code>KeepAlive</code>, <code>PowerMeasurement</code>, <code>PowerConstraints</code>, <code>Forecast</code>, <code>Disconnect</code>, <code>InstructionStatus</code>, <code>UpdateStatus</code>, <code>SystemDescription</code>.</dd>
+    <dd>Command from transport or a control-type node: <code>{ command, cemId, ... }</code>. Commands: <code>Connect</code>, <code>Message</code>, <code>KeepAlive</code>, <code>PowerMeasurement</code>, <code>PowerConstraints</code>, <code>Forecast</code>, <code>Disconnect</code>, <code>InstructionStatus</code>, <code>UpdateStatus</code>, <code>SystemDescription</code>, <code>SetAvailableControlTypes</code>.</dd>
   </dl>
+  <p><code>SetAvailableControlTypes</code> (<code>{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }</code>, no <code>cemId</code>) replaces the advertised control types at runtime and re-sends <code>ResourceManagerDetails</code> to every connected CEM, without redeploying. <code>NOT_CONTROLABLE</code> is always included, even if omitted from the list. It replaces the full list rather than toggling one entry - e.g. to make an OMBC resource controllable only 10:00-18:00, wire a time-window check (two inject/cron triggers, or a function node checking the clock) that sends <code>{ command: 'SetAvailableControlTypes', availableControlTypes: ['OPERATION_MODE_BASED_CONTROL'] }</code> at 10:00 and <code>{ command: 'SetAvailableControlTypes', availableControlTypes: [] }</code> at 18:00 (still leaving <code>NOT_CONTROLABLE</code> advertised).</p>
   <h3>Outputs</h3>
   <ol class="node-ports">
     <li>To transport
