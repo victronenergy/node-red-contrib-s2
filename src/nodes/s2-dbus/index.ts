@@ -72,6 +72,7 @@ export = function (RED: NodeRedApp): void {
       tcpAddress: dbusConfig.tcpAddress,
       deviceType: dbusConfig.deviceType,
       nodeId: node.id,
+      customName: config.name,
       measurementType: dbusConfig.measurementType,
       nrOfPhases: dbusConfig.nrOfPhases,
       position: dbusConfig.position,

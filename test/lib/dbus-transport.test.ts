@@ -200,6 +200,30 @@ describe('S2DbusTransport - service registration', () => {
   })
 })
 
+describe('S2DbusTransport - CustomName', () => {
+  it('declares CustomName from the customName option, so the GX/VRM device list shows the node\'s own name instead of the generic product default', async () => {
+    makeTransport({ customName: 'My Boiler' }).connect()
+    await flush()
+    const [, declaration, definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, { properties: Record<string, unknown> }, Record<string, unknown>]
+    expect(declaration.properties.CustomName).toBeDefined()
+    expect(definition.CustomName).toBe('My Boiler')
+  })
+
+  it('falls back to a generic Virtual <deviceType> name when customName is omitted', async () => {
+    makeTransport({ deviceType: 'heatpump' }).connect()
+    await flush()
+    const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
+    expect(definition.CustomName).toBe('Virtual heatpump')
+  })
+
+  it('falls back to the generic name when customName is an empty string', async () => {
+    makeTransport({ customName: '' }).connect()
+    await flush()
+    const [, , definition] = mockAddVictronInterfaces.mock.calls[0] as [unknown, unknown, Record<string, unknown>]
+    expect(definition.CustomName).toBe('Virtual acload')
+  })
+})
+
 describe('S2DbusTransport - S2 handler wiring', () => {
   async function connectedTransport () {
     const transport = makeTransport()

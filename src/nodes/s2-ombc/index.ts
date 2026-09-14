@@ -28,21 +28,27 @@ interface S2OmbcNodeConfig extends NodeConfig {
  * Input:
  *   S2 "from CEM" messages, including instructions, forwarded from s2-rm as-is.
  *   ModeConfirmation (from your own flow, once hardware state is confirmed):
- *     { topic: 'ModeConfirmation', payload: { <mode ref> }, cemId?: <string> }
- *   where <mode ref> is exactly one of:
- *     id: <string>       - exact operation mode id
- *     index: <number>    - 0-based index into the configured operation modes
+ *     { topic: 'ModeConfirmation', payload: { <mode ref>, factor? }, cemId?: <string> }
+ *   where <mode ref> is any of, resolved in this priority order when more than one is given:
+ *     id: <string>       - exact operation mode id (wins over index/label)
+ *     index: <number>    - 0-based index into the configured operation modes (wins over label)
  *     label: <string>    - matches a mode's diagnostic_label (must be unique)
+ *   at least one of id/index/label is required; any other field is ignored - so a
+ *   previously-emitted ModeInstruction payload (below) can be wired straight back in as-is.
+ *   factor is optional and defaults to 1.
  *   cemId is optional: if omitted, it resolves to the one CEM currently with OMBC selected (an
  *   error if more than one), or - if none - the confirm is stored as a default status applied to
  *   whichever CEM next selects OMBC with no persisted status of its own.
- *   Legacy format (confirmedOperationModeId/Index/Label) is still accepted.
+ *   Legacy format (confirmedOperationModeId/Index/Label/operationModeFactor) is still accepted.
  *
  * Output port 1 - instructions:
- *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, commodityPower }, cemId, rawS2Message }
+ *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, commodityPower, values }, cemId, rawS2Message }
  *     commodityPower: one { commodity_quantity, value } pair per phase (L1/L2/L3, watts),
  *     derived from the mode's power_ranges and factor - the same shape S2's own
  *     PowerMeasurement/PowerRange values use.
+ *     values: the same requested power in the convenience shape PowerMeasurement input accepts
+ *     (a plain number for a 3-phase-symmetric mode, or an [L1, L2, L3] array for a per-phase
+ *     mode) - feed it straight into a PowerMeasurement input to fake a matching measurement.
  *   Non-OMBC instructions: ignored silently.
  *   ModeRequest: { topic: 'ModeRequest', payload: null, cemId }
  *

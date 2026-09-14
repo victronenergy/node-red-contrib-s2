@@ -19,6 +19,11 @@ export interface S2DbusTransportOptions {
    * long UUID and makes for an unwieldy service name. Matches node-red-contrib-victron's own
    * virtual-device services, which key off node.id the same way. */
   nodeId: string
+  /** Shown as this device's CustomName on the GX device list/VRM (which prefer it over the
+   * generic ProductName dbus-victron-virtual sets by default, e.g. "Virtual AC load") - typically
+   * the owning Node-RED node's own configured Name. Falls back to `Virtual <deviceType>` when
+   * omitted or empty, matching node-red-contrib-victron's own virtual devices' fallback. */
+  customName?: string
   /** When set (matching a key in power-measurement-cache.ts's MEASUREMENT_TYPE_TO_PROPS), the
    * corresponding property key(s) (e.g. Ac/Power) get a real starting value (0, then live-updated
    * via setMeasurementValues()) instead of the minimal-meter shape's default `null` ("unknown") -
@@ -244,6 +249,10 @@ export class S2DbusTransport extends EventEmitter {
       productType: deviceType,
       properties: {
         DeviceInstance: { type: 'i', readonly: true },
+        // Overrides dbus-victron-virtual's own generic ProductName-derived default (e.g. "Virtual
+        // AC load") with this device's actual configured name - read-only from the D-Bus side,
+        // since the Node-RED flow (not a GX-side rename) is this repo's source of truth for it.
+        CustomName: { type: 's', readonly: true },
         // Full node-red-contrib-victron-compatible "minimal meter" shape (Position, NrOfPhases,
         // per-phase Voltage/Current/Power/etc.) - see minimal-meter-properties.ts for why. Applied
         // before the measurement-tracked overrides below, so a configured measurementType's
@@ -273,6 +282,7 @@ export class S2DbusTransport extends EventEmitter {
     }
     const definition: Record<string, unknown> = {
       DeviceInstance: deviceInstance,
+      CustomName: this.opts.customName || `Virtual ${deviceType}`,
       ...minimalMeter.definition,
       'S2/0/Active': 0,
       'S2/0/Rm': '',

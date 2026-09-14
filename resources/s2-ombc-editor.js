@@ -71,16 +71,24 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     var operationModes = modes.map(function (m) {
       var powerRanges
       if (m.symmetric) {
+        var symFrom = m.modulate ? m.valueSymmetricFrom : m.valueSymmetric
+        var symTo = m.modulate ? m.valueSymmetricTo : m.valueSymmetric
         powerRanges = [{
           commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
-          start_of_range: m.valueSymmetric,
-          end_of_range: m.valueSymmetric
+          start_of_range: symFrom,
+          end_of_range: symTo
         }]
       } else {
+        var l1From = m.modulate ? m.valueL1From : m.valueL1
+        var l1To = m.modulate ? m.valueL1To : m.valueL1
+        var l2From = m.modulate ? m.valueL2From : m.valueL2
+        var l2To = m.modulate ? m.valueL2To : m.valueL2
+        var l3From = m.modulate ? m.valueL3From : m.valueL3
+        var l3To = m.modulate ? m.valueL3To : m.valueL3
         powerRanges = [
-          { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: m.valueL1, end_of_range: m.valueL1 },
-          { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: m.valueL2, end_of_range: m.valueL2 },
-          { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: m.valueL3, end_of_range: m.valueL3 }
+          { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: l1From, end_of_range: l1To },
+          { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: l2From, end_of_range: l2To },
+          { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: l3From, end_of_range: l3To }
         ]
       }
       return {
@@ -110,19 +118,22 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     }
   }
 
+  // A range's start_of_range/end_of_range may differ (a genuine, modulating power range) - only
+  // the structural shape (1 symmetric range, or 3 per-phase ranges covering exactly L1/L2/L3) is
+  // required, not that both bounds are equal.
   function isFriendlyPowerRanges (ranges) {
     if (!Array.isArray(ranges)) return false
     if (ranges.length === 1) {
       var r = ranges[0]
       return !!r && r.commodity_quantity === 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' &&
-        typeof r.start_of_range === 'number' && r.start_of_range === r.end_of_range
+        typeof r.start_of_range === 'number' && typeof r.end_of_range === 'number'
     }
     if (ranges.length === 3) {
       var byCq = {}
       for (var i = 0; i < ranges.length; i++) {
         var rr = ranges[i]
-        if (!rr || typeof rr.start_of_range !== 'number' || rr.start_of_range !== rr.end_of_range) return false
-        byCq[rr.commodity_quantity] = rr.start_of_range
+        if (!rr || typeof rr.start_of_range !== 'number' || typeof rr.end_of_range !== 'number') return false
+        byCq[rr.commodity_quantity] = true
       }
       return ('ELECTRIC.POWER.L1' in byCq) && ('ELECTRIC.POWER.L2' in byCq) && ('ELECTRIC.POWER.L3' in byCq)
     }
@@ -250,30 +261,51 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
       var minDurationSeconds = Math.floor((duration % 60000) / 1000)
       var ranges = m.power_ranges
       if (ranges.length === 1) {
+        var symModulate = ranges[0].start_of_range !== ranges[0].end_of_range
         return {
           id: m.id,
           protected: false,
           label: m.diagnostic_label || '',
           symmetric: true,
+          modulate: symModulate,
           valueSymmetric: ranges[0].start_of_range,
+          valueSymmetricFrom: ranges[0].start_of_range,
+          valueSymmetricTo: ranges[0].end_of_range,
           valueL1: 0,
           valueL2: 0,
           valueL3: 0,
+          valueL1From: 0,
+          valueL1To: 0,
+          valueL2From: 0,
+          valueL2To: 0,
+          valueL3From: 0,
+          valueL3To: 0,
           minDurationMinutes: minDurationMinutes,
           minDurationSeconds: minDurationSeconds
         }
       }
-      var byCq = {}
-      ranges.forEach(function (r) { byCq[r.commodity_quantity] = r.start_of_range })
+      var byCqFrom = {}
+      var byCqTo = {}
+      ranges.forEach(function (r) { byCqFrom[r.commodity_quantity] = r.start_of_range; byCqTo[r.commodity_quantity] = r.end_of_range })
+      var phaseModulate = ranges.some(function (r) { return r.start_of_range !== r.end_of_range })
       return {
         id: m.id,
         protected: false,
         label: m.diagnostic_label || '',
         symmetric: false,
+        modulate: phaseModulate,
         valueSymmetric: 0,
-        valueL1: byCq['ELECTRIC.POWER.L1'],
-        valueL2: byCq['ELECTRIC.POWER.L2'],
-        valueL3: byCq['ELECTRIC.POWER.L3'],
+        valueSymmetricFrom: 0,
+        valueSymmetricTo: 0,
+        valueL1: byCqFrom['ELECTRIC.POWER.L1'],
+        valueL2: byCqFrom['ELECTRIC.POWER.L2'],
+        valueL3: byCqFrom['ELECTRIC.POWER.L3'],
+        valueL1From: byCqFrom['ELECTRIC.POWER.L1'],
+        valueL1To: byCqTo['ELECTRIC.POWER.L1'],
+        valueL2From: byCqFrom['ELECTRIC.POWER.L2'],
+        valueL2To: byCqTo['ELECTRIC.POWER.L2'],
+        valueL3From: byCqFrom['ELECTRIC.POWER.L3'],
+        valueL3To: byCqTo['ELECTRIC.POWER.L3'],
         minDurationMinutes: minDurationMinutes,
         minDurationSeconds: minDurationSeconds
       }
@@ -286,10 +318,19 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
       protected: true,
       label: 'Standby/off',
       symmetric: true,
+      modulate: false,
       valueSymmetric: 0,
+      valueSymmetricFrom: 0,
+      valueSymmetricTo: 0,
       valueL1: 0,
       valueL2: 0,
-      valueL3: 0
+      valueL3: 0,
+      valueL1From: 0,
+      valueL1To: 0,
+      valueL2From: 0,
+      valueL2To: 0,
+      valueL3From: 0,
+      valueL3To: 0
     }
   }
 
@@ -316,12 +357,30 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
       .appendTo(symLabel)
     symLabel.append(' Same value on all phases')
 
+    var row2b = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    var modulateLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2b)
+    var modulateCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-modulate' })
+      .prop('checked', !!opt.modulate)
+      .appendTo(modulateLabel)
+    modulateLabel.append(' Support power modulation (a range instead of a fixed value)')
+
     var row3 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
     var symWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
     var symValue = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym', step: '1' })
       .val(opt.valueSymmetric != null ? opt.valueSymmetric : 0)
       .appendTo(symWrap)
     symWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
+
+    var symModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    symModWrap.append('From ')
+    var symFrom = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-from', step: '1' })
+      .val(opt.valueSymmetricFrom != null ? opt.valueSymmetricFrom : 0)
+      .appendTo(symModWrap)
+    symModWrap.append(' to ')
+    var symTo = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-to', step: '1' })
+      .val(opt.valueSymmetricTo != null ? opt.valueSymmetricTo : 0)
+      .appendTo(symModWrap)
+    symModWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
     var phaseWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
     // Each phase's label+input is wrapped in its own group so setActivePhase() can dim/disable
@@ -337,17 +396,35 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     var l3 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3', step: '1' }).val(opt.valueL3 || 0).appendTo(l3Group)
     phaseWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
-    function updateSymVisibility () {
-      if (symCheckbox.prop('checked')) {
-        symWrap.show()
-        phaseWrap.hide()
-      } else {
-        symWrap.hide()
-        phaseWrap.show()
-      }
+    var phaseModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    var l1ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l1' }).appendTo(phaseModWrap)
+    l1ModGroup.append('L1 ')
+    var l1From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-from', step: '1' }).val(opt.valueL1From || 0).appendTo(l1ModGroup)
+    l1ModGroup.append('–')
+    var l1To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-to', step: '1' }).val(opt.valueL1To || 0).appendTo(l1ModGroup)
+    var l2ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l2' }).appendTo(phaseModWrap)
+    l2ModGroup.append(' L2 ')
+    var l2From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-from', step: '1' }).val(opt.valueL2From || 0).appendTo(l2ModGroup)
+    l2ModGroup.append('–')
+    var l2To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-to', step: '1' }).val(opt.valueL2To || 0).appendTo(l2ModGroup)
+    var l3ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l3' }).appendTo(phaseModWrap)
+    l3ModGroup.append(' L3 ')
+    var l3From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-from', step: '1' }).val(opt.valueL3From || 0).appendTo(l3ModGroup)
+    l3ModGroup.append('–')
+    var l3To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-to', step: '1' }).val(opt.valueL3To || 0).appendTo(l3ModGroup)
+    phaseModWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
+
+    function updateValueVisibility () {
+      var isSymmetric = symCheckbox.prop('checked')
+      var isModulating = modulateCheckbox.prop('checked')
+      symWrap.toggle(isSymmetric && !isModulating)
+      symModWrap.toggle(isSymmetric && isModulating)
+      phaseWrap.toggle(!isSymmetric && !isModulating)
+      phaseModWrap.toggle(!isSymmetric && isModulating)
     }
-    symCheckbox.on('change', updateSymVisibility)
-    updateSymVisibility()
+    symCheckbox.on('change', updateValueVisibility)
+    modulateCheckbox.on('change', updateValueVisibility)
+    updateValueVisibility()
 
     var row4 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
     row4.append('Minimum time in this mode: ')
@@ -378,10 +455,19 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
         protected: !!data.protected,
         label: $item.find('.s2-ombc-mode-label').val(),
         symmetric: $item.find('.s2-ombc-mode-symmetric').prop('checked'),
+        modulate: $item.find('.s2-ombc-mode-modulate').prop('checked'),
         valueSymmetric: Number($item.find('.s2-ombc-mode-value-sym').val()) || 0,
+        valueSymmetricFrom: Number($item.find('.s2-ombc-mode-value-sym-from').val()) || 0,
+        valueSymmetricTo: Number($item.find('.s2-ombc-mode-value-sym-to').val()) || 0,
         valueL1: Number($item.find('.s2-ombc-mode-value-l1').val()) || 0,
         valueL2: Number($item.find('.s2-ombc-mode-value-l2').val()) || 0,
         valueL3: Number($item.find('.s2-ombc-mode-value-l3').val()) || 0,
+        valueL1From: Number($item.find('.s2-ombc-mode-value-l1-from').val()) || 0,
+        valueL1To: Number($item.find('.s2-ombc-mode-value-l1-to').val()) || 0,
+        valueL2From: Number($item.find('.s2-ombc-mode-value-l2-from').val()) || 0,
+        valueL2To: Number($item.find('.s2-ombc-mode-value-l2-to').val()) || 0,
+        valueL3From: Number($item.find('.s2-ombc-mode-value-l3-from').val()) || 0,
+        valueL3To: Number($item.find('.s2-ombc-mode-value-l3-to').val()) || 0,
         minDurationMinutes: Number($item.find('.s2-ombc-mode-min-duration-minutes').val()) || 0,
         minDurationSeconds: Number($item.find('.s2-ombc-mode-min-duration-seconds').val()) || 0
       })
@@ -389,16 +475,18 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     return modes
   }
 
-  // Dims and disables the per-phase L1/L2/L3 label+input group(s) that don't match
+  // Hides and disables the per-phase L1/L2/L3 label+input group(s) that don't match
   // activePhase (1, 2, or 3) across every mode row in the given editableList - for a
   // single-phase device wired to one specific line, the other two phases' fields are never
-  // actually used. Pass null/undefined for activePhase to re-enable all phases (e.g. when
-  // the device reports more than one phase, or no such constraint applies).
+  // actually used. Pass null/undefined for activePhase to re-show all phases (e.g. when
+  // the device reports more than one phase, or no such constraint applies). Hidden rather
+  // than just dimmed - with power modulation's from/to pair per phase, three dimmed-but-still-
+  // shown groups made the row too wide to read.
   function setActivePhase (listSel, activePhase) {
     $(listSel).find('.s2-ombc-mode-phase-group').each(function () {
       var $group = $(this)
       var isActive = activePhase == null || $group.hasClass('s2-ombc-mode-phase-l' + activePhase)
-      $group.toggleClass('s2-ombc-mode-phase-dimmed', !isActive)
+      $group.toggle(isActive)
       $group.find('input').prop('disabled', !isActive)
     })
   }

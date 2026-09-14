@@ -77,14 +77,16 @@ export class OMBCController {
 
   // Resolves a mode identifier from payload down to a configured mode's canonical id.
   // Accepts new format (id/index/label) and legacy format (confirmedOperationModeId/Index/Label).
+  // Priority id > index > label when more than one is present (rather than requiring exactly
+  // one), so a whole previously-emitted ModeInstruction payload - which already carries id,
+  // index, and label together - can be wired straight back in as a confirmation.
   private resolveModeIdentifier (payload: Record<string, unknown>): ModeIdResolution {
     const idField = payload.id ?? payload.confirmedOperationModeId
     const indexField = payload.index ?? payload.confirmedOperationModeIndex
     const labelField = payload.label ?? payload.confirmedOperationModeLabel
-    const providedCount = [idField, indexField, labelField].filter(v => v !== undefined).length
 
-    if (providedCount !== 1) {
-      return { error: 'Confirm message requires exactly one of id, index, or label (or legacy confirmedOperationModeId/Index/Label)' }
+    if (idField === undefined && indexField === undefined && labelField === undefined) {
+      return { error: 'Confirm message requires at least one of id, index, or label (or legacy confirmedOperationModeId/Index/Label)' }
     }
 
     const modes = (this.systemDescription.operationModes || []) as Array<Record<string, unknown>>
@@ -163,6 +165,28 @@ export class OMBCController {
     ]
   }
 
+  // Same power-ranges/factor interpolation as calculatePower(), reshaped into the `values`
+  // convenience shape PowerMeasurement input already accepts (a number for 3-phase-symmetric,
+  // an [L1, L2, L3] array for per-phase) - computed independently from the ranges rather than
+  // derived from calculatePower()'s already-per-phase-rounded output, so a symmetric mode's
+  // total isn't off by the rounding this codebase's per-phase division introduces.
+  private calculateValues (powerRanges: PowerRange[], factor: number): number | number[] {
+    const byCq = new Map<string, PowerRange>()
+    for (const r of powerRanges) byCq.set(r.commodity_quantity, r)
+
+    const sym = byCq.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
+    if (sym) {
+      return Math.round(sym.start_of_range + factor * (sym.end_of_range - sym.start_of_range))
+    }
+
+    function phaseValue (cq: string): number {
+      const r = byCq.get(cq)
+      if (!r) return 0
+      return Math.round(r.start_of_range + factor * (r.end_of_range - r.start_of_range))
+    }
+    return [phaseValue('ELECTRIC.POWER.L1'), phaseValue('ELECTRIC.POWER.L2'), phaseValue('ELECTRIC.POWER.L3')]
+  }
+
   private modeLabelOrId (modeId: string): string {
     const modes = (this.systemDescription.operationModes || []) as Array<Record<string, unknown>>
     const mode = modes.find(m => m.id === modeId)
@@ -178,10 +202,11 @@ export class OMBCController {
     const resolved = this.resolveMode(payload)
     if (resolved) {
       const commodityPower = this.calculatePower(resolved.powerRanges, resolved.factor)
+      const values = this.calculateValues(resolved.powerRanges, resolved.factor)
       this.opts.onStatus({ fill: 'green', shape: 'dot', text: resolved.label })
       this.opts.onEmitInstruction({
         topic: 'ModeInstruction',
-        payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor, commodityPower },
+        payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor, commodityPower, values },
         cemId: msg.cemId,
         rawS2Message: msg.payload
       })

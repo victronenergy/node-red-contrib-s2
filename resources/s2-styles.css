@@ -290,10 +290,6 @@
   white-space: nowrap;
 }
 
-.s2-form .s2-ombc-mode-phase-group.s2-ombc-mode-phase-dimmed {
-  opacity: 0.4;
-}
-
 .s2-form .s2-ombc-mode-protected-note {
   color: #888;
   font-size: 0.85em;

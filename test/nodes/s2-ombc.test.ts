@@ -143,6 +143,75 @@ describe('s2-ombc - instruction resolution', () => {
     expect(out.rawS2Message).toBeDefined()
   })
 
+  it('includes a 3-phase-symmetric mode\'s requested power as a plain number in values', () => {
+    const { node, handlers } = setupNode()
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction',
+      id: 'instr-values-1',
+      operation_mode_id: 'mode-on',
+      operation_mode_factor: 0.8
+    }), jest.fn(), jest.fn())
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const out = (call as unknown[][])[0][0] as { payload: { values: unknown } }
+    // start_of_range 0, end_of_range 2500, factor 0.8 -> 2000 (the true total, not
+    // 667*3=2001 - which is what reconstructing from the rounded per-phase commodityPower
+    // would give).
+    expect(out.payload.values).toBe(2000)
+  })
+
+  it('includes a per-phase mode\'s requested power as an [L1, L2, L3] array in values', () => {
+    const perPhaseConfig = {
+      systemDescription: JSON.stringify({
+        operationModes: [
+          {
+            id: 'mode-asym', diagnostic_label: 'Asymmetric', abnormal_condition_only: false,
+            power_ranges: [
+              { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: 0, end_of_range: 3000 },
+              { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: 100, end_of_range: 2000 },
+              { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: 0, end_of_range: 1000 }
+            ]
+          }
+        ],
+        transitions: [], timers: []
+      })
+    }
+    const { node, handlers } = setupNode({}, perPhaseConfig)
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction',
+      id: 'instr-values-2',
+      operation_mode_id: 'mode-asym',
+      operation_mode_factor: 0.5
+    }), jest.fn(), jest.fn())
+
+    const call = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const out = (call as unknown[][])[0][0] as { payload: { values: unknown } }
+    expect(out.payload.values).toEqual([1500, 1050, 500])
+  })
+
+  it('values matches commodityPower\'s symmetric total at factor 0 and 1', () => {
+    const { node, handlers } = setupNode()
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i-values-0', operation_mode_id: 'mode-on', operation_mode_factor: 0
+    }), jest.fn(), jest.fn())
+    const callZero = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    expect(((callZero as unknown[][])[0][0] as { payload: { values: unknown } }).payload.values).toBe(0)
+
+    ;(node.send as jest.Mock).mockClear()
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'i-values-1', operation_mode_id: 'mode-on', operation_mode_factor: 1
+    }), jest.fn(), jest.fn())
+    const callOne = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+    expect(((callOne as unknown[][])[0][0] as { payload: { values: unknown } }).payload.values).toBe(2500)
+  })
+
   it('calculates per-phase power from L1/L2/L3 power ranges', () => {
     const perPhaseConfig = {
       systemDescription: JSON.stringify({
@@ -458,16 +527,78 @@ describe('s2-ombc - confirm mode', () => {
     expect((byId!.ombc as { operationModeFactor: number }).operationModeFactor).toBe(0.5)
   })
 
-  it('rejects a confirm with zero or multiple mode identifiers', () => {
+  it('rejects a confirm with zero mode identifiers', () => {
     const { handlers } = setupNode()
 
     const doneZero = jest.fn()
     handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: undefined } }, jest.fn(), doneZero)
     expect(doneZero).toHaveBeenCalledWith(expect.any(Error))
+  })
 
-    const doneMultiple = jest.fn()
-    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on', confirmedOperationModeIndex: 0 } }, jest.fn(), doneMultiple)
-    expect(doneMultiple).toHaveBeenCalledWith(expect.any(Error))
+  it('resolves via id when id and index are both present, ignoring index', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    // index: 0 would resolve to mode-standby - id should win instead.
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on', confirmedOperationModeIndex: 0 } }, jest.fn(), jest.fn())
+
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((cmd!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+  })
+
+  it('resolves via index when index and label are both present but id is absent', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    // label: 'Standby' would resolve to mode-standby - index should win instead.
+    handlers.input({ topic: 'ModeConfirmation', payload: { index: 1, label: 'Standby' } }, jest.fn(), jest.fn())
+
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((cmd!.ombc as { activeOperationModeId: string }).activeOperationModeId).toBe('mode-on')
+  })
+
+  it('rejects an unresolvable id even when index/label are also present and would resolve', () => {
+    const { handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const done = jest.fn()
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: { id: 'mode-unknown', index: 0, label: 'Standby' } }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('accepts a whole ModeInstruction payload wired straight back in as a confirmation', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'instr-rt', operation_mode_id: 'mode-on', operation_mode_factor: 0.5
+    }), jest.fn(), jest.fn())
+    const instructionCall = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const modeInstructionPayload = (instructionCall as unknown[][])[0][0] as { payload: Record<string, unknown> }
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: modeInstructionPayload.payload }, jest.fn(), jest.fn())
+
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((cmd!.ombc as { activeOperationModeId: string, operationModeFactor: number }).activeOperationModeId).toBe('mode-on')
+    expect((cmd!.ombc as { operationModeFactor: number }).operationModeFactor).toBe(0.5)
+  })
+
+  it('defaults the operation mode factor to 1 when a confirm omits it', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: { id: 'mode-on' } }, jest.fn(), jest.fn())
+
+    const cmd = getCommandCalls(node).find(c => c.command === 'UpdateStatus')
+    expect((cmd!.ombc as { operationModeFactor: number }).operationModeFactor).toBe(1)
   })
 
   it('rejects a confirm whose confirmedOperationModeId matches no configured mode', () => {

@@ -215,12 +215,83 @@
         $('#node-input-controlType').on('change', showControlTypeSection)
         showControlTypeSection()
 
-        // Keeps the "Default mode" dropdown in sync with the mode list - it has no static
-        // options of its own since mode ids/labels only exist once the editableList is built.
+        // -- OMBC Friendly/Advanced toggle (same structure as s2-ombc-config's own) --
+
+        var currentOmbcMode = 'friendly'
+        $('#node-input-systemDescription').typedInput({ types: ['json'] })
+
+        function showOmbcFriendlySection () {
+          currentOmbcMode = 'friendly'
+          $('#s2-resource-ombc-friendly-section').show()
+          $('#s2-resource-ombc-advanced-section').hide()
+          $('#s2-resource-ombc-advanced-warning').hide()
+          $('#s2-resource-ombc-tab-friendly').addClass('s2-tab-active')
+          $('#s2-resource-ombc-tab-advanced').removeClass('s2-tab-active')
+          refreshDefaultModeOptions()
+        }
+
+        function showOmbcAdvancedSection (warningText) {
+          currentOmbcMode = 'advanced'
+          $('#s2-resource-ombc-friendly-section').hide()
+          $('#s2-resource-ombc-advanced-section').show()
+          if (warningText) {
+            $('#s2-resource-ombc-advanced-warning').text(warningText).show()
+          } else {
+            $('#s2-resource-ombc-advanced-warning').hide()
+          }
+          $('#s2-resource-ombc-tab-advanced').addClass('s2-tab-active')
+          $('#s2-resource-ombc-tab-friendly').removeClass('s2-tab-active')
+          refreshDefaultModeOptions()
+        }
+
+        $('#s2-resource-ombc-tab-advanced').on('click', function (e) {
+          e.preventDefault()
+          if (currentOmbcMode === 'advanced') return
+          var sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes(listSel))
+          $('#node-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
+          showOmbcAdvancedSection()
+        })
+
+        $('#s2-resource-ombc-tab-friendly').on('click', function (e) {
+          e.preventDefault()
+          if (currentOmbcMode === 'friendly') return
+          var rawJson = $('#node-input-systemDescription').typedInput('value')
+          var parsedJson
+          try {
+            parsedJson = JSON.parse(rawJson)
+          } catch (err) {
+            showOmbcAdvancedSection('Invalid JSON - fix it before switching to the friendly editor.')
+            return
+          }
+          if (!ombcEditor.isFriendlyRepresentable(parsedJson)) {
+            showOmbcAdvancedSection('This system description uses something only Advanced mode supports (a non-standard commodity, a blocked transition, or a timer not matching the per-mode minimum-duration pattern) - continue editing it here.')
+            return
+          }
+          $(listSel).editableList('empty')
+          ombcEditor.systemDescriptionToFriendlyState(parsedJson).forEach(function (m) {
+            $(listSel).editableList('addItem', m)
+          })
+          showOmbcFriendlySection()
+        })
+
+        // Keeps the "Default mode" dropdown in sync with the currently-active editor (friendly
+        // list, or the Advanced-mode JSON) - it has no static options of its own since mode
+        // ids/labels only exist once one of those is populated.
         function refreshDefaultModeOptions () {
           var $select = $('#node-input-defaultOperationModeId')
           var previous = $select.val()
-          var modes = ombcEditor.getFriendlyModes(listSel)
+          var modes
+          if (currentOmbcMode === 'friendly') {
+            modes = ombcEditor.getFriendlyModes(listSel)
+          } else {
+            modes = []
+            try {
+              var parsedForDropdown = JSON.parse($('#node-input-systemDescription').typedInput('value'))
+              modes = (parsedForDropdown.operationModes || []).map(function (m) {
+                return { id: m.id, label: m.diagnostic_label || m.id }
+              })
+            } catch (e) { /* leave modes empty while the JSON is invalid */ }
+          }
           $select.empty()
           $select.append($('<option/>', { value: '' }).text('None (report no status until confirmed)'))
           modes.forEach(function (m) {
@@ -235,6 +306,7 @@
             $select.val('')
           }
         }
+        $('#node-input-systemDescription').on('change', refreshDefaultModeOptions)
 
         $(listSel).css('min-height', '220px').editableList({
           addItem: function (container, index, opt) {
@@ -260,8 +332,16 @@
           ombcEditor.systemDescriptionToFriendlyState(parsed).forEach(function (m) {
             $(listSel).editableList('addItem', m)
           })
+          showOmbcFriendlySection()
+        } else if (raw) {
+          // Either valid JSON friendly mode can't represent, or (rarer - shouldn't happen via
+          // this dialog's own save path) outright invalid JSON from hand-editing the flow file -
+          // either way, show it as-is in Advanced mode rather than silently replacing it.
+          $('#node-input-systemDescription').typedInput('value', raw)
+          showOmbcAdvancedSection()
         } else {
           $(listSel).editableList('addItem', ombcEditor.defaultStandbyMode())
+          showOmbcFriendlySection()
         }
 
         window.__s2Common.initializeTooltips()
@@ -296,9 +376,14 @@
         $('.s2-resource-role-checkbox:checked').each(function () { checkedRoles.push($(this).val()) })
         $('#node-input-roles').val(checkedRoles.join(','))
 
-        if ($('#node-input-controlType').val() === 'ombc') {
+        if ($('#node-input-controlType').val() === 'ombc' && currentOmbcMode === 'friendly') {
+          // Only rebuild from friendly state while friendly mode is active - in Advanced mode,
+          // the typedInput already holds the value as edited, and Node-RED's own automatic
+          // property extraction reads systemDescription from it after this function returns
+          // (same as s2-ombc-config's own oneditsave - writing to `this.systemDescription`
+          // directly here would just be overwritten by that same automatic extraction).
           var sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes('#s2-resource-ombc-mode-list'))
-          this.systemDescription = JSON.stringify(sysDesc)
+          $('#node-input-systemDescription').typedInput('value', JSON.stringify(sysDesc))
         }
 
         this.outputs = computeOutputs(this)
@@ -475,7 +560,22 @@
       </div>
 
       <div id="s2-resource-ct-ombc">
-        <ol id="s2-resource-ombc-mode-list"></ol>
+        <div class="form-row s2-full-row">
+          <div class="s2-tabs">
+            <a href="#" id="s2-resource-ombc-tab-friendly" class="s2-tab s2-tab-active">Friendly</a>
+            <a href="#" id="s2-resource-ombc-tab-advanced" class="s2-tab">Advanced (JSON)</a>
+          </div>
+        </div>
+
+        <div id="s2-resource-ombc-friendly-section" class="form-row s2-full-row">
+          <ol id="s2-resource-ombc-mode-list"></ol>
+        </div>
+
+        <div id="s2-resource-ombc-advanced-section" class="form-row s2-full-row" style="display:none;">
+          <div id="s2-resource-ombc-advanced-warning" class="s2-ombc-advanced-warning" style="display:none;"></div>
+          <input type="text" id="node-input-systemDescription">
+        </div>
+
         <div class="form-row">
           <label for="node-input-defaultOperationModeId"><i class="fa fa-star"></i> Default mode<i class="fa fa-info-circle tooltip-icon" data-tooltip="Confirmed as this resource's status as soon as a CEM selects OMBC, unless something has already been confirmed (e.g. via a ModeConfirmation sent to this node's input). Optional - leave as 'None' to report no status until something confirms one."></i></label>
           <select id="node-input-defaultOperationModeId" style="width:70%">
@@ -507,7 +607,7 @@
   <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync.</p>
 
   <h3>Control Type tab</h3>
-  <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id | index | label }, cemId? }</code>).</p>
+  <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is).</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
   <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (on by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. With this checked, the requested mode is immediately reported back as active (<code>OMBC.Status</code>), instead of waiting for a <code>ModeConfirmation</code> from the flow - suited to a resource with no independent way to check its own hardware state. Uncheck it if your flow confirms based on real device state (e.g. after actually switching a relay), so the CEM only sees a mode reported active once it truly is.</p>
   <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>

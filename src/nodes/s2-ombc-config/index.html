@@ -74,7 +74,7 @@
             return
           }
           if (!editor.isFriendlyRepresentable(parsed)) {
-            showAdvancedSection('This system description uses something only Advanced mode supports (a genuine power range, a non-standard commodity, a blocked transition, or a timer not matching the per-mode minimum-duration pattern) - continue editing it here.')
+            showAdvancedSection('This system description uses something only Advanced mode supports (a non-standard commodity, a blocked transition, or a timer not matching the per-mode minimum-duration pattern) - continue editing it here.')
             return
           }
           $(listSel).editableList('empty')
@@ -127,7 +127,7 @@
     </div>
 
     <div class="form-row">
-      <label class="s2-section-label"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription: the operation modes this device can be in, and how it can transition between them. Sent to the CEM by s2-ombc once OMBC is the selected control type. Friendly mode covers the common case (fixed-power modes, every mode able to transition to every other, an optional per-mode minimum-duration timer); switch to Advanced for anything else - a genuine power range, a non-standard commodity, a blocked transition, or a bespoke timer."></i></label>
+      <label class="s2-section-label"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.SystemDescription: the operation modes this device can be in, and how it can transition between them. Sent to the CEM by s2-ombc once OMBC is the selected control type. Friendly mode covers the common case (fixed-power or power-modulating modes, every mode able to transition to every other, an optional per-mode minimum-duration timer); switch to Advanced for anything else - a non-standard commodity, a blocked transition, or a bespoke timer."></i></label>
     </div>
 
     <div class="form-row s2-full-row">
@@ -153,14 +153,13 @@
   <p>Configuration for <b>s2-ombc</b>: the OMBC system description (operation modes and how the device can transition between them). Sent to the CEM by <b>s2-ombc</b> once the CEM has selected Operation Mode Based Control.</p>
 
   <h3>Friendly mode</h3>
-  <p>Covers the common case: a list of operation modes, each with a diagnostic label and a fixed power level (the same value on all three phases, or a separate value per phase). Every mode is assumed able to transition to every other mode - there is no separate step to define transitions.</p>
+  <p>Covers the common case: a list of operation modes, each with a diagnostic label and a power level - a fixed value (the same on all three phases, or a separate value per phase), or, with "Support power modulation" checked, a range between a "from" and "to" value that the CEM can request anywhere along via its instructed factor (e.g. a continuously-modulating load like an AC-Thor). Every mode is assumed able to transition to every other mode - there is no separate step to define transitions.</p>
   <p>A "Standby/off" mode is always present and can't be removed from the list itself (use Advanced mode if you genuinely don't want one). Add further modes with the "add" button below the list.</p>
   <p>Each mode also has an optional "Minimum time in this mode" (minutes + seconds). When set, entering that mode starts an S2 timer that must elapse before the CEM may instruct a transition away from it again - useful for equipment (e.g. a compressor or boiler element) that must not be cycled faster than every few minutes. Leave both fields at 0 for no minimum (the default).</p>
 
   <h3>Advanced (JSON) mode</h3>
   <p>The raw <code>OMBC.SystemDescription</code> JSON (<code>operationModes</code>, <code>transitions</code>, <code>timers</code>), for anything friendly mode doesn't cover:</p>
   <ul>
-    <li>a genuine power range (a mode whose lower and upper bound differ, rather than one fixed value)</li>
     <li>a commodity quantity other than 3-phase-symmetric or per-phase L1/L2/L3</li>
     <li>blocking a specific transition, rather than every mode being able to reach every other mode</li>
     <li>a mode reachable only under abnormal conditions</li>

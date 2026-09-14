@@ -119,6 +119,10 @@ The s2-rm node emits a `PowerMeasurementStart` signal on output 1 when the CEM s
 
 `s2-dbus-config`'s "Auto-calculate energy" setting (on by default) integrates each tracked `Power` reading over time into a running `Ac/[L<n>/]Energy/Forward` total - the same approach node-red-contrib-victron's own virtual `acload`/`heatpump` devices use (forward/import energy only, no Reverse tracking).
 
+### Faking a measurement from an OMBC instruction
+
+`s2-ombc`'s (and `s2-resource`'s built-in OMBC) `ModeInstruction` output already includes `values` in this same convenience shape, derived from the resolved mode's power range and factor - useful for a resource with no independent way to measure its own power (e.g. a My-PV AC-Thor-style load controlled purely by the instructed factor): wire `ModeInstruction`'s `values` field straight into a `PowerMeasurement` input to report back exactly the power you were just told to produce, with no conversion in between.
+
 ### Direction-aware limiting with s2-pebc
 
 A PEBC power envelope can be asymmetric (different import and export bounds), but many devices only expose a single settable limit. If your `s2-pebc` node's input is also wired to your `PowerMeasurement` command (in addition to wherever else it already goes - no changes needed to what you send to `s2-rm`), it tracks your last measurement's sign and adds two fields to its active-element output:

@@ -16,11 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-dbus`/`s2-resource`: `Ac/Power` now starts at `0` like the per-phase properties it aggregates, instead of staying at the generic `null`/"unknown" placeholder for a single-phase device.
 - `s2-dbus-config`: rejecting an array `values` of the wrong length for `3-phase symmetric` now logs a warning, matching the existing per-phase rejection warnings (previously silently ignored).
 - `s2-dbus-config`: changing `Phases` away from `3` while `Power Meas.: 3-phase symmetric` is selected now immediately updates the `Power Meas.` dropdown's own displayed value in the still-open dialog, instead of only after the next redeploy.
+- `s2-resource`'s OMBC tab no longer silently discards a saved `systemDescription` it can't represent in Friendly mode (a genuine power range from before this release's modulation support, a blocked transition, a custom timer, or hand-edited JSON) - it now opens as editable raw JSON in a new Advanced (JSON) mode, the same escape hatch `s2-ombc-config` already had. **If you suspect this already happened to one of your `s2-resource` nodes** (opening and saving it silently replaced your configuration with a default "Standby/off" mode) **before this fix, that configuration cannot be recovered from within Node-RED** - check your flow's version control history or backups.
+- `s2-dbus`/`s2-resource` (`Transport: D-Bus`): the registered device's `CustomName` (what the GX device list/VRM actually display, in preference to the generic `ProductName`) now reflects the node's own configured `Name` (`s2-resource`'s `RM Name` if set, otherwise falls back to `Virtual <deviceType>`) instead of always showing the generic "Virtual AC load"/"Virtual heat pump".
 
 ### Added
 
 - `s2-dbus`/`s2-resource`: a simpler `{ payload: { values: <number | number[]> } }` input shape for power measurement, alongside the existing raw D-Bus-key shape (`{ payload: { 'Ac/Power': 1500 } }`) - see [Sending power measurements over D-Bus](README.md#sending-power-measurements-over-d-bus).
 - `s2-dbus-config`: "Auto-calculate energy" setting (on by default) - integrates power over time into `Ac/Energy/Forward` (and per-phase `Ac/L<n>/Energy/Forward`), the same approach node-red-contrib-victron's own virtual `acload`/`heatpump` devices use.
+- `s2-ombc`/`s2-resource`'s `ModeInstruction` output payload gains a `values` field, in the same convenience shape `PowerMeasurement` input already accepts - feed it straight in to report back exactly the power you were just instructed to produce, with no shape conversion needed.
+- `s2-ombc-config`'s (and `s2-resource`'s built-in OMBC) friendly operation-mode editor gains a per-mode "Support power modulation" option, for a mode whose power ranges between a "from" and "to" value (e.g. a continuously-modulating load) instead of a single fixed value - no longer requires switching to Advanced/JSON mode.
 
 ### Changed
 
@@ -32,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Breaking:** `s2-dbus-config`'s `Phases` field no longer offers `2` - S2 has no commodity quantity for a genuinely 2-phase (split-phase) device, so relaying its measurement was never really correct. Existing configs with `Phases: 2` should be reconfigured to `1` or `3`.
 - `s2-dbus`/`s2-resource` (`Power Meas.: Per phase`, `Phases: 3`): a scalar `values` input is now rejected (with a warning) instead of being broadcast to every phase - which single line a lone value belongs to was ambiguous.
 - `s2-resource`'s Resource Manager tab no longer shows the `Resource ID` field - it's still generated once and persisted unchanged across redeploys, just not something the user needs to see or edit.
+- `s2-ombc`/`s2-resource`: a `ModeConfirmation` (or legacy confirm) message may now include more than one of `id`/`index`/`label` at once, resolved by priority (`id` wins over `index`, which wins over `label`) instead of being rejected - so a previously-emitted `ModeInstruction` payload (which already carries all three, plus `factor`) can be wired straight back in as its own confirmation.
 
 ## [0.4.1]
 
