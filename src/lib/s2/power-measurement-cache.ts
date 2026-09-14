@@ -44,12 +44,14 @@ export interface PowerMeasurementUpdate {
  */
 export class PowerMeasurementCache {
   private readonly measurementType: string
+  private readonly nrOfPhases: number
   private readonly props: Record<string, string>
   private active = false
   private readonly values = new Map<string, number>()
 
   constructor (measurementType: string, nrOfPhases = 1, phaseSetting = 1) {
     this.measurementType = measurementType
+    this.nrOfPhases = nrOfPhases
     this.props = resolveMeasurementProps(measurementType, nrOfPhases, phaseSetting)
   }
 
@@ -65,6 +67,14 @@ export class PowerMeasurementCache {
     // Raw D-Bus-key shape - whatever's actually sent to S2 as an independent commodity.
     for (const key of Object.keys(this.props)) {
       if (typeof payload[key] === 'number') setValue(key, payload[key] as number)
+    }
+
+    // A single-phase device has only one line, so its wired-phase key (e.g. `Ac/L2/Power`) and
+    // the generic `Ac/Power` mean the same physical reading - accept either as raw-key input,
+    // unlike a multi-phase device where `Ac/Power` alone would be ambiguous.
+    if (this.measurementType === 'L1_L2_L3' && this.nrOfPhases === 1 && typeof payload['Ac/Power'] === 'number') {
+      const [phaseKey] = Object.keys(this.props)
+      if (phaseKey && !(phaseKey in raw)) setValue(phaseKey, payload['Ac/Power'] as number)
     }
 
     // `values` shape.

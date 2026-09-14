@@ -40,6 +40,23 @@ describe('PowerMeasurementCache - raw D-Bus-key input (unchanged shape)', () => 
     const cache = new PowerMeasurementCache('')
     expect(cache.update({ 'Ac/Power': 1500 })).toBeNull()
   })
+
+  it('accepts the generic Ac/Power key as an alias for the wired phase on a single-phase device', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
+    const update = cache.update({ 'Ac/Power': 1500 })
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 1500, 'Ac/Power': 1500 })
+  })
+
+  it('prefers the explicit wired-phase key over Ac/Power when both are present', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
+    const update = cache.update({ 'Ac/L2/Power': 10, 'Ac/Power': 999 })
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
+  })
+
+  it('does not accept the generic Ac/Power key on a multi-phase device (ambiguous)', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 3)
+    expect(cache.update({ 'Ac/Power': 1500 })).toBeNull()
+  })
 })
 
 describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 1', () => {
