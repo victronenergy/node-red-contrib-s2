@@ -32,6 +32,42 @@
           sortable: true
         })
 
+        // Advanced-mode save-time schema validation (see s2-ombc-config/index.ts, which serves
+        // the endpoint) - disables the Update button and shows a specific error while the
+        // Advanced JSON violates the real OMBC.SystemDescription schema, so an invalid
+        // systemDescription can't be saved silently. Friendly mode always produces valid JSON by
+        // construction, so the gate is only armed while Advanced mode is active.
+        var schemaValidateTimer = null
+        var schemaValidateSeq = 0
+
+        function setSchemaGate (valid, errorText) {
+          $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
+          var $err = $('#s2-ombc-schema-error')
+          if (errorText) {
+            $err.text(errorText).show()
+          } else {
+            $err.hide()
+          }
+        }
+
+        function scheduleSchemaValidation () {
+          if (currentMode !== 'advanced') {
+            setSchemaGate(true)
+            return
+          }
+          var seq = ++schemaValidateSeq
+          clearTimeout(schemaValidateTimer)
+          schemaValidateTimer = setTimeout(function () {
+            var rawJson = $('#node-config-input-systemDescription').typedInput('value')
+            editor.validateSystemDescription(rawJson, function (result) {
+              if (seq !== schemaValidateSeq) return
+              setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
+            })
+          }, 400)
+        }
+
+        $('#node-config-input-systemDescription').on('change input', scheduleSchemaValidation)
+
         function showFriendlySection () {
           currentMode = 'friendly'
           $('#s2-ombc-friendly-section').show()
@@ -39,6 +75,7 @@
           $('#s2-ombc-advanced-warning').hide()
           $('#s2-ombc-tab-friendly').addClass('s2-tab-active')
           $('#s2-ombc-tab-advanced').removeClass('s2-tab-active')
+          setSchemaGate(true)
         }
 
         function showAdvancedSection (warningText) {
@@ -52,6 +89,7 @@
           }
           $('#s2-ombc-tab-advanced').addClass('s2-tab-active')
           $('#s2-ombc-tab-friendly').removeClass('s2-tab-active')
+          scheduleSchemaValidation()
         }
 
         $('#s2-ombc-tab-advanced').on('click', function (e) {
@@ -144,6 +182,7 @@
     <div id="s2-ombc-advanced-section" class="form-row s2-full-row" style="display:none;">
       <div id="s2-ombc-advanced-warning" class="s2-ombc-advanced-warning" style="display:none;"></div>
       <input type="text" id="node-config-input-systemDescription">
+      <div id="s2-ombc-schema-error" class="s2-ombc-advanced-warning" style="display:none;"></div>
     </div>
 
   </div>
@@ -166,6 +205,7 @@
     <li>a bespoke timer - anything other than one per-mode minimum-duration timer wired symmetrically into every transition in/out of that mode (which friendly mode's own "Minimum time in this mode" field already covers)</li>
   </ul>
   <p>Switching from Friendly to Advanced converts the current modes to JSON. Switching back only works if the JSON still matches what friendly mode can represent (fixed-power modes, every mode transitioning to every other, and any timers matching the per-mode minimum-duration pattern above) - otherwise the editor stays in Advanced mode and explains why, rather than discarding anything.</p>
+  <p>While in Advanced mode, the JSON is validated against the real <code>OMBC.SystemDescription</code> S2 schema as you type - <b>Update</b> is disabled and the specific problem is shown until it's fixed.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

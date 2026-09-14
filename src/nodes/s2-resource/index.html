@@ -126,6 +126,13 @@
           $('#node-input-resourceId').val(id)
         }
 
+        var pmEnabled = node.providesPowerMeasurement === '3_PHASE_SYMMETRIC' || node.providesPowerMeasurement === 'L1_L2_L3'
+        $('#node-input-providesPowerMeasurementEnabled').prop('checked', pmEnabled)
+        $('#node-input-providesPowerMeasurement').val(pmEnabled ? node.providesPowerMeasurement : '3_PHASE_SYMMETRIC')
+        $('#node-input-providesPowerMeasurementEnabled').on('change', function () {
+          $('#s2-resource-power-meas-row').toggle($('#node-input-transport').val() !== 'dbus' && $(this).prop('checked'))
+        })
+
         function showTransportSection () {
           var t = $('#node-input-transport').val()
           $('#s2-resource-transport-websocket').toggle(t === 'websocket')
@@ -137,7 +144,8 @@
           // truth (it also determines the actual declared D-Bus properties), so showing a
           // second, independent Power Meas. picker here would just invite the two to drift out
           // of sync.
-          $('#s2-resource-power-meas-row').toggle(t !== 'dbus')
+          $('#s2-resource-power-meas-enabled-row').toggle(t !== 'dbus')
+          $('#s2-resource-power-meas-row').toggle(t !== 'dbus' && $('#node-input-providesPowerMeasurementEnabled').prop('checked'))
           $('#s2-resource-power-meas-dbus-hint').toggle(t === 'dbus')
           refreshActivePhase()
         }
@@ -220,6 +228,42 @@
         var currentOmbcMode = 'friendly'
         $('#node-input-systemDescription').typedInput({ types: ['json'] })
 
+        // Advanced-mode save-time schema validation (see s2-ombc-config/index.ts, which serves
+        // the endpoint this shares with s2-ombc-config's own editor) - disables Done and shows a
+        // specific error while the Advanced JSON violates the real OMBC.SystemDescription schema.
+        // Friendly mode always produces valid JSON by construction, so the gate is only armed
+        // while Advanced mode is active.
+        var schemaValidateTimer = null
+        var schemaValidateSeq = 0
+
+        function setSchemaGate (valid, errorText) {
+          $('#node-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
+          var $err = $('#s2-resource-ombc-schema-error')
+          if (errorText) {
+            $err.text(errorText).show()
+          } else {
+            $err.hide()
+          }
+        }
+
+        function scheduleSchemaValidation () {
+          if (currentOmbcMode !== 'advanced') {
+            setSchemaGate(true)
+            return
+          }
+          var seq = ++schemaValidateSeq
+          clearTimeout(schemaValidateTimer)
+          schemaValidateTimer = setTimeout(function () {
+            var rawJson = $('#node-input-systemDescription').typedInput('value')
+            ombcEditor.validateSystemDescription(rawJson, function (result) {
+              if (seq !== schemaValidateSeq) return
+              setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
+            })
+          }, 400)
+        }
+
+        $('#node-input-systemDescription').on('change input', scheduleSchemaValidation)
+
         function showOmbcFriendlySection () {
           currentOmbcMode = 'friendly'
           $('#s2-resource-ombc-friendly-section').show()
@@ -228,6 +272,7 @@
           $('#s2-resource-ombc-tab-friendly').addClass('s2-tab-active')
           $('#s2-resource-ombc-tab-advanced').removeClass('s2-tab-active')
           refreshDefaultModeOptions()
+          setSchemaGate(true)
         }
 
         function showOmbcAdvancedSection (warningText) {
@@ -242,6 +287,7 @@
           $('#s2-resource-ombc-tab-advanced').addClass('s2-tab-active')
           $('#s2-resource-ombc-tab-friendly').removeClass('s2-tab-active')
           refreshDefaultModeOptions()
+          scheduleSchemaValidation()
         }
 
         $('#s2-resource-ombc-tab-advanced').on('click', function (e) {
@@ -375,6 +421,10 @@
         var checkedRoles = []
         $('.s2-resource-role-checkbox:checked').each(function () { checkedRoles.push($(this).val()) })
         $('#node-input-roles').val(checkedRoles.join(','))
+
+        if (!$('#node-input-providesPowerMeasurementEnabled').prop('checked')) {
+          $('#node-input-providesPowerMeasurement').val('')
+        }
 
         if ($('#node-input-controlType').val() === 'ombc' && currentOmbcMode === 'friendly') {
           // Only rebuild from friendly state while friendly mode is active - in Advanced mode,
@@ -510,10 +560,17 @@
       </div>
       <input type="hidden" id="node-input-controlTypes">
 
+      <div class="form-row" id="s2-resource-power-meas-enabled-row">
+        <label for="node-input-providesPowerMeasurementEnabled">
+          <i class="fa fa-bolt"></i> Power Meas.
+        </label>
+        <input type="checkbox" id="node-input-providesPowerMeasurementEnabled" style="width:auto;margin-top:6px;">
+        <span style="margin-left:6px;">Provides power measurement</span>
+      </div>
+
       <div class="form-row" id="s2-resource-power-meas-row">
-        <label for="node-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Advertised power-measurement capability. With Transport: D-Bus this is set on the Connection tab's D-Bus config instead, so it can't drift out of sync with what's actually declared on D-Bus."></i></label>
+        <label for="node-input-providesPowerMeasurement">&nbsp;<i class="fa fa-info-circle tooltip-icon" data-tooltip="Advertised power-measurement capability. With Transport: D-Bus this is set on the Connection tab's D-Bus config instead, so it can't drift out of sync with what's actually declared on D-Bus."></i></label>
         <select id="node-input-providesPowerMeasurement" style="width:70%">
-          <option value="">None</option>
           <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
           <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
         </select>
@@ -573,6 +630,7 @@
         <div id="s2-resource-ombc-advanced-section" class="form-row s2-full-row" style="display:none;">
           <div id="s2-resource-ombc-advanced-warning" class="s2-ombc-advanced-warning" style="display:none;"></div>
           <input type="text" id="node-input-systemDescription">
+          <div id="s2-resource-ombc-schema-error" class="s2-ombc-advanced-warning" style="display:none;"></div>
         </div>
 
         <div class="form-row">
@@ -606,7 +664,7 @@
   <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync. <code>NOT_CONTROLABLE</code> is always advertised in addition to whatever's configured, so a CEM can always choose not to control this resource - it isn't a checkbox here either.</p>
 
   <h3>Control Type tab</h3>
-  <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is).</p>
+  <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is). While its Advanced (JSON) mode is active, the JSON is validated against the real <code>OMBC.SystemDescription</code> S2 schema as you type - <b>Done</b> is disabled and the specific problem is shown until it's fixed.</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
   <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (on by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. With this checked, the requested mode is immediately reported back as active (<code>OMBC.Status</code>), instead of waiting for a <code>ModeConfirmation</code> from the flow - suited to a resource with no independent way to check its own hardware state. Uncheck it if your flow confirms based on real device state (e.g. after actually switching a relay), so the CEM only sees a mode reported active once it truly is.</p>
   <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>

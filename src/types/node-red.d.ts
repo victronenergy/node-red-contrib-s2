@@ -83,8 +83,29 @@ export interface NodeRedComms {
   publish(topic: string, data: unknown, retain?: boolean): void
 }
 
+export interface NodeRedAdminRequest {
+  body?: unknown
+}
+
+export interface NodeRedAdminResponse {
+  json(body: unknown): void
+  status(code: number): NodeRedAdminResponse
+}
+
+export type NodeRedAdminHandler = (req: NodeRedAdminRequest, res: NodeRedAdminResponse) => void
+
+export interface NodeRedHttpAdmin {
+  post(path: string, ...handlers: NodeRedAdminHandler[]): void
+}
+
+export interface NodeRedAuth {
+  needsPermission(permission: string): NodeRedAdminHandler
+}
+
 export interface NodeRedApp {
   nodes: NodeRedNodes
   settings?: { userDir?: string }
   comms: NodeRedComms
+  httpAdmin: NodeRedHttpAdmin
+  auth: NodeRedAuth
 }

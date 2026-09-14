@@ -504,6 +504,24 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     })
   }
 
+  // Validates raw Advanced-mode systemDescription JSON against the real OMBC.SystemDescription
+  // S2 schema, server-side (the generated validator is a Node.js module and can't run in the
+  // browser without a bundler - see src/nodes/s2-ombc-config/index.ts, which registers this
+  // endpoint). callback receives { valid, errors? } - always calls back valid:true on a transport
+  // failure (offline, server restarting) so a save is never blocked by an unrelated network issue.
+  function validateSystemDescription (rawJson, callback) {
+    $.ajax({
+      url: (RED.settings.apiRootUrl || '') + 's2/validate-system-description',
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ systemDescription: rawJson })
+    }).done(function (result) {
+      callback(result)
+    }).fail(function () {
+      callback({ valid: true })
+    })
+  }
+
   return {
     generateUuid: generateUuid,
     defaultStandbyMode: defaultStandbyMode,
@@ -513,6 +531,7 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     addModeItem: addModeItem,
     getFriendlyModes: getFriendlyModes,
     setActivePhase: setActivePhase,
-    setSymmetricLock: setSymmetricLock
+    setSymmetricLock: setSymmetricLock,
+    validateSystemDescription: validateSystemDescription
   }
 })()

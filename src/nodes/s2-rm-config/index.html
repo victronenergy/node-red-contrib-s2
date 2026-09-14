@@ -60,6 +60,15 @@
         $('#node-config-input-providesPowerMeasurement').val('')
       }
 
+      var pmEnabled = this.providesPowerMeasurement === '3_PHASE_SYMMETRIC' || this.providesPowerMeasurement === 'L1_L2_L3'
+      $('#node-config-input-providesPowerMeasurementEnabled').prop('checked', pmEnabled)
+      $('#node-config-input-providesPowerMeasurement').val(pmEnabled ? this.providesPowerMeasurement : '3_PHASE_SYMMETRIC')
+      $('#s2-rm-config-power-measurement-type-row').toggle(pmEnabled)
+
+      $('#node-config-input-providesPowerMeasurementEnabled').on('change', function () {
+        $('#s2-rm-config-power-measurement-type-row').toggle($(this).prop('checked'))
+      })
+
       $('#node-config-input-skipInstructionStatus').prop('checked', this.skipInstructionStatus === true)
 
       var DEFAULT_POLL_INTERVAL = 2000
@@ -91,6 +100,10 @@
         checkedRoles.push($(this).val())
       })
       $('#node-config-input-roles').val(checkedRoles.join(','))
+
+      if (!$('#node-config-input-providesPowerMeasurementEnabled').prop('checked')) {
+        $('#node-config-input-providesPowerMeasurement').val('')
+      }
     }
   })
 </script>
@@ -140,9 +153,16 @@
     </div>
 
     <div class="form-row">
-      <label for="node-config-input-providesPowerMeasurement"><i class="fa fa-bolt"></i> Power Meas.<i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i></label>
+      <label for="node-config-input-providesPowerMeasurementEnabled">
+        <i class="fa fa-bolt"></i> Power Meas.
+      </label>
+      <input type="checkbox" id="node-config-input-providesPowerMeasurementEnabled" style="width: auto; margin-top: 6px;">
+      <span style="margin-left: 6px;">Provides power measurement</span>
+    </div>
+
+    <div class="form-row" id="s2-rm-config-power-measurement-type-row">
+      <label for="node-config-input-providesPowerMeasurement">&nbsp;<i class="fa fa-info-circle tooltip-icon" data-tooltip="Commodity quantities for power measurement. Advertised to the CEM in ResourceManagerDetails."></i></label>
       <select id="node-config-input-providesPowerMeasurement" style="width: 70%;">
-        <option value="">None</option>
         <option value="3_PHASE_SYMMETRIC">3-phase symmetric</option>
         <option value="L1_L2_L3">Per phase (L1, L2, L3)</option>
       </select>
