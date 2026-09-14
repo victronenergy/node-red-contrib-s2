@@ -19,6 +19,7 @@ import {
   makeInstructionStatusUpdate,
   parse
 } from './messages'
+import { validateS2Message } from './schema-validation'
 
 /**
  * S2 session states.
@@ -156,6 +157,12 @@ export class S2Session {
       msg = parse(raw as string, this._onError)
     }
     if (!msg) return
+
+    const validation = validateS2Message(msg)
+    if (!validation.valid) {
+      this._onError(new Error(`Incoming ${msg.message_type} failed S2 schema validation: ${(validation.errors ?? []).join('; ')}`))
+      return
+    }
 
     switch (msg.message_type) {
       case MessageType.HANDSHAKE:
@@ -305,6 +312,13 @@ export class S2Session {
    */
   private _send (msg: object): void {
     const m = msg as Record<string, unknown>
+
+    const validation = validateS2Message(msg)
+    if (!validation.valid) {
+      this._onError(new Error(`Outgoing ${String(m.message_type)} failed S2 schema validation, not sent: ${(validation.errors ?? []).join('; ')}`))
+      return
+    }
+
     if (typeof m.message_id === 'string') {
       this._sentMessages.set(m.message_id, { msg, retryCount: 0 })
     }
