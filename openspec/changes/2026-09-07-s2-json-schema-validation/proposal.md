@@ -19,6 +19,8 @@ S2 config editors (`s2-ombc-config`, `s2-pebc-config`) and the `s2-rm` message p
 ## Impact
 
 - `src/nodes/s2-ombc-config/index.html`, `src/nodes/s2-pebc-config/index.html` (Advanced-mode save-time validation)
-- `src/lib/s2/session.ts`, `src/lib/s2/messages.ts` (message-path validation, S2 protocol version handling)
-- Likely new dependency: a JSON Schema validator (e.g. `ajv`) plus either a vendored/adapted schema set or a new dependency on `s2-json` once its schema-version coverage is confirmed
-- No breaking changes intended: validation should reject payloads that are already invalid per the S2 spec, not payloads that work today
+- `src/lib/s2/session.ts` (message-path validation), `src/lib/s2/messages.ts` (a pre-existing bug the validator caught: `makePEBCPowerConstraints` sent `valid_until: null`, which the schema requires to be a string or absent - fixed to omit the field)
+- `src/lib/s2/schema-validation.ts` (new - `validateS2Message()`), `src/lib/s2/schema-validators.generated.js` (new, checked-in, generated - see `scripts/generate-schema-validators.js`), `src/lib/s2/s2-json-schema/` (new, vendored `s2-json` v0.0.2-beta schemas, build-time source only), `src/lib/s2/ajv-runtime/` (new, vendored `ajv-formats` format-check data, build-time-generated)
+- `src/nodes/s2-rm-config/index.html`, `src/nodes/s2-resource/index.html` (new "Provides power measurement" checkbox, checked by default)
+- New devDependencies: `ajv`, `ajv-formats` (used only by the generator script - not shipped to the device; see design.md's Decisions)
+- No breaking changes intended: validation should reject payloads that are already invalid per the S2 spec, not payloads that work today. Two exceptions, both already-shipped defaults changing before `1.0.0`: `s2-rm-config`/`s2-resource` newly default to "Provides power measurement" checked (previously defaulted to none), and the `valid_until: null` fix above changes `PEBC.PowerConstraints`'s exact wire shape (dropping a field that was always `null` anyway).
