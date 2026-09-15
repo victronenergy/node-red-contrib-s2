@@ -197,6 +197,8 @@ Sending `"availableControlTypes": []` is the way to temporarily make the resourc
 
 Valid values: `NOT_CONTROLABLE`, `OPERATION_MODE_BASED_CONTROL` (OMBC), `FILL_RATE_BASED_CONTROL` (FRBC), `DEMAND_DRIVEN_BASED_CONTROL` (DDBC), `POWER_PROFILE_BASED_CONTROL` (PPBC), `POWER_ENVELOPE_BASED_CONTROL` (PEBC).
 
+The node's status text always ends with a shortlist of its currently advertised control types (e.g. `CEM connected (cem-1) - OMBC,NC`), abbreviated the same way - so a `SetAvailableControlTypes` command's effect is visible immediately, whether or not a CEM is connected.
+
 ## Development
 
 ```bash

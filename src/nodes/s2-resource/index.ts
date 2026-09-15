@@ -247,11 +247,14 @@ export = function (RED: NodeRedApp): void {
         }
       },
       onStatus: (status) => {
-        if (transportReady && status.fill === 'grey' && status.text === 'waiting for CEM') {
+        // Prefix match, not equality - resource-manager.ts appends a " - <control types>"
+        // suffix (e.g. after SetAvailableControlTypes) that must survive both rewrites below.
+        if (transportReady && status.fill === 'grey' && (status.text || '').startsWith('waiting for CEM')) {
           node.status({ ...status, fill: 'green' })
-        } else if (status.text === `CEM connected (${TRANSPORT_CEM_ID})`) {
+        } else if ((status.text || '').startsWith(`CEM connected (${TRANSPORT_CEM_ID})`)) {
           const label = cemStatusLabel()
-          node.status({ ...status, text: label ? `CEM connected (${label})` : 'CEM connected' })
+          const suffix = (status.text || '').slice(`CEM connected (${TRANSPORT_CEM_ID})`.length)
+          node.status({ ...status, text: label ? `CEM connected (${label})${suffix}` : `CEM connected${suffix}` })
         } else {
           node.status(status)
         }

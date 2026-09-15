@@ -260,7 +260,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url})` })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url}) - OMBC,NC` })
   })
 
   it('shows the configured CEM config Name (over the URL) in status once connected, when set', () => {
@@ -269,7 +269,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM)' })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM) - OMBC,NC' })
   })
 
   it('forwards an outbound s2Signal Message to the WebSocket transport instead of an output port', () => {
@@ -333,7 +333,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     const statusCalls = (node.status as jest.Mock).mock.calls
     const lastStatus = statusCalls[statusCalls.length - 1][0]
-    expect(lastStatus).toEqual({ fill: 'grey', shape: 'ring', text: 'waiting for CEM' })
+    expect(lastStatus).toEqual({ fill: 'grey', shape: 'ring', text: 'waiting for CEM - OMBC,NC' })
   })
 })
 
@@ -404,7 +404,7 @@ describe('s2-resource - Transport: D-Bus', () => {
 
     mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1)' })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1) - OMBC,NC' })
   })
 
   it('forwards an outbound s2Signal Message to the D-Bus transport instead of an output port', () => {
@@ -481,7 +481,7 @@ describe('s2-resource - Transport: D-Bus', () => {
 
     const statusCalls = (node.status as jest.Mock).mock.calls
     const lastStatus = statusCalls[statusCalls.length - 1][0]
-    expect(lastStatus).toEqual({ fill: 'green', shape: 'ring', text: 'waiting for CEM' })
+    expect(lastStatus).toEqual({ fill: 'green', shape: 'ring', text: 'waiting for CEM - OMBC,NC' })
   })
 })
 

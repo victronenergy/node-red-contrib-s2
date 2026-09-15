@@ -194,7 +194,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
     ;(node.status as jest.Mock).mockClear()
     jest.advanceTimersByTime(5000)
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'green', text: 'CEM connected (cem-1)' }))
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'green', text: 'CEM connected (cem-1) - OMBC,NC' }))
   })
 
   it('does not set yellow status for OK ReceptionStatus', () => {

@@ -14,6 +14,17 @@ const PENDING_INSTRUCTIONS_KEY = 's2PendingInstructions'
 const PRUNE_GRACE_MS = 3_600_000 // 1 hour grace before an instruction is pruned
 const DEFAULT_POLL_INTERVAL_MS = 2000
 
+// Short status-bar labels for each advertised control type, so node.status can show what's
+// currently controllable (e.g. after SetAvailableControlTypes) without truncating a full name.
+const CONTROL_TYPE_ABBREVIATIONS: Record<string, string> = {
+  [ControlType.NOT_CONTROLABLE]: 'NC',
+  [ControlType.OMBC]: 'OMBC',
+  [ControlType.FRBC]: 'FRBC',
+  [ControlType.DDBC]: 'DDBC',
+  [ControlType.PPBC]: 'PPBC',
+  [ControlType.PEBC]: 'PEBC'
+}
+
 export interface S2ResourceManagerOptions {
   rmDetails: RmDetails
   nodeId: string
@@ -65,7 +76,7 @@ export class S2ResourceManager {
     this.pollIntervalMs = opts.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS
     this.isSkipInstructionStatus = opts.skipInstructionStatus === true
 
-    this.opts.onStatus({ fill: 'grey', shape: 'ring', text: 'waiting for CEM' })
+    this.updateStatus()
 
     // Poll at the configured interval: dispatch due non-PEBC instructions, prune expired entries.
     // PEBC instructions bypass this queue entirely (see onInstruction) - their timing is owned by s2-pebc.
@@ -126,15 +137,21 @@ export class S2ResourceManager {
   // S2 is a 1:1 CEM<->RM relationship, so the common case (one session) gets a
   // singular status naming the connected CEM. Multiple concurrent sessions are
   // technically possible (the map is keyed by cemId), so that case still shows a count.
+  //
+  // The currently-advertised control types are appended as a suffix (rather than woven into
+  // the sentence) so SetAvailableControlTypes' effect is visible in node.status without
+  // disturbing the fixed prefixes ('waiting for CEM'/'CEM connected (...)') that callers
+  // (e.g. s2-resource's onStatus wrapper, see TRANSPORT_CEM_ID substitution) match on.
   private updateStatus (): void {
     const count = this.sessions.size
+    const suffix = ` - ${this.rmDetails.availableControlTypes.map(t => CONTROL_TYPE_ABBREVIATIONS[t] || t).join(',')}`
     if (count === 0) {
-      this.opts.onStatus({ fill: 'grey', shape: 'ring', text: 'waiting for CEM' })
+      this.opts.onStatus({ fill: 'grey', shape: 'ring', text: `waiting for CEM${suffix}` })
     } else if (count === 1) {
       const [cemId] = this.sessions.keys()
-      this.opts.onStatus({ fill: 'green', shape: 'dot', text: `CEM connected (${cemId})` })
+      this.opts.onStatus({ fill: 'green', shape: 'dot', text: `CEM connected (${cemId})${suffix}` })
     } else {
-      this.opts.onStatus({ fill: 'green', shape: 'dot', text: `${count} CEMs connected` })
+      this.opts.onStatus({ fill: 'green', shape: 'dot', text: `${count} CEMs connected${suffix}` })
     }
   }
 
@@ -306,6 +323,7 @@ export class S2ResourceManager {
       for (const session of this.sessions.values()) {
         session.resendResourceManagerDetails(this.resolveRmDetails())
       }
+      this.updateStatus()
       done()
       return
     }
