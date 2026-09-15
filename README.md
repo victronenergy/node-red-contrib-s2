@@ -176,6 +176,27 @@ If a `s2-pebc` node is present, inject this into its input instead of directly i
 
 Constraints are stored at the node level and automatically (re-)sent whenever a CEM selects PEBC.
 
+## Updating available control types at runtime
+
+Every RM (`s2-rm` and `s2-resource` alike) always advertises `NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` - a CEM can always choose "don't control this resource", and this can't be turned off. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
+
+To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - inject a `SetAvailableControlTypes` command into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`:
+
+```json
+{
+  "payload": {
+    "command": "SetAvailableControlTypes",
+    "availableControlTypes": ["OPERATION_MODE_BASED_CONTROL"]
+  }
+}
+```
+
+This replaces the full advertised list (`NOT_CONTROLABLE` is re-added automatically if omitted) and immediately re-sends `ResourceManagerDetails` to every currently connected CEM, with a fresh `message_id`. Wire your own trigger (an inject/cron node, or a time-window check) to send this command - there's no built-in scheduler. If a CEM's currently-selected control type drops out of the new list, its session is left alone (no forced deselect or disconnect) - only the resend happens.
+
+Sending `"availableControlTypes": []` is the way to temporarily make the resource entirely uncontrollable (e.g. outside the 10:00-18:00 window above) - since `NOT_CONTROLABLE` is always re-added, the CEM is left with only that choice.
+
+Valid values: `NOT_CONTROLABLE`, `OPERATION_MODE_BASED_CONTROL` (OMBC), `FILL_RATE_BASED_CONTROL` (FRBC), `DEMAND_DRIVEN_BASED_CONTROL` (DDBC), `POWER_PROFILE_BASED_CONTROL` (PPBC), `POWER_ENVELOPE_BASED_CONTROL` (PEBC).
+
 ## Development
 
 ```bash
