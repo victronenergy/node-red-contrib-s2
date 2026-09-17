@@ -178,9 +178,9 @@ Constraints are stored at the node level and automatically (re-)sent whenever a 
 
 ## Updating available control types at runtime
 
-Every RM (`s2-rm` and `s2-resource` alike) always advertises `NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` - a CEM can always choose "don't control this resource", and this can't be turned off. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
+`NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` is opt-out: `s2-rm-config`'s and `s2-resource`'s control-types checklist has a "Not Ctrl" checkbox, checked by default for newly created nodes, so a CEM can choose "don't control this resource" unless you explicitly uncheck it. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
 
-To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - inject a `SetAvailableControlTypes` command into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`:
+To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - inject a `SetAvailableControlTypes` command into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`. It takes either a full replacement list:
 
 ```json
 {
@@ -191,13 +191,24 @@ To change what's currently controllable without redeploying - e.g. making an OMB
 }
 ```
 
-This replaces the full advertised list (`NOT_CONTROLABLE` is re-added automatically if omitted) and immediately re-sends `ResourceManagerDetails` to every currently connected CEM, with a fresh `message_id`. Wire your own trigger (an inject/cron node, or a time-window check) to send this command - there's no built-in scheduler. If a CEM's currently-selected control type drops out of the new list, its session is left alone (no forced deselect or disconnect) - only the resend happens.
+or an `isControllable` toggle for the common on/off case:
 
-Sending `"availableControlTypes": []` is the way to temporarily make the resource entirely uncontrollable (e.g. outside the 10:00-18:00 window above) - since `NOT_CONTROLABLE` is always re-added, the CEM is left with only that choice.
+```json
+{
+  "payload": {
+    "command": "SetAvailableControlTypes",
+    "isControllable": false
+  }
+}
+```
+
+The list form replaces the full advertised list verbatim - `NOT_CONTROLABLE` is only included if you put it in the list yourself. `isControllable: false` replaces the list with exactly `["NOT_CONTROLABLE"]`; `isControllable: true` restores the list to whatever was configured at deploy time (the node's own control-types config, including whether its "Not Ctrl" checkbox was checked), discarding any narrowing currently in effect. A payload must specify exactly one of `availableControlTypes` or `isControllable` - both, or neither, is rejected. Either form immediately re-sends `ResourceManagerDetails` to every currently connected CEM, with a fresh `message_id`. Wire your own trigger (an inject/cron node, or a time-window check) to send this command - there's no built-in scheduler. If a CEM's currently-selected control type drops out of the new list, its session is left alone (no forced deselect or disconnect) - only the resend happens.
+
+`isControllable: false` is the recommended way to temporarily make a resource entirely uncontrollable (e.g. outside the 10:00-18:00 window above) without relying on list contents. Sending `"availableControlTypes": []` still works too - taken literally, it advertises no selectable control types at all (not even `NOT_CONTROLABLE` unless you include it).
 
 Valid values: `NOT_CONTROLABLE`, `OPERATION_MODE_BASED_CONTROL` (OMBC), `FILL_RATE_BASED_CONTROL` (FRBC), `DEMAND_DRIVEN_BASED_CONTROL` (DDBC), `POWER_PROFILE_BASED_CONTROL` (PPBC), `POWER_ENVELOPE_BASED_CONTROL` (PEBC).
 
-The node's status text always ends with a shortlist of its currently advertised control types (e.g. `CEM connected (cem-1) - OMBC,NC`), abbreviated the same way - so a `SetAvailableControlTypes` command's effect is visible immediately, whether or not a CEM is connected.
+The node's status text always ends with a shortlist of its currently advertised control types (e.g. `CEM connected (cem-1) - NC,OMBC`, where `NC` is short for `NOT_CONTROLABLE` and always sorts first when present), abbreviated the same way - so a `SetAvailableControlTypes` command's effect is visible immediately, whether or not a CEM is connected.
 
 ## Development
 

@@ -3,6 +3,11 @@
 <script type="text/javascript">
   (function () {
     var ombcEditor = window.__s2OmbcEditor
+    // Shared across oneditprepare/oneditsave (siblings in the same registerType closure, not
+    // nested functions) - oneditprepare always resets this at the start of each edit session
+    // before oneditsave can read it, so one shared variable is safe despite the closure being
+    // reused across every node instance's edit sessions (only one tray is ever open at a time).
+    var currentOmbcMode = 'friendly'
 
     function computeOutputs (node) {
       // "to transport" (only when Transport: External) + "downstream" (always present).
@@ -19,7 +24,7 @@
         rmName: { value: '' },
         resourceId: { value: '' },
         roles: { value: 'ENERGY_CONSUMER' },
-        controlTypes: { value: 'OPERATION_MODE_BASED_CONTROL' },
+        controlTypes: { value: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL' },
         providesPowerMeasurement: { value: '3_PHASE_SYMMETRIC' },
         providesForecast: { value: false },
         manufacturer: { value: 'Custom (Node-RED)' },
@@ -215,6 +220,10 @@
 
         // -- Control Type tab --
 
+        // Not Controllable applies regardless of Control type (OMBC or None) - unlike the rest of the
+        // manual control-types list, which only matters for Control type: None.
+        $('#node-input-notControlable').prop('checked', savedCt.indexOf('NOT_CONTROLABLE') !== -1)
+
         function showControlTypeSection () {
           var t = $('#node-input-controlType').val()
           $('#s2-resource-ct-ombc').toggle(t === 'ombc')
@@ -225,7 +234,7 @@
 
         // -- OMBC Friendly/Advanced toggle (same structure as s2-ombc-config's own) --
 
-        var currentOmbcMode = 'friendly'
+        currentOmbcMode = 'friendly'
         $('#node-input-systemDescription').typedInput({ types: ['json'] })
 
         // Advanced-mode save-time schema validation (see s2-ombc-config/index.ts, which serves
@@ -408,14 +417,21 @@
         }, 280)
       },
       oneditsave: function () {
+        var notControlable = $('#node-input-notControlable').prop('checked')
+        // Writes into the (hidden) #node-input-controlTypes field itself, not this.controlTypes
+        // directly - Node-RED's own automatic property extraction runs after oneditsave and
+        // reads this field, which would otherwise silently overwrite a direct assignment here
+        // (same reasoning as the systemDescription handling below).
         if ($('#node-input-controlType').val() === 'ombc') {
           // Already chosen on the Control Type tab - advertise it directly rather than reading
-          // the (hidden) Control Types checkboxes.
-          this.controlTypes = 'OPERATION_MODE_BASED_CONTROL'
+          // the (hidden) Control Types checkboxes. NOT_CONTROLABLE sorts first when checked.
+          $('#node-input-controlTypes').val(notControlable ? 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL' : 'OPERATION_MODE_BASED_CONTROL')
         } else {
           var checkedCt = []
           $('.s2-resource-ct-checkbox:checked').each(function () { checkedCt.push($(this).val()) })
-          this.controlTypes = checkedCt.join(',')
+          // NOT_CONTROLABLE sorts first when checked, regardless of the manual list's own order.
+          if (notControlable) checkedCt.unshift('NOT_CONTROLABLE')
+          $('#node-input-controlTypes').val(checkedCt.join(','))
         }
 
         var checkedRoles = []
@@ -547,7 +563,7 @@
 
       <div id="s2-resource-controltypes-section">
         <div class="form-row">
-          <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM, for whatever you wire up yourself under Control type: None. (Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL automatically - nothing to pick here.) NOT_CONTROLABLE is always advertised in addition, so the CEM can always choose not to control this resource - it isn't a checkbox here."></i></label>
+          <label class="s2-section-label"><i class="fa fa-sliders"></i> Control Types<i class="fa fa-info-circle tooltip-icon" data-tooltip="S2 control types advertised to the CEM, for whatever you wire up yourself under Control type: None. (Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL automatically - nothing to pick here.)"></i></label>
         </div>
         <div class="form-row s2-full-row">
           <div class="s2-control-types-container">
@@ -615,6 +631,10 @@
         </select>
       </div>
 
+      <div class="form-row s2-full-row">
+        <label class="s2-checkbox-label"><input type="checkbox" id="node-input-notControlable"> Not Controllable <i class="fa fa-info-circle tooltip-icon" data-tooltip="Advertises NOT_CONTROLABLE, so the CEM can choose not to control this resource. Checked by default; applies regardless of Control type (OMBC or None)."></i></label>
+      </div>
+
       <div id="s2-resource-ct-ombc">
         <div class="form-row s2-full-row">
           <div class="s2-tabs">
@@ -661,9 +681,10 @@
   <p><b>Transport: WebSocket</b> dials out to a CEM using the same <b>s2-cem-config</b> node <b>s2-websocket</b> uses - pick an existing one (or create a new one) to share a single CEM connection across multiple resources. <b>Transport: D-Bus</b> registers a Venus OS D-Bus service the same way the standalone <b>s2-dbus</b> node does, using an <b>s2-dbus-config</b> node - including its power-measurement relay (feed a reading to this node's input at any time, e.g. <code>{ payload: { 'Ac/Power': 1500 } }</code> or <code>{ payload: { values: 1500 } }</code>). <b>Transport: External</b> exposes a "to transport" output and accepts transport commands on this node's input instead, for wiring to anything else that speaks the transport-agnostic protocol.</p>
 
   <h3>Resource Manager tab</h3>
-  <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync. Otherwise, <b>Provides power measurement</b> (checked by default) reveals a 3-phase-symmetric/per-phase type selector; uncheck it for a resource that genuinely provides none. <code>NOT_CONTROLABLE</code> is always advertised in addition to whatever's configured, so a CEM can always choose not to control this resource - it isn't a checkbox here either.</p>
+  <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync. Otherwise, <b>Provides power measurement</b> (checked by default) reveals a 3-phase-symmetric/per-phase type selector; uncheck it for a resource that genuinely provides none. (<code>NOT_CONTROLABLE</code> is a separate checkbox on the Control Type tab, since it applies regardless of Control type.)</p>
 
   <h3>Control Type tab</h3>
+  <p><b>Not Controllable</b> (checked by default, applies regardless of Control type) advertises <code>NOT_CONTROLABLE</code>, so the CEM can choose not to control this resource - uncheck it if that choice should never be offered.</p>
   <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is). While its Advanced (JSON) mode is active, the JSON is validated against the real <code>OMBC.SystemDescription</code> S2 schema as you type - <b>Done</b> is disabled and the specific problem is shown until it's fixed.</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
   <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (on by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. With this checked, the requested mode is immediately reported back as active (<code>OMBC.Status</code>), instead of waiting for a <code>ModeConfirmation</code> from the flow - suited to a resource with no independent way to check its own hardware state. Uncheck it if your flow confirms based on real device state (e.g. after actually switching a relay), so the CEM only sees a mode reported active once it truly is.</p>
@@ -671,5 +692,5 @@
 
   <h3>Ports</h3>
   <p>The input is always present and accepts both transport commands and control-type commands - it figures out which by shape (a <code>command</code> field means "for the RM"; anything else goes to the built-in OMBC controller, if any). With <b>Transport: External</b> and <b>Control type: None</b>, this node's ports and every message shape are identical to <b>s2-rm</b>'s.</p>
-  <p>Among the RM commands is <code>SetAvailableControlTypes</code> (<code>{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }</code>, no <code>cemId</code>): replaces the advertised control types at runtime and re-sends <code>ResourceManagerDetails</code> to every connected CEM, without redeploying (<code>NOT_CONTROLABLE</code> is always included, even if omitted). E.g. to make an OMBC resource controllable only 10:00-18:00, wire a time-window check that sends <code>{ command: 'SetAvailableControlTypes', availableControlTypes: ['OPERATION_MODE_BASED_CONTROL'] }</code> at 10:00 and <code>{ command: 'SetAvailableControlTypes', availableControlTypes: [] }</code> at 18:00.</p>
+  <p>Among the RM commands is <code>SetAvailableControlTypes</code>, which replaces the advertised control types at runtime and re-sends <code>ResourceManagerDetails</code> to every connected CEM, without redeploying. It takes either a full replacement list (<code>{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }</code>, no <code>NOT_CONTROLABLE</code> added automatically - include it explicitly if you want it advertised) or an <code>isControllable</code> toggle (<code>{ command: 'SetAvailableControlTypes', isControllable: false }</code> advertises only <code>NOT_CONTROLABLE</code>; <code>isControllable: true</code> restores the deploy-time configured list). No <code>cemId</code> in either form. E.g. to make an OMBC resource controllable only 10:00-18:00, wire a time-window check that sends <code>{ command: 'SetAvailableControlTypes', isControllable: true }</code> at 10:00 and <code>{ command: 'SetAvailableControlTypes', isControllable: false }</code> at 18:00.</p>
 </script>

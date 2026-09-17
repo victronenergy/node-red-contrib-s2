@@ -20,9 +20,9 @@ import generatedValidators from './schema-validators.generated'
  * prose documentation and are suspected schema-authoring defects (unconfirmed with upstream as of
  * this writing) - see specs/s2-message-validation/spec.md's "Known upstream schema discrepancies
  * do not block valid messages" requirement:
- *  - maxItems: 5 on available_control_types - s2-rm-protocol's "NOT_CONTROLABLE is always
- *    advertised" guarantee means a resource with all 5 real control types selected legally
- *    advertises 6 entries.
+ *  - maxItems: 5 on available_control_types - the S2 ControlType enum itself has 6 values (5
+ *    real control types plus NOT_CONTROLABLE), so a resource legitimately advertising all 6
+ *    exceeds this cap regardless of how NOT_CONTROLABLE ends up in the list.
  *  - minItems: 1 on provides_power_measurement_types - a resource with "Provides power
  *    measurement" unchecked legally advertises an empty array.
  * Both are treated as advisory (logged, not enforced) rather than blocking the message.

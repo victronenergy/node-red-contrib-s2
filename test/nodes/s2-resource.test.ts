@@ -181,9 +181,9 @@ describe('s2-resource - RM identity', () => {
   })
 })
 
-// --- NOT_CONTROLABLE always advertised (control-type-availability change) ---
+// --- NOT_CONTROLABLE opt-out via the "Not Ctrl" checkbox (control-type-availability-opt-in change) ---
 
-describe('s2-resource - NOT_CONTROLABLE always advertised', () => {
+describe('s2-resource - NOT_CONTROLABLE opt-out', () => {
   function connectAndHandshake (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
     handlers.input(
@@ -200,32 +200,59 @@ describe('s2-resource - NOT_CONTROLABLE always advertised', () => {
     return found?.payload.message
   }
 
-  it('Control type: OMBC advertises OPERATION_MODE_BASED_CONTROL and NOT_CONTROLABLE', () => {
-    // Editor's oneditsave forces controlTypes to 'OPERATION_MODE_BASED_CONTROL' when Control type: OMBC is selected.
+  it('Control type: OMBC, checkbox checked (default), advertises OPERATION_MODE_BASED_CONTROL and NOT_CONTROLABLE', () => {
+    // Editor's oneditsave unions the checkbox into 'OPERATION_MODE_BASED_CONTROL' when Control type: OMBC is selected.
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE', 'OPERATION_MODE_BASED_CONTROL'])
+  })
+
+  it('Control type: OMBC, checkbox unchecked, omits NOT_CONTROLABLE', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
     connectAndHandshake(handlers)
 
     const rmd = findRmd(node)
-    expect(rmd?.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd?.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL'])
   })
 
-  it('Control type: None with a manual selection advertises that selection plus NOT_CONTROLABLE', () => {
+  it('Control type: None, checkbox checked, advertises the manual selection plus NOT_CONTROLABLE', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', controlTypes: 'NOT_CONTROLABLE,POWER_ENVELOPE_BASED_CONTROL' })
+    connectAndHandshake(handlers)
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE', 'POWER_ENVELOPE_BASED_CONTROL'])
+  })
+
+  it('Control type: None, checkbox unchecked, omits NOT_CONTROLABLE', () => {
     const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', controlTypes: 'POWER_ENVELOPE_BASED_CONTROL' })
     connectAndHandshake(handlers)
 
     const rmd = findRmd(node)
-    expect(rmd?.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd?.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL'])
   })
 
-  it('a SetAvailableControlTypes command omitting NOT_CONTROLABLE still results in it being advertised', () => {
-    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
+  it('a SetAvailableControlTypes command omitting NOT_CONTROLABLE no longer results in it being advertised', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', controlTypes: 'NOT_CONTROLABLE,POWER_ENVELOPE_BASED_CONTROL' })
     connectAndHandshake(handlers)
     ;(node.send as jest.Mock).mockClear()
 
     handlers.input({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['FILL_RATE_BASED_CONTROL'] } }, jest.fn(), jest.fn())
 
     const rmd = findRmd(node)
-    expect(rmd?.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd?.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL'])
+  })
+
+  it('a SetAvailableControlTypes isControllable: false command advertises exactly NOT_CONTROLABLE', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', controlTypes: 'NOT_CONTROLABLE,POWER_ENVELOPE_BASED_CONTROL' })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ payload: { command: 'SetAvailableControlTypes', isControllable: false } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
   })
 })
 
@@ -260,7 +287,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url}) - OMBC,NC` })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: `CEM connected (${DEFAULT_CEM_CONFIG.url}) - OMBC` })
   })
 
   it('shows the configured CEM config Name (over the URL) in status once connected, when set', () => {
@@ -269,7 +296,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     mockTransport.emit('message', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM) - OMBC,NC' })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (My CEM) - OMBC' })
   })
 
   it('forwards an outbound s2Signal Message to the WebSocket transport instead of an output port', () => {
@@ -333,7 +360,7 @@ describe('s2-resource - Transport: WebSocket', () => {
 
     const statusCalls = (node.status as jest.Mock).mock.calls
     const lastStatus = statusCalls[statusCalls.length - 1][0]
-    expect(lastStatus).toEqual({ fill: 'grey', shape: 'ring', text: 'waiting for CEM - OMBC,NC' })
+    expect(lastStatus).toEqual({ fill: 'grey', shape: 'ring', text: 'waiting for CEM - OMBC' })
   })
 })
 
@@ -404,7 +431,7 @@ describe('s2-resource - Transport: D-Bus', () => {
 
     mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1) - OMBC,NC' })
+    expect(node.status as jest.Mock).toHaveBeenCalledWith({ fill: 'green', shape: 'dot', text: 'CEM connected (dbus-cem-1) - OMBC' })
   })
 
   it('forwards an outbound s2Signal Message to the D-Bus transport instead of an output port', () => {
@@ -481,7 +508,7 @@ describe('s2-resource - Transport: D-Bus', () => {
 
     const statusCalls = (node.status as jest.Mock).mock.calls
     const lastStatus = statusCalls[statusCalls.length - 1][0]
-    expect(lastStatus).toEqual({ fill: 'green', shape: 'ring', text: 'waiting for CEM - OMBC,NC' })
+    expect(lastStatus).toEqual({ fill: 'green', shape: 'ring', text: 'waiting for CEM - OMBC' })
   })
 })
 

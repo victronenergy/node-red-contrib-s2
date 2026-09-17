@@ -76,7 +76,7 @@ describe('s2-rm - config node reference', () => {
     expect(rmd.payload.message.manufacturer).toBe(DEFAULT_RM_CONFIG.manufacturer)
     expect(rmd.payload.message.model).toBe(DEFAULT_RM_CONFIG.model)
     expect(rmd.payload.message.firmware_version).toBe(DEFAULT_RM_CONFIG.firmwareVersion)
-    expect(rmd.payload.message.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd.payload.message.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL'])
   })
 
   it('sets error status and does not register input handler when s2-rm-config is missing', () => {
@@ -194,7 +194,7 @@ describe('s2-rm - TEMPORARY_ERROR handling', () => {
     ;(node.status as jest.Mock).mockClear()
     jest.advanceTimersByTime(5000)
 
-    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'green', text: 'CEM connected (cem-1) - OMBC,NC' }))
+    expect(node.status as jest.Mock).toHaveBeenCalledWith(expect.objectContaining({ fill: 'green', text: 'CEM connected (cem-1) - OMBC' }))
   })
 
   it('does not set yellow status for OK ReceptionStatus', () => {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** Reverses the `[0.7.0]` change below - `NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` is opt-out again, not forced. `s2-rm-config`'s and `s2-resource`'s control-types lists get their "Not Controllable" checkbox back (checked by default for newly created nodes), and `SetAvailableControlTypes`'s list form no longer re-adds `NOT_CONTROLABLE` if omitted - it now also accepts an `isControllable: true`/`false` shortcut for the common on/off case. When checked, `NOT_CONTROLABLE` always sorts first in the configured list (and its `NC` status-bar abbreviation always appears first too), regardless of the checkbox's own position in the list. **If you rely on the previous guarantee** (a flow deployed since `[0.7.0]`, with no "Not Controllable" checkbox to check because it didn't exist yet), open that node's `s2-rm-config`/`s2-resource` dialog and check "Not Controllable" before your next redeploy - there is no automatic migration, since a persisted config with `NOT_CONTROLABLE` omitted looks identical whether it was never checked or predates the checkbox entirely.
+
 ## [0.7.0]
 
 ### Fixed

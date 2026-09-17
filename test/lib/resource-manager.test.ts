@@ -193,15 +193,15 @@ function rmdMessages (msgs: Msg[]): Record<string, unknown>[] {
 }
 
 describe('S2ResourceManager - available control types', () => {
-  it('always includes NOT_CONTROLABLE even when the configured list omits it', () => {
+  it('does not add NOT_CONTROLABLE when the configured list omits it', () => {
     const { rm, transportMsgs } = setup()
     connectAndHandshake(rm)
 
     const [rmd] = rmdMessages(transportMsgs)
-    expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL'])
   })
 
-  it('SetAvailableControlTypes replaces the list, re-including NOT_CONTROLABLE, and resends ResourceManagerDetails to a connected session', () => {
+  it('SetAvailableControlTypes replaces the list verbatim (no NOT_CONTROLABLE added) and resends ResourceManagerDetails to a connected session', () => {
     const { rm, transportMsgs } = setup()
     connectAndHandshake(rm)
     transportMsgs.length = 0
@@ -212,7 +212,7 @@ describe('S2ResourceManager - available control types', () => {
     expect(done).toHaveBeenCalledWith()
     const [rmd] = rmdMessages(transportMsgs)
     expect(rmd).toBeDefined()
-    expect(rmd.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL'])
   })
 
   it('applies before any CEM connects and is reflected in the next handshake', () => {
@@ -223,7 +223,60 @@ describe('S2ResourceManager - available control types', () => {
 
     connectAndHandshake(rm)
     const [rmd] = rmdMessages(transportMsgs)
-    expect(rmd.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+    expect(rmd.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL'])
+  })
+
+  it('isControllable: false advertises exactly [NOT_CONTROLABLE]', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', isControllable: false } }, done)
+
+    expect(done).toHaveBeenCalledWith()
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
+
+  it('isControllable: true restores the constructor\'s configured list, including after a prior list-form SetAvailableControlTypes call', () => {
+    const { rm, transportMsgs } = setup({
+      rmDetails: { ...RM_DETAILS, availableControlTypes: ['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'] }
+    })
+    connectAndHandshake(rm)
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, jest.fn())
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', isControllable: true } }, done)
+
+    expect(done).toHaveBeenCalledWith()
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])
+  })
+
+  it('rejects a SetAvailableControlTypes payload specifying both availableControlTypes and isControllable', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'], isControllable: true } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+    expect(rmdMessages(transportMsgs).length).toBe(0)
+  })
+
+  it('rejects a SetAvailableControlTypes payload specifying neither availableControlTypes nor isControllable', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes' } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+    expect(rmdMessages(transportMsgs).length).toBe(0)
   })
 
   it('resends ResourceManagerDetails to every connected CEM', () => {

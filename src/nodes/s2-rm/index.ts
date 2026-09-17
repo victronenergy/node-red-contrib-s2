@@ -37,9 +37,13 @@ interface S2RmConfig extends NodeConfig {
  *   { command: 'InstructionStatus', cemId, instructionId, status }
  *   { command: 'UpdateStatus',         cemId, controlType, <namespaced status payload, e.g. ombc: {...}> }
  *   { command: 'SystemDescription',    cemId, controlType, <namespaced system description payload, e.g. ombc: {...}> }
- *   { command: 'SetAvailableControlTypes', availableControlTypes: [...] }  <- replaces the advertised list and
- *                                             re-sends ResourceManagerDetails to every connected CEM; NOT_CONTROLABLE
- *                                             is always included and cannot be removed
+ *   { command: 'SetAvailableControlTypes', availableControlTypes: [...] }  <- replaces the advertised list verbatim
+ *                                             (NOT_CONTROLABLE only included if you list it) and re-sends
+ *                                             ResourceManagerDetails to every connected CEM
+ *   { command: 'SetAvailableControlTypes', isControllable: false }  <- shortcut: advertises exactly
+ *                                             ['NOT_CONTROLABLE']. isControllable: true restores the deploy-time
+ *                                             configured list. Exactly one of availableControlTypes/isControllable
+ *                                             must be present
  *
  * Output port 1 - messages to send to the CEM (via transport input):
  *   { payload: { s2Signal: 'Message', message: <S2 message object> }, cemId }
