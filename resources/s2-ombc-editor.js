@@ -7,15 +7,15 @@
 window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   function generateUuid () {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-      var r = Math.random() * 16 | 0
+      const r = Math.random() * 16 | 0
       return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
     })
   }
 
   // FNV-1a, used only to seed deriveTimerId's PRNG below - not a general hash utility.
   function hashSeed (str) {
-    var h = 0x811c9dc5
-    for (var i = 0; i < str.length; i++) {
+    let h = 0x811c9dc5
+    for (let i = 0; i < str.length; i++) {
       h ^= str.charCodeAt(i)
       h = Math.imul(h, 0x01000193)
     }
@@ -30,16 +30,16 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // seeded from the mode's own id instead of Math.random() - deterministic
   // per mode, but structurally indistinguishable from a real UUID4.
   function deriveTimerId (modeId) {
-    var state = hashSeed(modeId)
+    let state = hashSeed(modeId)
     function next () {
       state |= 0
       state = (state + 0x6D2B79F5) | 0
-      var t = Math.imul(state ^ (state >>> 15), 1 | state)
+      let t = Math.imul(state ^ (state >>> 15), 1 | state)
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296
     }
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-      var r = next() * 16 | 0
+      const r = next() * 16 | 0
       return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
     })
   }
@@ -48,12 +48,12 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // `modes` here is [{ id, timerId }] - timerId is the id of the mode's
   // minimum-duration timer (started on entry, blocking on exit), or null.
   function buildTransitions (modes) {
-    var transitions = []
-    for (var i = 0; i < modes.length; i++) {
-      for (var j = 0; j < modes.length; j++) {
+    const transitions = []
+    for (let i = 0; i < modes.length; i++) {
+      for (let j = 0; j < modes.length; j++) {
         if (i === j) continue
-        var from = modes[i]
-        var to = modes[j]
+        const from = modes[i]
+        const to = modes[j]
         transitions.push({
           id: generateUuid(),
           from: from.id,
@@ -68,23 +68,23 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   }
 
   function friendlyStateToSystemDescription (modes) {
-    var operationModes = modes.map(function (m) {
-      var powerRanges
+    const operationModes = modes.map(function (m) {
+      let powerRanges
       if (m.symmetric) {
-        var symFrom = m.modulate ? m.valueSymmetricFrom : m.valueSymmetric
-        var symTo = m.modulate ? m.valueSymmetricTo : m.valueSymmetric
+        const symFrom = m.modulate ? m.valueSymmetricFrom : m.valueSymmetric
+        const symTo = m.modulate ? m.valueSymmetricTo : m.valueSymmetric
         powerRanges = [{
           commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
           start_of_range: symFrom,
           end_of_range: symTo
         }]
       } else {
-        var l1From = m.modulate ? m.valueL1From : m.valueL1
-        var l1To = m.modulate ? m.valueL1To : m.valueL1
-        var l2From = m.modulate ? m.valueL2From : m.valueL2
-        var l2To = m.modulate ? m.valueL2To : m.valueL2
-        var l3From = m.modulate ? m.valueL3From : m.valueL3
-        var l3To = m.modulate ? m.valueL3To : m.valueL3
+        const l1From = m.modulate ? m.valueL1From : m.valueL1
+        const l1To = m.modulate ? m.valueL1To : m.valueL1
+        const l2From = m.modulate ? m.valueL2From : m.valueL2
+        const l2To = m.modulate ? m.valueL2To : m.valueL2
+        const l3From = m.modulate ? m.valueL3From : m.valueL3
+        const l3To = m.modulate ? m.valueL3To : m.valueL3
         powerRanges = [
           { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: l1From, end_of_range: l1To },
           { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: l2From, end_of_range: l2To },
@@ -101,10 +101,10 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
         abnormal_condition_only: false
       }
     })
-    var timers = []
-    var modesWithTimerId = modes.map(function (m) {
-      var minDurationMs = (Number(m.minDurationMinutes) || 0) * 60000 + (Number(m.minDurationSeconds) || 0) * 1000
-      var timerId = null
+    const timers = []
+    const modesWithTimerId = modes.map(function (m) {
+      const minDurationMs = (Number(m.minDurationMinutes) || 0) * 60000 + (Number(m.minDurationSeconds) || 0) * 1000
+      let timerId = null
       if (minDurationMs > 0) {
         timerId = deriveTimerId(m.id)
         timers.push({ id: timerId, duration: minDurationMs })
@@ -124,14 +124,14 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   function isFriendlyPowerRanges (ranges) {
     if (!Array.isArray(ranges)) return false
     if (ranges.length === 1) {
-      var r = ranges[0]
+      const r = ranges[0]
       return !!r && r.commodity_quantity === 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' &&
         typeof r.start_of_range === 'number' && typeof r.end_of_range === 'number'
     }
     if (ranges.length === 3) {
-      var byCq = {}
-      for (var i = 0; i < ranges.length; i++) {
-        var rr = ranges[i]
+      const byCq = {}
+      for (let i = 0; i < ranges.length; i++) {
+        const rr = ranges[i]
         if (!rr || typeof rr.start_of_range !== 'number' || typeof rr.end_of_range !== 'number') return false
         byCq[rr.commodity_quantity] = true
       }
@@ -163,42 +163,42 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // narrows something Advanced mode expresses that friendly mode can't.
   function isFriendlyRepresentable (sysDesc) {
     if (!sysDesc || typeof sysDesc !== 'object') return false
-    var modes = sysDesc.operationModes
+    const modes = sysDesc.operationModes
     if (!Array.isArray(modes) || modes.length === 0) return false
 
-    var modeIds = []
-    for (var i = 0; i < modes.length; i++) {
-      var m = modes[i]
+    const modeIds = []
+    for (let i = 0; i < modes.length; i++) {
+      const m = modes[i]
       if (!m || typeof m.id !== 'string' || !m.id || modeIds.indexOf(m.id) !== -1) return false
       if (!isFriendlyPowerRanges(m.power_ranges)) return false
       modeIds.push(m.id)
     }
 
-    var transitions = sysDesc.transitions
+    const transitions = sysDesc.transitions
     if (!Array.isArray(transitions) || transitions.length !== modeIds.length * (modeIds.length - 1)) return false
 
     // Per mode: the single timer id (if any) that every transition into it
     // shares in start_timers, and that every transition out of it shares in
     // blocking_timers - populated as transitions are walked below.
-    var inboundTimerId = {}
-    var outboundTimerId = {}
-    var seenPairs = {}
-    for (var j = 0; j < transitions.length; j++) {
-      var t = transitions[j]
+    const inboundTimerId = {}
+    const outboundTimerId = {}
+    const seenPairs = {}
+    for (let j = 0; j < transitions.length; j++) {
+      const t = transitions[j]
       if (!t || modeIds.indexOf(t.from) === -1 || modeIds.indexOf(t.to) === -1 || t.from === t.to) return false
       if (!isSingleOrEmptyTimerRef(t.start_timers) || !isSingleOrEmptyTimerRef(t.blocking_timers)) return false
       if (t.abnormal_condition_only) return false
-      var key = t.from + '>' + t.to
+      const key = t.from + '>' + t.to
       if (seenPairs[key]) return false
       seenPairs[key] = true
 
-      var startId = t.start_timers.length ? t.start_timers[0] : null
+      const startId = t.start_timers.length ? t.start_timers[0] : null
       if (!consistentTimerRef(inboundTimerId, t.to, startId)) return false
-      var blockId = t.blocking_timers.length ? t.blocking_timers[0] : null
+      const blockId = t.blocking_timers.length ? t.blocking_timers[0] : null
       if (!consistentTimerRef(outboundTimerId, t.from, blockId)) return false
     }
-    for (var a = 0; a < modeIds.length; a++) {
-      for (var b = 0; b < modeIds.length; b++) {
+    for (let a = 0; a < modeIds.length; a++) {
+      for (let b = 0; b < modeIds.length; b++) {
         if (a === b) continue
         if (!seenPairs[modeIds[a] + '>' + modeIds[b]]) return false
       }
@@ -206,25 +206,25 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
 
     // A mode's minimum-duration timer must be wired symmetrically: the same
     // id started on every transition in and blocked on every transition out.
-    var timerIdByMode = {}
-    for (var c = 0; c < modeIds.length; c++) {
-      var modeId = modeIds[c]
-      var inb = inboundTimerId[modeId] || null
-      var outb = outboundTimerId[modeId] || null
+    const timerIdByMode = {}
+    for (let c = 0; c < modeIds.length; c++) {
+      const modeId = modeIds[c]
+      const inb = inboundTimerId[modeId] || null
+      const outb = outboundTimerId[modeId] || null
       if (inb !== outb) return false
       if (inb) timerIdByMode[modeId] = inb
     }
 
-    var timers = sysDesc.timers
+    const timers = sysDesc.timers
     if (!Array.isArray(timers)) return false
-    var expectedTimerIds = {}
-    for (var modeKey in timerIdByMode) expectedTimerIds[timerIdByMode[modeKey]] = true
-    var expectedCount = Object.keys(expectedTimerIds).length
+    const expectedTimerIds = {}
+    for (const modeKey in timerIdByMode) expectedTimerIds[timerIdByMode[modeKey]] = true
+    const expectedCount = Object.keys(expectedTimerIds).length
     if (timers.length !== expectedCount) return false
 
-    var seenTimerIds = {}
-    for (var k = 0; k < timers.length; k++) {
-      var timer = timers[k]
+    const seenTimerIds = {}
+    for (let k = 0; k < timers.length; k++) {
+      const timer = timers[k]
       if (!timer || typeof timer.id !== 'string' || !timer.id) return false
       if (seenTimerIds[timer.id] || !expectedTimerIds[timer.id]) return false
       seenTimerIds[timer.id] = true
@@ -241,9 +241,9 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // the `to` side of each transition's start_timers (only called after
   // isFriendlyRepresentable has confirmed inbound/outbound wiring agree).
   function modeTimerDurations (sysDesc) {
-    var durationById = {}
+    const durationById = {}
     ;(sysDesc.timers || []).forEach(function (timer) { durationById[timer.id] = timer.duration })
-    var result = {}
+    const result = {}
     ;(sysDesc.transitions || []).forEach(function (t) {
       if (t.start_timers && t.start_timers.length) {
         result[t.to] = durationById[t.start_timers[0]]
@@ -254,14 +254,14 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
 
   // Only called after isFriendlyRepresentable has passed.
   function systemDescriptionToFriendlyState (sysDesc) {
-    var durationByMode = modeTimerDurations(sysDesc)
+    const durationByMode = modeTimerDurations(sysDesc)
     return sysDesc.operationModes.map(function (m) {
-      var duration = durationByMode[m.id] || 0
-      var minDurationMinutes = Math.floor(duration / 60000)
-      var minDurationSeconds = Math.floor((duration % 60000) / 1000)
-      var ranges = m.power_ranges
+      const duration = durationByMode[m.id] || 0
+      const minDurationMinutes = Math.floor(duration / 60000)
+      const minDurationSeconds = Math.floor((duration % 60000) / 1000)
+      const ranges = m.power_ranges
       if (ranges.length === 1) {
-        var symModulate = ranges[0].start_of_range !== ranges[0].end_of_range
+        const symModulate = ranges[0].start_of_range !== ranges[0].end_of_range
         return {
           id: m.id,
           protected: false,
@@ -284,10 +284,10 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
           minDurationSeconds: minDurationSeconds
         }
       }
-      var byCqFrom = {}
-      var byCqTo = {}
+      const byCqFrom = {}
+      const byCqTo = {}
       ranges.forEach(function (r) { byCqFrom[r.commodity_quantity] = r.start_of_range; byCqTo[r.commodity_quantity] = r.end_of_range })
-      var phaseModulate = ranges.some(function (r) { return r.start_of_range !== r.end_of_range })
+      const phaseModulate = ranges.some(function (r) { return r.start_of_range !== r.end_of_range })
       return {
         id: m.id,
         protected: false,
@@ -345,78 +345,78 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     // to get their own single-row flex layout instead of the grid default).
     container.css({ overflow: 'visible', display: 'block' })
 
-    var row1 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    const row1 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
     $('<input/>', { type: 'text', class: 's2-ombc-mode-label', placeholder: 'Mode label' })
       .val(opt.label || '')
       .appendTo(row1)
 
-    var row2 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
-    var symLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2)
-    var symCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-symmetric' })
+    const row2 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    const symLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2)
+    const symCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-symmetric' })
       .prop('checked', opt.symmetric !== false)
       .appendTo(symLabel)
     symLabel.append(' Same value on all phases')
 
-    var row2b = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
-    var modulateLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2b)
-    var modulateCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-modulate' })
+    const row2b = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    const modulateLabel = $('<label/>', { class: 's2-ombc-mode-checkbox-label' }).appendTo(row2b)
+    const modulateCheckbox = $('<input/>', { type: 'checkbox', class: 's2-ombc-mode-modulate' })
       .prop('checked', !!opt.modulate)
       .appendTo(modulateLabel)
     modulateLabel.append(' Support power modulation (a range instead of a fixed value)')
 
-    var row3 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
-    var symWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
-    var symValue = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym', step: '1' })
+    const row3 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    const symWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    const symValue = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym', step: '1' })
       .val(opt.valueSymmetric != null ? opt.valueSymmetric : 0)
       .appendTo(symWrap)
     symWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
-    var symModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    const symModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
     symModWrap.append('From ')
-    var symFrom = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-from', step: '1' })
+    const symFrom = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-from', step: '1' })
       .val(opt.valueSymmetricFrom != null ? opt.valueSymmetricFrom : 0)
       .appendTo(symModWrap)
     symModWrap.append(' to ')
-    var symTo = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-to', step: '1' })
+    const symTo = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-sym-to', step: '1' })
       .val(opt.valueSymmetricTo != null ? opt.valueSymmetricTo : 0)
       .appendTo(symModWrap)
     symModWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
-    var phaseWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    const phaseWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
     // Each phase's label+input is wrapped in its own group so setActivePhase() can dim/disable
     // whichever ones don't apply (e.g. a single-phase D-Bus device wired to just L2) as a unit.
-    var l1Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l1' }).appendTo(phaseWrap)
+    const l1Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l1' }).appendTo(phaseWrap)
     l1Group.append('L1 ')
-    var l1 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1', step: '1' }).val(opt.valueL1 || 0).appendTo(l1Group)
-    var l2Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l2' }).appendTo(phaseWrap)
+    const l1 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1', step: '1' }).val(opt.valueL1 || 0).appendTo(l1Group)
+    const l2Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l2' }).appendTo(phaseWrap)
     l2Group.append(' L2 ')
-    var l2 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2', step: '1' }).val(opt.valueL2 || 0).appendTo(l2Group)
-    var l3Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l3' }).appendTo(phaseWrap)
+    const l2 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2', step: '1' }).val(opt.valueL2 || 0).appendTo(l2Group)
+    const l3Group = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l3' }).appendTo(phaseWrap)
     l3Group.append(' L3 ')
-    var l3 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3', step: '1' }).val(opt.valueL3 || 0).appendTo(l3Group)
+    const l3 = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3', step: '1' }).val(opt.valueL3 || 0).appendTo(l3Group)
     phaseWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
-    var phaseModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
-    var l1ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l1' }).appendTo(phaseModWrap)
+    const phaseModWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row3)
+    const l1ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l1' }).appendTo(phaseModWrap)
     l1ModGroup.append('L1 ')
-    var l1From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-from', step: '1' }).val(opt.valueL1From || 0).appendTo(l1ModGroup)
+    const l1From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-from', step: '1' }).val(opt.valueL1From || 0).appendTo(l1ModGroup)
     l1ModGroup.append('–')
-    var l1To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-to', step: '1' }).val(opt.valueL1To || 0).appendTo(l1ModGroup)
-    var l2ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l2' }).appendTo(phaseModWrap)
+    const l1To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l1-to', step: '1' }).val(opt.valueL1To || 0).appendTo(l1ModGroup)
+    const l2ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l2' }).appendTo(phaseModWrap)
     l2ModGroup.append(' L2 ')
-    var l2From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-from', step: '1' }).val(opt.valueL2From || 0).appendTo(l2ModGroup)
+    const l2From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-from', step: '1' }).val(opt.valueL2From || 0).appendTo(l2ModGroup)
     l2ModGroup.append('–')
-    var l2To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-to', step: '1' }).val(opt.valueL2To || 0).appendTo(l2ModGroup)
-    var l3ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l3' }).appendTo(phaseModWrap)
+    const l2To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l2-to', step: '1' }).val(opt.valueL2To || 0).appendTo(l2ModGroup)
+    const l3ModGroup = $('<span/>', { class: 's2-ombc-mode-phase-group s2-ombc-mode-phase-l3' }).appendTo(phaseModWrap)
     l3ModGroup.append(' L3 ')
-    var l3From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-from', step: '1' }).val(opt.valueL3From || 0).appendTo(l3ModGroup)
+    const l3From = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-from', step: '1' }).val(opt.valueL3From || 0).appendTo(l3ModGroup)
     l3ModGroup.append('–')
-    var l3To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-to', step: '1' }).val(opt.valueL3To || 0).appendTo(l3ModGroup)
+    const l3To = $('<input/>', { type: 'number', class: 's2-ombc-mode-value-l3-to', step: '1' }).val(opt.valueL3To || 0).appendTo(l3ModGroup)
     phaseModWrap.append($('<span/>', { class: 's2-unit-label' }).text('W'))
 
     function updateValueVisibility () {
-      var isSymmetric = symCheckbox.prop('checked')
-      var isModulating = modulateCheckbox.prop('checked')
+      const isSymmetric = symCheckbox.prop('checked')
+      const isModulating = modulateCheckbox.prop('checked')
       symWrap.toggle(isSymmetric && !isModulating)
       symModWrap.toggle(isSymmetric && isModulating)
       phaseWrap.toggle(!isSymmetric && !isModulating)
@@ -426,9 +426,9 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
     modulateCheckbox.on('change', updateValueVisibility)
     updateValueVisibility()
 
-    var row4 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
+    const row4 = $('<div/>', { class: 's2-ombc-mode-row' }).appendTo(container)
     row4.append('Minimum time in this mode: ')
-    var minDurWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row4)
+    const minDurWrap = $('<span/>', { class: 's2-ombc-mode-value-wrap' }).appendTo(row4)
     $('<input/>', { type: 'number', class: 's2-ombc-mode-min-duration-minutes', min: '0', step: '1' })
       .val(opt.minDurationMinutes || 0)
       .appendTo(minDurWrap)
@@ -446,10 +446,10 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // Reads the current editableList state (given its jQuery selector) back into
   // the same plain-object shape addModeItem/friendlyStateToSystemDescription use.
   function getFriendlyModes (listSel) {
-    var modes = []
+    const modes = []
     $(listSel).editableList('items').each(function () {
-      var $item = $(this)
-      var data = $item.data('data') || {}
+      const $item = $(this)
+      const data = $item.data('data') || {}
       modes.push({
         id: data.id,
         protected: !!data.protected,
@@ -484,8 +484,8 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // shown groups made the row too wide to read.
   function setActivePhase (listSel, activePhase) {
     $(listSel).find('.s2-ombc-mode-phase-group').each(function () {
-      var $group = $(this)
-      var isActive = activePhase == null || $group.hasClass('s2-ombc-mode-phase-l' + activePhase)
+      const $group = $(this)
+      const isActive = activePhase == null || $group.hasClass('s2-ombc-mode-phase-l' + activePhase)
       $group.toggle(isActive)
       $group.find('input').prop('disabled', !isActive)
     })
@@ -494,8 +494,8 @@ window.__s2OmbcEditor = window.__s2OmbcEditor || (function () {
   // Hides (not just disables) "Same value on all phases" when forced non-null; forced/null is computed by refreshActivePhase() in s2-resource/index.html.
   function setSymmetricLock (listSel, forced) {
     $(listSel).find('.s2-ombc-mode-symmetric').each(function () {
-      var $checkbox = $(this)
-      var isForced = forced !== null
+      const $checkbox = $(this)
+      const isForced = forced !== null
       $checkbox.prop('disabled', isForced)
       if (isForced && $checkbox.prop('checked') !== forced) {
         $checkbox.prop('checked', forced).trigger('change')

@@ -2,7 +2,7 @@
 <script src="resources/node-red-contrib-s2/s2-ombc-editor.js"></script>
 <script type="text/javascript">
   (function () {
-    var editor = window.__s2OmbcEditor
+    const editor = window.__s2OmbcEditor
 
     RED.nodes.registerType('s2-ombc-config', {
       category: 'config',
@@ -14,8 +14,8 @@
         return this.name || 'ombc-config'
       },
       oneditprepare: function () {
-        var listSel = '#s2-ombc-mode-list'
-        var currentMode = 'friendly'
+        const listSel = '#s2-ombc-mode-list'
+        let currentMode = 'friendly'
 
         $('#node-config-input-systemDescription').typedInput({ types: ['json'] })
 
@@ -37,12 +37,12 @@
         // Advanced JSON violates the real OMBC.SystemDescription schema, so an invalid
         // systemDescription can't be saved silently. Friendly mode always produces valid JSON by
         // construction, so the gate is only armed while Advanced mode is active.
-        var schemaValidateTimer = null
-        var schemaValidateSeq = 0
+        let schemaValidateTimer = null
+        let schemaValidateSeq = 0
 
         function setSchemaGate (valid, errorText) {
           $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-          var $err = $('#s2-ombc-schema-error')
+          const $err = $('#s2-ombc-schema-error')
           if (errorText) {
             $err.text(errorText).show()
           } else {
@@ -55,10 +55,10 @@
             setSchemaGate(true)
             return
           }
-          var seq = ++schemaValidateSeq
+          const seq = ++schemaValidateSeq
           clearTimeout(schemaValidateTimer)
           schemaValidateTimer = setTimeout(function () {
-            var rawJson = $('#node-config-input-systemDescription').typedInput('value')
+            const rawJson = $('#node-config-input-systemDescription').typedInput('value')
             editor.validateSystemDescription(rawJson, function (result) {
               if (seq !== schemaValidateSeq) return
               setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
@@ -95,7 +95,7 @@
         $('#s2-ombc-tab-advanced').on('click', function (e) {
           e.preventDefault()
           if (currentMode === 'advanced') return
-          var sysDesc = editor.friendlyStateToSystemDescription(editor.getFriendlyModes(listSel))
+          const sysDesc = editor.friendlyStateToSystemDescription(editor.getFriendlyModes(listSel))
           $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
           showAdvancedSection()
         })
@@ -103,8 +103,8 @@
         $('#s2-ombc-tab-friendly').on('click', function (e) {
           e.preventDefault()
           if (currentMode === 'friendly') return
-          var raw = $('#node-config-input-systemDescription').typedInput('value')
-          var parsed
+          const raw = $('#node-config-input-systemDescription').typedInput('value')
+          let parsed
           try {
             parsed = JSON.parse(raw)
           } catch (err) {
@@ -122,8 +122,8 @@
           showFriendlySection()
         })
 
-        var raw = this.systemDescription
-        var parsed = null
+        const raw = this.systemDescription
+        let parsed = null
         if (raw) {
           try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
         }
@@ -146,9 +146,9 @@
       oneditsave: function () {
         // Only friendly mode needs an explicit save step - Advanced mode's JSON
         // typedInput already holds the value that gets read automatically.
-        var $list = $('#s2-ombc-mode-list')
+        const $list = $('#s2-ombc-mode-list')
         if ($('#s2-ombc-tab-friendly').hasClass('s2-tab-active') && $list.length) {
-          var sysDesc = editor.friendlyStateToSystemDescription(editor.getFriendlyModes('#s2-ombc-mode-list'))
+          const sysDesc = editor.friendlyStateToSystemDescription(editor.getFriendlyModes('#s2-ombc-mode-list'))
           $('#node-config-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
         }
       }

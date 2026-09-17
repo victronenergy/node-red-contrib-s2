@@ -31,8 +31,8 @@
 
       // Hides (not removes, to keep the <select>'s value list stable) "3-phase symmetric" unless Phases: 3, falling back to "Per phase".
       function updateSymmetricOptionAvailability () {
-        var isThreePhase = $('#node-config-input-nrOfPhases').val() === '3'
-        var $measurementType = $('#node-config-input-measurementType')
+        const isThreePhase = $('#node-config-input-nrOfPhases').val() === '3'
+        const $measurementType = $('#node-config-input-measurementType')
         // Must reset the value before disabling the option below - once disabled, the select's
         // own .val() returns null/'' for it (a disabled option has no submittable value), so
         // checking .val() afterward can never see '3_PHASE_SYMMETRIC' to reset away from it.
@@ -44,7 +44,7 @@
       $('#node-config-input-nrOfPhases').on('change', updateSymmetricOptionAvailability)
       updateSymmetricOptionAvailability()
 
-      var pendingName = window.__s2Common.takePendingConfigName('s2-dbus-config')
+      const pendingName = window.__s2Common.takePendingConfigName('s2-dbus-config')
       if (pendingName && !$('#node-config-input-name').val()) {
         $('#node-config-input-name').val(pendingName)
       }

@@ -12,7 +12,7 @@
     },
     oneditprepare: function () {
       function updateCustomPowerVisibility () {
-        var val = $('#node-config-input-gridConnection').val()
+        const val = $('#node-config-input-gridConnection').val()
         $('#s2-pebc-config-custom-power-row').toggle(val === 'custom')
       }
       $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)

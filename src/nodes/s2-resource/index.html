@@ -2,12 +2,12 @@
 <script src="resources/node-red-contrib-s2/s2-ombc-editor.js"></script>
 <script type="text/javascript">
   (function () {
-    var ombcEditor = window.__s2OmbcEditor
+    const ombcEditor = window.__s2OmbcEditor
     // Shared across oneditprepare/oneditsave (siblings in the same registerType closure, not
     // nested functions) - oneditprepare always resets this at the start of each edit session
     // before oneditsave can read it, so one shared variable is safe despite the closure being
     // reused across every node instance's edit sessions (only one tray is ever open at a time).
-    var currentOmbcMode = 'friendly'
+    let currentOmbcMode = 'friendly'
 
     function computeOutputs (node) {
       // "to transport" (only when Transport: External) + "downstream" (always present).
@@ -64,8 +64,8 @@
         return 'red-ui-flow-node-label-white' + (this.name ? ' node_label_italic' : '')
       },
       oneditprepare: function () {
-        var node = this
-        var listSel = '#s2-resource-ombc-mode-list'
+        const node = this
+        const listSel = '#s2-resource-ombc-mode-list'
 
         // Node-RED applies its own inline min-width to the tray body, which we've confirmed (via
         // real-world DevTools inspection) does not shrink back down to fit this form's actual
@@ -82,11 +82,11 @@
         // whenever Transport, the referenced s2-dbus-config's own settings, or the mode list
         // itself (a new row added) might have changed.
         function refreshActivePhase () {
-          var activePhase = null
-          var forcedSymmetric = null
+          let activePhase = null
+          let forcedSymmetric = null
           if ($('#node-input-transport').val() === 'dbus') {
-            var dbusCfg = RED.nodes.node($('#node-input-dbusConfig').val())
-            var nrOfPhases = dbusCfg ? Number(dbusCfg.nrOfPhases) : null
+            const dbusCfg = RED.nodes.node($('#node-input-dbusConfig').val())
+            const nrOfPhases = dbusCfg ? Number(dbusCfg.nrOfPhases) : null
             if (nrOfPhases === 1) {
               activePhase = Number(dbusCfg.phaseSetting) || 1
               forcedSymmetric = false
@@ -101,8 +101,8 @@
 
         // -- inner tabs --
 
-        var tabs = { conn: '#s2-resource-tab-conn', rm: '#s2-resource-tab-rm', ct: '#s2-resource-tab-ct' }
-        var panels = { conn: '#s2-resource-panel-conn', rm: '#s2-resource-panel-rm', ct: '#s2-resource-panel-ct' }
+        const tabs = { conn: '#s2-resource-tab-conn', rm: '#s2-resource-tab-rm', ct: '#s2-resource-tab-ct' }
+        const panels = { conn: '#s2-resource-panel-conn', rm: '#s2-resource-panel-rm', ct: '#s2-resource-panel-ct' }
 
         function showTab (key) {
           Object.keys(tabs).forEach(function (k) {
@@ -124,14 +124,14 @@
         // -- Connection tab --
 
         if (!node.resourceId) {
-          var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            var r = Math.random() * 16 | 0
+          const id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0
             return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
           })
           $('#node-input-resourceId').val(id)
         }
 
-        var pmEnabled = node.providesPowerMeasurement === '3_PHASE_SYMMETRIC' || node.providesPowerMeasurement === 'L1_L2_L3'
+        const pmEnabled = node.providesPowerMeasurement === '3_PHASE_SYMMETRIC' || node.providesPowerMeasurement === 'L1_L2_L3'
         $('#node-input-providesPowerMeasurementEnabled').prop('checked', pmEnabled)
         $('#node-input-providesPowerMeasurement').val(pmEnabled ? node.providesPowerMeasurement : '3_PHASE_SYMMETRIC')
         $('#node-input-providesPowerMeasurementEnabled').on('change', function () {
@@ -139,7 +139,7 @@
         })
 
         function showTransportSection () {
-          var t = $('#node-input-transport').val()
+          const t = $('#node-input-transport').val()
           $('#s2-resource-transport-websocket').toggle(t === 'websocket')
           $('#s2-resource-transport-dbus').toggle(t === 'dbus')
           $('#s2-resource-transport-external').toggle(t === 'external')
@@ -160,18 +160,18 @@
 
         // Stashes this node's Name so the new s2-dbus-config tray's oneditprepare can pre-fill it.
         $('#node-input-btn-dbusConfig-add').on('click', function () {
-          var name = $('#node-input-name').val()
+          const name = $('#node-input-name').val()
           if (name) window.__s2Common.setPendingConfigName('s2-dbus-config', name)
         })
 
         // -- Resource Manager tab --
 
         // Follows Name into RM Name only while RM Name is empty or still equals our own last write - not a plain "is empty" check or a one-way touched flag (see commit message).
-        var lastAutoFilled = null
+        let lastAutoFilled = null
         function prefillRmName () {
-          var currentRmName = $('#node-input-rmName').val()
+          const currentRmName = $('#node-input-rmName').val()
           if (currentRmName !== '' && currentRmName !== lastAutoFilled) return
-          var name = $('#node-input-name').val()
+          const name = $('#node-input-name').val()
           if (name) {
             lastAutoFilled = name
             $('#node-input-rmName').val(name)
@@ -180,7 +180,7 @@
         $('#node-input-name').on('input change', prefillRmName)
         prefillRmName()
 
-        var savedCt = (node.controlTypes || '').split(',').map(function (s) { return s.trim() })
+        const savedCt = (node.controlTypes || '').split(',').map(function (s) { return s.trim() })
         $('.s2-resource-ct-checkbox').each(function () {
           $(this).prop('checked', savedCt.indexOf($(this).val()) !== -1)
         })
@@ -198,7 +198,7 @@
         $('#node-input-controlType').on('change', showControlTypesSection)
         showControlTypesSection()
 
-        var savedRoles = (node.roles || '').split(',').map(function (s) { return s.trim() })
+        const savedRoles = (node.roles || '').split(',').map(function (s) { return s.trim() })
         $('.s2-resource-role-checkbox').each(function () {
           $(this).prop('checked', savedRoles.indexOf($(this).val()) !== -1)
         })
@@ -206,7 +206,7 @@
           if ($('.s2-resource-role-checkbox:checked').length === 0) $(this).prop('checked', true)
         })
 
-        var hasNonDefaultAdvanced = (node.instructionPollIntervalMs && node.instructionPollIntervalMs !== 2000) ||
+        const hasNonDefaultAdvanced = (node.instructionPollIntervalMs && node.instructionPollIntervalMs !== 2000) ||
           node.skipInstructionStatus === true
         if (hasNonDefaultAdvanced) {
           $('#s2-resource-rm-advanced-section').show()
@@ -225,7 +225,7 @@
         $('#node-input-notControlable').prop('checked', savedCt.indexOf('NOT_CONTROLABLE') !== -1)
 
         function showControlTypeSection () {
-          var t = $('#node-input-controlType').val()
+          const t = $('#node-input-controlType').val()
           $('#s2-resource-ct-ombc').toggle(t === 'ombc')
           $('#s2-resource-ct-none').toggle(t === 'none')
         }
@@ -242,12 +242,12 @@
         // specific error while the Advanced JSON violates the real OMBC.SystemDescription schema.
         // Friendly mode always produces valid JSON by construction, so the gate is only armed
         // while Advanced mode is active.
-        var schemaValidateTimer = null
-        var schemaValidateSeq = 0
+        let schemaValidateTimer = null
+        let schemaValidateSeq = 0
 
         function setSchemaGate (valid, errorText) {
           $('#node-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-          var $err = $('#s2-resource-ombc-schema-error')
+          const $err = $('#s2-resource-ombc-schema-error')
           if (errorText) {
             $err.text(errorText).show()
           } else {
@@ -260,10 +260,10 @@
             setSchemaGate(true)
             return
           }
-          var seq = ++schemaValidateSeq
+          const seq = ++schemaValidateSeq
           clearTimeout(schemaValidateTimer)
           schemaValidateTimer = setTimeout(function () {
-            var rawJson = $('#node-input-systemDescription').typedInput('value')
+            const rawJson = $('#node-input-systemDescription').typedInput('value')
             ombcEditor.validateSystemDescription(rawJson, function (result) {
               if (seq !== schemaValidateSeq) return
               setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
@@ -302,7 +302,7 @@
         $('#s2-resource-ombc-tab-advanced').on('click', function (e) {
           e.preventDefault()
           if (currentOmbcMode === 'advanced') return
-          var sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes(listSel))
+          const sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes(listSel))
           $('#node-input-systemDescription').typedInput('value', JSON.stringify(sysDesc, null, 2))
           showOmbcAdvancedSection()
         })
@@ -310,8 +310,8 @@
         $('#s2-resource-ombc-tab-friendly').on('click', function (e) {
           e.preventDefault()
           if (currentOmbcMode === 'friendly') return
-          var rawJson = $('#node-input-systemDescription').typedInput('value')
-          var parsedJson
+          const rawJson = $('#node-input-systemDescription').typedInput('value')
+          let parsedJson
           try {
             parsedJson = JSON.parse(rawJson)
           } catch (err) {
@@ -333,15 +333,15 @@
         // list, or the Advanced-mode JSON) - it has no static options of its own since mode
         // ids/labels only exist once one of those is populated.
         function refreshDefaultModeOptions () {
-          var $select = $('#node-input-defaultOperationModeId')
-          var previous = $select.val()
-          var modes
+          const $select = $('#node-input-defaultOperationModeId')
+          const previous = $select.val()
+          let modes
           if (currentOmbcMode === 'friendly') {
             modes = ombcEditor.getFriendlyModes(listSel)
           } else {
             modes = []
             try {
-              var parsedForDropdown = JSON.parse($('#node-input-systemDescription').typedInput('value'))
+              const parsedForDropdown = JSON.parse($('#node-input-systemDescription').typedInput('value'))
               modes = (parsedForDropdown.operationModes || []).map(function (m) {
                 return { id: m.id, label: m.diagnostic_label || m.id }
               })
@@ -352,7 +352,7 @@
           modes.forEach(function (m) {
             $select.append($('<option/>', { value: m.id }).text(m.label || m.id))
           })
-          var stillPresent = modes.some(function (m) { return m.id === previous })
+          const stillPresent = modes.some(function (m) { return m.id === previous })
           if (stillPresent) {
             $select.val(previous)
           } else if (modes.some(function (m) { return m.id === node.defaultOperationModeId })) {
@@ -378,8 +378,8 @@
         })
         $(listSel).on('input', '.s2-ombc-mode-label', refreshDefaultModeOptions)
 
-        var raw = node.systemDescription
-        var parsed = null
+        const raw = node.systemDescription
+        let parsed = null
         if (raw) {
           try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
         }
@@ -403,11 +403,11 @@
 
         // Sizes the tray to the widest tab instead of just whichever opened first; 280ms delay clears Node-RED's own width/transition timers (see commit message).
         setTimeout(function () {
-          var tray = $('#node-input-transport').closest('.red-ui-tray')
+          const tray = $('#node-input-transport').closest('.red-ui-tray')
           if (!tray.length) return
-          var panelKeys = Object.keys(panels)
+          const panelKeys = Object.keys(panels)
           tray.css('width', 'fit-content')
-          var maxWidth = 0
+          let maxWidth = 0
           panelKeys.forEach(function (k) {
             panelKeys.forEach(function (other) { $(panels[other]).toggle(other === k) })
             maxWidth = Math.max(maxWidth, tray.width())
@@ -417,7 +417,7 @@
         }, 280)
       },
       oneditsave: function () {
-        var notControlable = $('#node-input-notControlable').prop('checked')
+        const notControlable = $('#node-input-notControlable').prop('checked')
         // Writes into the (hidden) #node-input-controlTypes field itself, not this.controlTypes
         // directly - Node-RED's own automatic property extraction runs after oneditsave and
         // reads this field, which would otherwise silently overwrite a direct assignment here
@@ -427,14 +427,14 @@
           // the (hidden) Control Types checkboxes. NOT_CONTROLABLE sorts first when checked.
           $('#node-input-controlTypes').val(notControlable ? 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL' : 'OPERATION_MODE_BASED_CONTROL')
         } else {
-          var checkedCt = []
+          const checkedCt = []
           $('.s2-resource-ct-checkbox:checked').each(function () { checkedCt.push($(this).val()) })
           // NOT_CONTROLABLE sorts first when checked, regardless of the manual list's own order.
           if (notControlable) checkedCt.unshift('NOT_CONTROLABLE')
           $('#node-input-controlTypes').val(checkedCt.join(','))
         }
 
-        var checkedRoles = []
+        const checkedRoles = []
         $('.s2-resource-role-checkbox:checked').each(function () { checkedRoles.push($(this).val()) })
         $('#node-input-roles').val(checkedRoles.join(','))
 
@@ -448,7 +448,7 @@
           // property extraction reads systemDescription from it after this function returns
           // (same as s2-ombc-config's own oneditsave - writing to `this.systemDescription`
           // directly here would just be overwritten by that same automatic extraction).
-          var sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes('#s2-resource-ombc-mode-list'))
+          const sysDesc = ombcEditor.friendlyStateToSystemDescription(ombcEditor.getFriendlyModes('#s2-resource-ombc-mode-list'))
           $('#node-input-systemDescription').typedInput('value', JSON.stringify(sysDesc))
         }
 
