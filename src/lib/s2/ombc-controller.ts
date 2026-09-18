@@ -9,6 +9,7 @@ interface CemState {
 type PowerRange = { commodity_quantity: string, start_of_range: number, end_of_range: number }
 type ResolvedOMBCMode = { id: string, index: number, label: string, factor: number, powerRanges: PowerRange[] }
 type ModeIdResolution = { id: string } | { error: string }
+type PowerMeasurementConfig = { measurementType: string, nrOfPhases: number, phaseSetting: number }
 
 const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
 const DEFAULT_STATUS_KEY = 's2OmbcDefaultStatus'
@@ -20,8 +21,11 @@ export interface OMBCControllerOptions {
   /** Commands to the resource manager (s2-ombc's output 2 / SystemDescription+UpdateStatus commands today). */
   onSendCommand: (msg: NodeMessage) => void
   onStatus: (status: NodeRedStatus) => void
+  onWarn?: (message: string) => void
   getContextValue: (key: string) => unknown
   setContextValue: (key: string, value: unknown) => void
+  /** Optional D-Bus measurement shape. When present, resolved instructions use its S2 commodity shape. */
+  powerMeasurement?: PowerMeasurementConfig
   /** When true, an incoming OMBC.Instruction is confirmed back to the CEM immediately (the
    * same UpdateStatus that a ModeConfirmation on the input would produce), instead of waiting
    * for the flow to report the mode is actually active. Suits a resource with no independent
@@ -135,62 +139,137 @@ export class OMBCController {
     }
   }
 
-  // Resolves per-phase power from power ranges and factor, S2-shaped: one {commodity_quantity,
-  // value} pair per phase (L1/L2/L3), the same shape PowerMeasurement/PowerRange values use
-  // elsewhere in this codebase and in the S2 spec itself.
-  private calculatePower (powerRanges: PowerRange[], factor: number): PowerMeasurementValue[] {
+  private calculatePowerProfile (powerRanges: PowerRange[], factor: number): { hasSymmetric: boolean, symmetric: number, phases: number[] } {
     const byCq = new Map<string, PowerRange>()
     for (const r of powerRanges) byCq.set(r.commodity_quantity, r)
 
     const sym = byCq.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
-    if (sym) {
-      const total = sym.start_of_range + factor * (sym.end_of_range - sym.start_of_range)
-      const perPhase = Math.round(total / 3)
-      return [
-        { commodity_quantity: 'ELECTRIC.POWER.L1', value: perPhase },
-        { commodity_quantity: 'ELECTRIC.POWER.L2', value: perPhase },
-        { commodity_quantity: 'ELECTRIC.POWER.L3', value: perPhase }
-      ]
-    }
-
-    function phaseValue (cq: string): number {
-      const r = byCq.get(cq)
+    const rangeValue = (r: PowerRange | undefined): number => {
       if (!r) return 0
       return Math.round(r.start_of_range + factor * (r.end_of_range - r.start_of_range))
     }
-    return [
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: phaseValue('ELECTRIC.POWER.L1') },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: phaseValue('ELECTRIC.POWER.L2') },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: phaseValue('ELECTRIC.POWER.L3') }
-    ]
+    const symmetric = rangeValue(sym)
+    const phases = ['L1', 'L2', 'L3'].map(phase => rangeValue(byCq.get(`ELECTRIC.POWER.${phase}`)))
+    return { hasSymmetric: sym !== undefined, symmetric, phases }
+  }
+
+  // Resolves power from power ranges and factor in the same S2-shaped form as
+  // PowerMeasurement/PowerRange values, constrained to the configured D-Bus measurement shape
+  // when this controller is used by s2-resource.
+  private calculatePower (powerRanges: PowerRange[], factor: number): PowerMeasurementValue[] {
+    const profile = this.calculatePowerProfile(powerRanges, factor)
+    const measurement = this.opts.powerMeasurement
+    if (measurement?.measurementType === '3_PHASE_SYMMETRIC') {
+      const total = profile.hasSymmetric ? profile.symmetric : profile.phases.reduce((sum, value) => sum + value, 0)
+      return [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: total }]
+    }
+    if (measurement?.measurementType === 'L1_L2_L3') {
+      if (measurement.nrOfPhases === 1) {
+        const phase = Math.max(1, Math.min(3, measurement.phaseSetting))
+        const value = profile.hasSymmetric ? Math.round(profile.symmetric / 3) : profile.phases[phase - 1]
+        return [{ commodity_quantity: `ELECTRIC.POWER.L${phase}`, value }]
+      }
+      if (measurement.nrOfPhases === 3) {
+        const phases = profile.hasSymmetric
+          ? [1, 2, 3].map(() => profile.symmetric / 3)
+          : profile.phases
+        return phases.map((value, index) => ({ commodity_quantity: `ELECTRIC.POWER.L${index + 1}`, value }))
+      }
+    }
+
+    if (profile.hasSymmetric) {
+      return [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: profile.symmetric }]
+    }
+    return profile.phases.map((value, index) => ({ commodity_quantity: `ELECTRIC.POWER.L${index + 1}`, value }))
   }
 
   // Same power-ranges/factor interpolation as calculatePower(), reshaped into the `values`
   // convenience shape PowerMeasurement input already accepts (a number for 3-phase-symmetric,
-  // an [L1, L2, L3] array for per-phase) - computed independently from the ranges rather than
+  // or an array whose length matches the configured per-phase count) - computed independently from the ranges rather than
   // derived from calculatePower()'s already-per-phase-rounded output, so a symmetric mode's
   // total isn't off by the rounding this codebase's per-phase division introduces.
   private calculateValues (powerRanges: PowerRange[], factor: number): number | number[] {
-    const byCq = new Map<string, PowerRange>()
-    for (const r of powerRanges) byCq.set(r.commodity_quantity, r)
-
-    const sym = byCq.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
-    if (sym) {
-      return Math.round(sym.start_of_range + factor * (sym.end_of_range - sym.start_of_range))
+    const profile = this.calculatePowerProfile(powerRanges, factor)
+    const measurement = this.opts.powerMeasurement
+    if (measurement?.measurementType === '3_PHASE_SYMMETRIC') {
+      return profile.hasSymmetric ? profile.symmetric : profile.phases.reduce((sum, value) => sum + value, 0)
     }
-
-    function phaseValue (cq: string): number {
-      const r = byCq.get(cq)
-      if (!r) return 0
-      return Math.round(r.start_of_range + factor * (r.end_of_range - r.start_of_range))
+    if (measurement?.measurementType === 'L1_L2_L3' && measurement.nrOfPhases === 1) {
+      const phase = Math.max(1, Math.min(3, measurement.phaseSetting))
+      return [profile.hasSymmetric ? Math.round(profile.symmetric / 3) : profile.phases[phase - 1]]
     }
-    return [phaseValue('ELECTRIC.POWER.L1'), phaseValue('ELECTRIC.POWER.L2'), phaseValue('ELECTRIC.POWER.L3')]
+    if (measurement?.measurementType === 'L1_L2_L3' && measurement.nrOfPhases === 3) {
+      return profile.hasSymmetric ? [1, 2, 3].map(() => profile.symmetric / 3) : profile.phases
+    }
+    return profile.hasSymmetric ? profile.symmetric : profile.phases
   }
 
   private modeLabelOrId (modeId: string): string {
     const modes = (this.systemDescription.operationModes || []) as Array<Record<string, unknown>>
     const mode = modes.find(m => m.id === modeId)
     return (mode?.diagnostic_label as string | undefined) || modeId
+  }
+
+  private toPowerMeasurementValues (rawValues: unknown): PowerMeasurementValue[] {
+    const measurement = this.opts.powerMeasurement
+    const numericArray = Array.isArray(rawValues) && rawValues.every(value => typeof value === 'number')
+    const warn = (message: string): void => this.opts.onWarn?.(`PowerMeasurement values: ${message}`)
+
+    if (rawValues === null || rawValues === 0) {
+      rawValues = 0
+    }
+
+    if (measurement?.measurementType === '3_PHASE_SYMMETRIC') {
+      if (typeof rawValues === 'number') {
+        return [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: rawValues }]
+      }
+      if (numericArray && (rawValues as unknown[]).length === 3) {
+        warn('summed the three values for 3-phase symmetric power')
+        return [{
+          commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+          value: (rawValues as number[]).reduce((sum, value) => sum + value, 0)
+        }]
+      }
+    } else if (measurement?.measurementType === 'L1_L2_L3') {
+      const phase = Math.max(1, Math.min(3, measurement.phaseSetting))
+      if (measurement.nrOfPhases === 1) {
+        if (typeof rawValues === 'number') {
+          return [{ commodity_quantity: `ELECTRIC.POWER.L${phase}`, value: rawValues }]
+        }
+        if (numericArray && (rawValues as unknown[]).length === 3) {
+          warn(`selected index ${phase - 1} for wired phase L${phase} from the three-value array`)
+          return [{ commodity_quantity: `ELECTRIC.POWER.L${phase}`, value: (rawValues as number[])[phase - 1] }]
+        }
+        if (numericArray && (rawValues as unknown[]).length === 1) {
+          return [{ commodity_quantity: `ELECTRIC.POWER.L${phase}`, value: (rawValues as number[])[0] }]
+        }
+      } else if (measurement.nrOfPhases === 3 && numericArray && (rawValues as unknown[]).length === 3) {
+        return (rawValues as number[]).map((value, index) => ({
+          commodity_quantity: `ELECTRIC.POWER.L${index + 1}`,
+          value
+        }))
+      } else if (measurement.nrOfPhases === 3 && typeof rawValues === 'number') {
+        warn('divided the scalar equally across L1, L2, and L3')
+        const perPhase = (rawValues as number) / 3
+        return [1, 2, 3].map(index => ({ commodity_quantity: `ELECTRIC.POWER.L${index}`, value: perPhase }))
+      }
+    } else {
+      // Preserve the standalone s2-ombc input contract when no D-Bus measurement shape exists.
+      if (typeof rawValues === 'number') {
+        return [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: rawValues }]
+      }
+      if (numericArray && (rawValues as unknown[]).length === 3) {
+        return (rawValues as number[]).map((value, index) => ({
+          commodity_quantity: `ELECTRIC.POWER.L${index + 1}`,
+          value
+        }))
+      }
+    }
+
+    if (Array.isArray(rawValues) && rawValues.length > 0 && rawValues.every(value => typeof value === 'object' && value !== null)) {
+      return rawValues as PowerMeasurementValue[]
+    }
+    throw new Error('PowerMeasurement values do not match the configured S2 measurement shape')
   }
 
   private handleInstruction (msg: NodeMessage): void {
@@ -357,21 +436,13 @@ export class OMBCController {
           return
         }
       }
-      const rawValues = (payload as Record<string, unknown>).values
-      // values: 3000 → 3-phase symmetric; values: [L1, L2, L3] → per-phase
-      let values: unknown[]
-      if (typeof rawValues === 'number') {
-        values = [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: rawValues }]
-      } else if (Array.isArray(rawValues) && rawValues.length === 3 && typeof rawValues[0] === 'number') {
-        values = [
-          { commodity_quantity: 'ELECTRIC.POWER.L1', value: rawValues[0] },
-          { commodity_quantity: 'ELECTRIC.POWER.L2', value: rawValues[1] },
-          { commodity_quantity: 'ELECTRIC.POWER.L3', value: rawValues[2] }
-        ]
-      } else if (Array.isArray(rawValues) && rawValues.length > 0 && typeof rawValues[0] === 'object') {
-        values = rawValues
-      } else {
-        done(new Error('PowerMeasurement values must be a number (3-phase symmetric), a 3-element array [L1, L2, L3], or an array of {commodity_quantity, value} objects'))
+      const hasValues = Object.prototype.hasOwnProperty.call(payload, 'values')
+      const rawValues = hasValues ? payload.values : payload.commodityPower
+      let values: PowerMeasurementValue[]
+      try {
+        values = this.toPowerMeasurementValues(rawValues)
+      } catch (err) {
+        done(err as Error)
         return
       }
       this.opts.onSendCommand({ payload: { command: 'PowerMeasurement', cemId: pmCemId, values } })

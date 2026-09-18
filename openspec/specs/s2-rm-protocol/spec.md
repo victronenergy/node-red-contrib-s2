@@ -3,6 +3,19 @@
 ## Purpose
 Defines the generic S2 protocol behavior of the `s2-rm` node: session lifecycle, control-type selection, and instruction acknowledgment/routing, independent of any specific control type's semantics.
 ## Requirements
+### Requirement: Lower-level command interface is distinct from topic convenience messages
+The shared Resource Manager interface SHALL use `msg.payload.command` for transport and control-type commands, including `Connect`, `Message`, `Disconnect`, `PowerMeasurement`, `UpdateStatus`, `SystemDescription`, `Forecast`, and runtime control-type availability updates. These commands are the lower-level protocol boundary used by `s2-rm`, transports, and dedicated control-type nodes.
+
+Topic-based messages such as `ModeInstruction`, `ModeRequest`, `ModeConfirmation`, `PowerMeasurement`, and `ControlTypes` belong to the public convenience/control-flow interface of `s2-ombc` or `s2-resource`; they are not required to be accepted by every lower-level RM or dedicated control-type node. A composite node MAY translate a documented topic message into a command internally.
+
+#### Scenario: RM receives a lower-level power command
+- **WHEN** the RM receives `{ payload: { command: 'PowerMeasurement', cemId, values } }`
+- **THEN** it forwards the S2 power measurement for the addressed CEM
+
+#### Scenario: Topic convenience behavior remains node-specific
+- **WHEN** a flow sends `{ topic: 'PowerMeasurement', payload: { values: ... } }` to a node exposing a topic convenience interface
+- **THEN** that node may translate it to the lower-level command, but the shared RM command contract remains the `payload.command` form
+
 ### Requirement: Session handshake and identity exchange
 The RM SHALL initiate the S2 handshake when a CEM connects, and SHALL send its `ResourceManagerDetails` once the CEM's `HandshakeResponse` is received.
 
@@ -82,10 +95,12 @@ Every RM (both `s2-rm`, configured via `s2-rm-config`, and `s2-resource`) SHALL 
 ### Requirement: Runtime control-type availability update
 The RM SHALL accept a `SetAvailableControlTypes` command specifying a replacement for its advertised control types in one of two mutually exclusive forms (no `cemId` in either form, since it is not addressed to a specific CEM session):
 
-- **List form**: an `availableControlTypes` array. The RM SHALL replace its currently advertised `available_control_types` with exactly that list (no types added or removed beyond what the caller specified).
-- **Toggle form**: an `isControllable` boolean. `isControllable: false` SHALL replace the advertised list with exactly `[NOT_CONTROLABLE]`. `isControllable: true` SHALL replace the advertised list with the RM's deploy-time configured control types (the list derived from `s2-rm-config`'s or `s2-resource`'s control-types configuration, including whether its `NOT_CONTROLABLE` checkbox was checked), discarding any list currently in effect from a prior `SetAvailableControlTypes` command.
+- **List form**: a non-empty `availableControlTypes` array containing valid advertised control types other than `NO_SELECTION`. The RM SHALL replace its currently advertised `available_control_types` with exactly that list (no types added or removed beyond what the caller specified).
+- **Toggle form**: an `isControllable` boolean. `isControllable: false` SHALL replace the advertised list with `[NOT_CONTROLABLE]` when `NOT_CONTROLABLE` was present in the RM's deploy-time configured control types. If it was not enabled, the command SHALL be rejected because S2 requires at least one advertised control type. `isControllable: true` SHALL replace the advertised list with the RM's deploy-time configured control types (the list derived from `s2-rm-config`'s or `s2-resource`'s control-types configuration, including whether its `NOT_CONTROLABLE` checkbox was checked), discarding any list currently in effect from a prior `SetAvailableControlTypes` command.
 
 A command payload that specifies both `availableControlTypes` and `isControllable`, or neither, SHALL be rejected without changing the advertised list.
+
+An empty `availableControlTypes` list or a list containing `NO_SELECTION` SHALL be rejected without changing the advertised list. `NO_SELECTION` describes a session's lack of an active selection; it is not an advertised Resource Manager capability. S2 requires at least one advertised control type.
 
 In either form, once the new list is determined, the RM SHALL re-send `ResourceManagerDetails` - with a fresh `message_id` and all of its other mandatory and optional fields (`resource_id`, `roles`, `instruction_processing_delay`, `provides_forecast`, `provides_power_measurement_types`, `name`, `manufacturer`, `model`, `serial_number`, `firmware_version`) unchanged from what the RM would otherwise send - to every currently connected CEM's session, without requiring a node redeploy. If no CEM is currently connected, the updated list SHALL still apply and SHALL be used in `ResourceManagerDetails` the next time a CEM completes the handshake.
 
@@ -101,9 +116,9 @@ In either form, once the new list is determined, the RM SHALL re-send `ResourceM
 - **WHEN** a `SetAvailableControlTypes` command is received while more than one CEM session is connected
 - **THEN** each connected CEM receives its own updated `ResourceManagerDetails` reflecting the new list
 
-#### Scenario: isControllable false advertises only NOT_CONTROLABLE
+#### Scenario: isControllable false preserves the initial Not Controllable choice
 - **WHEN** a `SetAvailableControlTypes` command `{ isControllable: false }` is received
-- **THEN** the RM's advertised `available_control_types` becomes exactly `['NOT_CONTROLABLE']`, regardless of what was previously advertised or configured
+- **THEN** the RM advertises exactly `['NOT_CONTROLABLE']` if it was present in the deploy-time configured list, otherwise it rejects the command because an empty S2 control-type list is invalid
 
 #### Scenario: isControllable true restores the deploy-time configured list
 - **WHEN** an RM configured with `['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE']` has previously received `{ isControllable: false }`, and then receives `{ isControllable: true }`

@@ -254,6 +254,28 @@ describe('s2-resource - NOT_CONTROLABLE opt-out', () => {
     const rmd = findRmd(node)
     expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
   })
+
+  it('accepts SetAvailableControlTypes as a topic convenience command', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ topic: 'SetAvailableControlTypes', payload: { isControllable: false } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
+
+  it('accepts ControlTypes as the topic convenience command', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ topic: 'ControlTypes', payload: { isControllable: false } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
 })
 
 // --- Transport (task 3.2) ---
@@ -525,7 +547,7 @@ describe('s2-resource - power measurement advertised capability follows the acti
     setupNode(
       { transport: 'dbus', controlType: 'none', providesPowerMeasurement: '' },
       DEFAULT_CEM_CONFIG,
-      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3' }
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 3 }
     )
 
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
@@ -533,6 +555,20 @@ describe('s2-resource - power measurement advertised capability follows the acti
 
     const rmd = findResourceManagerDetailsSentVia(mockDbusTransport.send as jest.Mock)
     expect(rmd?.provides_power_measurement_types).toEqual(['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3'])
+  })
+
+  it.each([1, 2, 3])('Transport: D-Bus advertises only wired phase L%s for a single-phase per-phase device', (phaseSetting) => {
+    setupNode(
+      { transport: 'dbus', controlType: 'none', providesPowerMeasurement: '' },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting }
+    )
+
+    mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
+
+    const rmd = findResourceManagerDetailsSentVia(mockDbusTransport.send as jest.Mock)
+    expect(rmd?.provides_power_measurement_types).toEqual([`ELECTRIC.POWER.L${phaseSetting}`])
   })
 
   it('Transport: WebSocket still uses the RM tab\'s own providesPowerMeasurement field', () => {
@@ -619,12 +655,13 @@ describe('s2-resource - Transport: D-Bus power measurement relay', () => {
     expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
   })
 
-  it('warns and does not update the transport when a `values` array is sent to a single-phase device', () => {
+  it('selects the wired phase from a three-element `values` array on a single-phase device', () => {
     const { node, handlers } = setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
 
     handlers.input({ payload: { values: [11, 22, 33] } }, jest.fn(), jest.fn())
 
-    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('single-phase'))
+    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('wired phase'))
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 22, 'Ac/Power': 22 })
   })
 })
 
@@ -702,6 +739,94 @@ describe('s2-resource - Control type: OMBC', () => {
     const instr = downstream.find((m) => (m as { topic?: string }).topic === 'ModeInstruction')
     expect(instr).toBeDefined()
     expect((instr as { payload: { id: string } }).payload.id).toBe('mode-standby')
+  })
+
+  it('uses the configured wired phase shape for a single-phase ModeInstruction', () => {
+    const systemDescription = JSON.stringify({
+      operationModes: [{
+        id: 'mode-phase', diagnostic_label: 'Phase mode', abnormal_condition_only: false,
+        power_ranges: [
+          { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: 0, end_of_range: 300 },
+          { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: 0, end_of_range: 600 },
+          { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: 0, end_of_range: 900 }
+        ]
+      }],
+      transitions: [], timers: []
+    })
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      payload: {
+        command: 'Message', cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-phase', id: 'instr-phase',
+          execution_time: new Date(Date.now() - 1000).toISOString(), operation_mode_id: 'mode-phase',
+          operation_mode_factor: 0.5, abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    const instr = outputAt(node, 0).find((m) => (m as { topic?: string }).topic === 'ModeInstruction') as { payload: { commodityPower: unknown, values: unknown } }
+    expect(instr.payload.commodityPower).toEqual([{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 300 }])
+    expect(instr.payload.values).toEqual([300])
+  })
+
+  it('routes topic PowerMeasurement through built-in OMBC before the D-Bus cache', () => {
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: '3_PHASE_SYMMETRIC', nrOfPhases: 3 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      cemId: 'cem-1',
+      topic: 'PowerMeasurement',
+      payload: {
+        commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }]
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).not.toHaveBeenCalled()
+    expect((mockDbusTransport.send as jest.Mock).mock.calls.some((call: unknown[]) => (
+      typeof call[0] === 'string' && call[0].includes('PowerMeasurement')
+    ))).toBe(true)
+  })
+
+  it('routes a complete ModeInstruction payload to OMBC confirmation before D-Bus measurement caching', () => {
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 3 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      cemId: 'cem-1',
+      topic: 'ModeConfirmation',
+      payload: {
+        id: 'mode-standby',
+        index: 0,
+        label: 'Standby',
+        factor: 1,
+        commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 0 }],
+        values: 0
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).not.toHaveBeenCalled()
+    const statusMessage = (mockDbusTransport.send as jest.Mock).mock.calls
+      .map((call: unknown[]) => call[0])
+      .find((raw) => typeof raw === 'string' && raw.includes('OMBC.Status'))
+    expect(statusMessage).toBeDefined()
   })
 
   function sendOmbcInstruction (handlers: Record<string, (...args: unknown[]) => void>): void {

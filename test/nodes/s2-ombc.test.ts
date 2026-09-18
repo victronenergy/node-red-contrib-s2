@@ -135,9 +135,7 @@ describe('s2-ombc - instruction resolution', () => {
     expect(out.payload.label).toBe('Normal operation')
     expect(out.payload.factor).toBe(0.8)
     expect(out.payload.commodityPower).toEqual([
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 667 },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 667 },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 667 }
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 2000 }
     ])
     expect(out.cemId).toBe('cem-1')
     expect(out.rawS2Message).toBeDefined()
@@ -158,8 +156,7 @@ describe('s2-ombc - instruction resolution', () => {
     )
     const out = (call as unknown[][])[0][0] as { payload: { values: unknown } }
     // start_of_range 0, end_of_range 2500, factor 0.8 -> 2000 (the true total, not
-    // 667*3=2001 - which is what reconstructing from the rounded per-phase commodityPower
-    // would give).
+    // The symmetric commodityPower entry also carries the true total.
     expect(out.payload.values).toBe(2000)
   })
 
@@ -308,9 +305,7 @@ describe('s2-ombc - instruction resolution', () => {
     const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
     const out = (call as unknown[][])[0][0] as { payload: { commodityPower: { commodity_quantity: string, value: number }[] } }
     expect(out.payload.commodityPower).toEqual([
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 500 },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 500 },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 500 }
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1500 }
     ])
   })
 
@@ -322,9 +317,7 @@ describe('s2-ombc - instruction resolution', () => {
     const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
     const out = (call as unknown[][])[0][0] as { payload: { commodityPower: { commodity_quantity: string, value: number }[] } }
     expect(out.payload.commodityPower).toEqual([
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 0 },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 0 },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 0 }
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 0 }
     ])
   })
 
@@ -336,9 +329,7 @@ describe('s2-ombc - instruction resolution', () => {
     const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
     const out = (call as unknown[][])[0][0] as { payload: { commodityPower: { commodity_quantity: string, value: number }[] } }
     expect(out.payload.commodityPower).toEqual([
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 833 },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 833 },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 833 }
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 2500 }
     ])
   })
 
@@ -350,9 +341,7 @@ describe('s2-ombc - instruction resolution', () => {
     const call = (node.send as jest.Mock).mock.calls.find((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
     const out = (call as unknown[][])[0][0] as { payload: { commodityPower: { commodity_quantity: string, value: number }[] } }
     expect(out.payload.commodityPower).toEqual([
-      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 833 },
-      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 833 },
-      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 833 }
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 2500 }
     ])
   })
 
@@ -590,6 +579,34 @@ describe('s2-ombc - confirm mode', () => {
     expect((cmd!.ombc as { operationModeFactor: number }).operationModeFactor).toBe(0.5)
   })
 
+  it('accepts the same ModeInstruction payload as both confirmation and measurement', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(instructionMsg('cem-1', {
+      message_type: 'OMBC.Instruction', id: 'instr-reuse', operation_mode_id: 'mode-on', operation_mode_factor: 0.5
+    }), jest.fn(), jest.fn())
+    const instructionCall = (node.send as jest.Mock).mock.calls.find(
+      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
+    )
+    const modeInstructionPayload = (instructionCall as unknown[][])[0][0] as { payload: Record<string, unknown> }
+
+    ;(node.send as jest.Mock).mockClear()
+    const confirmDone = jest.fn()
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: modeInstructionPayload.payload }, jest.fn(), confirmDone)
+    expect(confirmDone).toHaveBeenCalledWith()
+    expect(getCommandCalls(node).some(c => c.command === 'UpdateStatus')).toBe(true)
+
+    ;(node.send as jest.Mock).mockClear()
+    const measurementDone = jest.fn()
+    handlers.input({ cemId: 'cem-1', topic: 'PowerMeasurement', payload: modeInstructionPayload.payload }, jest.fn(), measurementDone)
+    expect(measurementDone).toHaveBeenCalledWith()
+    expect(getCommandCalls(node).find(c => c.command === 'PowerMeasurement')?.values).toEqual([
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1250 }
+    ])
+  })
+
   it('defaults the operation mode factor to 1 when a confirm omits it', () => {
     const { node, handlers } = setupNode()
     selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
@@ -751,6 +768,27 @@ describe('s2-ombc - PowerMeasurement passthrough', () => {
       cemId: 'cem-1',
       values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 3000 }]
     })
+  })
+
+  it('uses commodityPower when values is absent', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: {
+        commodityPower: [
+          { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }
+        ]
+      }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect((node.send as jest.Mock).mock.calls[0][0][1].payload.values).toEqual([
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }
+    ])
   })
 
   it('uses explicit cemId from message when provided', () => {

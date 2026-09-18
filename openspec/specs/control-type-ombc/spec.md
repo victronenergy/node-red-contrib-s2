@@ -3,6 +3,20 @@
 ## Purpose
 Defines the behavior of the `s2-ombc` node: declaring OMBC operation modes to the CEM, resolving OMBC instructions into actionable events, and confirming operation mode changes back to the CEM once hardware state is confirmed.
 ## Requirements
+
+### Requirement: Topic-based control-flow interface
+The public `s2-ombc` control-flow interface SHALL use message topics to distinguish control operations. `ModeInstruction` and `ModeRequest` messages emitted downstream, and `ModeConfirmation` and `PowerMeasurement` messages accepted from a flow, SHALL use `msg.topic` with their operation data in `msg.payload`.
+
+This topic-based interface is intentionally distinct from the lower-level `payload.command` interface used to send `SystemDescription`, `UpdateStatus`, and `PowerMeasurement` commands to `s2-rm`. The two interfaces provide different feature sets and are not required to be interchangeable aliases.
+
+#### Scenario: Topic identifies a mode confirmation
+- **WHEN** a flow sends `{ topic: 'ModeConfirmation', payload: { id, factor } }`
+- **THEN** `s2-ombc` interprets it as a mode confirmation
+
+#### Scenario: Topic identifies a power measurement
+- **WHEN** a flow sends `{ topic: 'PowerMeasurement', payload: { values: ... } }`
+- **THEN** `s2-ombc` converts it to the lower-level `PowerMeasurement` command for the Resource Manager
+
 ### Requirement: OMBC system description from configuration
 `s2-ombc` SHALL derive the OMBC system description (operation modes and transitions) from its `s2-ombc-config` node. When it observes, on `s2-rm`'s "from CEM" output, that a CEM has selected `OPERATION_MODE_BASED_CONTROL`, it SHALL push that system description back to `s2-rm` via a `SystemDescription` command for `s2-rm` to send to that CEM.
 
@@ -15,11 +29,11 @@ On receiving an OMBC instruction, `s2-ombc` SHALL resolve the referenced operati
 
 #### Scenario: OMBC instruction selects a configured mode
 - **WHEN** an OMBC instruction referencing a configured operation mode arrives at `s2-ombc`
-- **THEN** the node emits a message with `msg.topic` set to `'ModeInstruction'` and `msg.payload` containing the resolved mode's `id`, `index`, `label`, and `factor`, plus `commodityPower` (an array of `{commodity_quantity, value}` pairs, one per phase, computed from the mode's power ranges and the instructed factor)
+- **THEN** the node emits a message with `msg.topic` set to `'ModeInstruction'` and `msg.payload` containing the resolved mode's `id`, `index`, `label`, and `factor`, plus `commodityPower` (S2-shaped `{commodity_quantity, value}` pairs computed from the mode's power ranges and instructed factor: one `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value for symmetric power, or L1/L2/L3 values for per-phase power). When the built-in D-Bus path is used through `s2-resource`, the configured Power Meas./Phases shape determines which of those valid S2 forms is emitted.
 
 #### Scenario: Requested power also expressed in the values convenience shape
 - **WHEN** an OMBC instruction resolves to a configured mode, as in the prior scenario
-- **THEN** the emitted message's `msg.payload` also includes a `values` field: a plain number when the mode's power ranges are 3-phase-symmetric, or a 3-element `[L1, L2, L3]` array when they are per-phase - the same shape `PowerMeasurement` input already accepts on `s2-dbus`/`s2-resource`, so a flow can feed `msg.payload.values` directly into a `PowerMeasurement` input without conversion
+- **THEN** the emitted message's `msg.payload` also includes a `values` field: a plain number when the mode's power ranges are 3-phase-symmetric, or an array whose length matches the configured per-phase count when they are per-phase (one element for a single-phase D-Bus device, three for a three-phase device) - the same shape `PowerMeasurement` input accepts on `s2-dbus`/`s2-resource`, so a flow can feed `msg.payload.values` directly into a `PowerMeasurement` input without conversion
 
 ### Requirement: Silent ignoring of non-OMBC instructions
 `s2-ombc` SHALL ignore any instruction that is not an OMBC instruction, without emitting a message or raising an error, so that it can be wired in parallel with other control-type nodes downstream of the same `s2-rm` output.

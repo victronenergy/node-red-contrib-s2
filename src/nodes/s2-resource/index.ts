@@ -76,9 +76,12 @@ export = function (RED: NodeRedApp): void {
     RED.nodes.createNode(this, config)
     const node = this
 
-    function parsePowerMeasurementTypes (value: unknown): string[] {
+    function parsePowerMeasurementTypes (value: unknown, nrOfPhases = 1, phaseSetting = 1): string[] {
       if (value === true || value === '3_PHASE_SYMMETRIC') return ['ELECTRIC.POWER.3_PHASE_SYMMETRIC']
-      if (value === 'L1_L2_L3') return ['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3']
+      if (value === 'L1_L2_L3') {
+        if (nrOfPhases === 1) return [`ELECTRIC.POWER.L${phaseSetting}`]
+        return Array.from({ length: nrOfPhases }, (_, index) => `ELECTRIC.POWER.L${index + 1}`)
+      }
       return []
     }
 
@@ -104,7 +107,7 @@ export = function (RED: NodeRedApp): void {
         .split(',').map((s: string) => s.trim()).filter(Boolean),
       providesForecast: config.providesForecast === true,
       providesPowerMeasurementTypes: isDbusTransport
-        ? parsePowerMeasurementTypes(dbusConfig?.measurementType)
+        ? parsePowerMeasurementTypes(dbusConfig?.measurementType, dbusConfig?.nrOfPhases, dbusConfig?.phaseSetting)
         : parsePowerMeasurementTypes(config.providesPowerMeasurement),
       instructionProcessingDelay: 0,
       manufacturer: config.manufacturer || 'Custom (Node-RED)',
@@ -281,9 +284,13 @@ export = function (RED: NodeRedApp): void {
       }
       ombcController = new OMBCController({
         systemDescription,
+        powerMeasurement: isDbusTransport && dbusConfig
+          ? { measurementType: dbusConfig.measurementType, nrOfPhases: dbusConfig.nrOfPhases, phaseSetting: dbusConfig.phaseSetting }
+          : undefined,
         onEmitInstruction: (msg) => sendDownstream(msg),
         onSendCommand: (msg) => rm.handleInput(msg, () => {}),
         onStatus: (status) => node.status(status),
+        onWarn: (message) => node.warn(`[s2-resource] ${message}`),
         getContextValue: (key) => node.context().get(key),
         setContextValue: (key, value) => node.context().set(key, value),
         // Defaults to on: without independent hardware-state feedback wired into this node's
@@ -424,9 +431,21 @@ export = function (RED: NodeRedApp): void {
 
     node.on('input', (msg, _send, done) => {
       const payloadObj = (msg.payload && typeof msg.payload === 'object') ? msg.payload as Record<string, unknown> : undefined
-      const hasCommand = !!(payloadObj && payloadObj.command)
+      const topicCommand = msg.topic === 'ControlTypes' || msg.topic === 'SetAvailableControlTypes'
+      const routedMsg = topicCommand
+        ? { ...msg, payload: { ...(payloadObj || {}), command: 'SetAvailableControlTypes' } }
+        : msg
+      const routedPayload = routedMsg.payload as Record<string, unknown> | undefined
+      const hasCommand = !!(routedPayload && routedPayload.command)
+      const isModeConfirmation = !!(
+        ombcController && payloadObj &&
+        (msg.topic === 'ModeConfirmation' ||
+          'confirmedOperationModeId' in payloadObj ||
+          'confirmedOperationModeIndex' in payloadObj ||
+          'confirmedOperationModeLabel' in payloadObj)
+      )
 
-      if (!hasCommand && measurementCache && payloadObj) {
+      if (!hasCommand && !isModeConfirmation && measurementCache && payloadObj && (!ombcController || msg.topic !== 'PowerMeasurement')) {
         const update = measurementCache.update(payloadObj)
         if (update) {
           if (update.warning) node.warn(`[s2-resource] ${update.warning}`)
@@ -438,7 +457,7 @@ export = function (RED: NodeRedApp): void {
       }
 
       if (hasCommand || !ombcController) {
-        rm.handleInput(msg, done)
+        rm.handleInput(routedMsg, done)
       } else {
         ombcController.handleInput(msg, done)
       }

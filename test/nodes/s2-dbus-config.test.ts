@@ -62,6 +62,13 @@ describe('s2-dbus-config', () => {
     expect(node.phaseSetting).toBe(2)
   })
 
+  it('falls back to per-phase measurement when symmetric power is configured for one phase', () => {
+    const node = setupNode({ measurementType: '3_PHASE_SYMMETRIC', nrOfPhases: 1, phaseSetting: 2 })
+    expect(node.measurementType).toBe('L1_L2_L3')
+    expect(node.nrOfPhases).toBe(1)
+    expect(node.phaseSetting).toBe(2)
+  })
+
   it('defaults autoCalculateEnergy to true', () => {
     const node = setupNode({})
     expect(node.autoCalculateEnergy).toBe(true)
