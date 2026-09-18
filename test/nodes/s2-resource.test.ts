@@ -547,7 +547,7 @@ describe('s2-resource - power measurement advertised capability follows the acti
     setupNode(
       { transport: 'dbus', controlType: 'none', providesPowerMeasurement: '' },
       DEFAULT_CEM_CONFIG,
-      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3' }
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 3 }
     )
 
     mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
@@ -555,6 +555,20 @@ describe('s2-resource - power measurement advertised capability follows the acti
 
     const rmd = findResourceManagerDetailsSentVia(mockDbusTransport.send as jest.Mock)
     expect(rmd?.provides_power_measurement_types).toEqual(['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3'])
+  })
+
+  it.each([1, 2, 3])('Transport: D-Bus advertises only wired phase L%s for a single-phase per-phase device', (phaseSetting) => {
+    setupNode(
+      { transport: 'dbus', controlType: 'none', providesPowerMeasurement: '' },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting }
+    )
+
+    mockDbusTransport.emit('connect', 'dbus-cem-1', 300)
+    mockDbusTransport.emit('message', 'dbus-cem-1', serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
+
+    const rmd = findResourceManagerDetailsSentVia(mockDbusTransport.send as jest.Mock)
+    expect(rmd?.provides_power_measurement_types).toEqual([`ELECTRIC.POWER.L${phaseSetting}`])
   })
 
   it('Transport: WebSocket still uses the RM tab\'s own providesPowerMeasurement field', () => {
@@ -761,6 +775,29 @@ describe('s2-resource - Control type: OMBC', () => {
     const instr = outputAt(node, 0).find((m) => (m as { topic?: string }).topic === 'ModeInstruction') as { payload: { commodityPower: unknown, values: unknown } }
     expect(instr.payload.commodityPower).toEqual([{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 300 }])
     expect(instr.payload.values).toEqual([300])
+  })
+
+  it('routes topic PowerMeasurement through built-in OMBC before the D-Bus cache', () => {
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: '3_PHASE_SYMMETRIC', nrOfPhases: 3 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      cemId: 'cem-1',
+      topic: 'PowerMeasurement',
+      payload: {
+        commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }]
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).not.toHaveBeenCalled()
+    expect((mockDbusTransport.send as jest.Mock).mock.calls.some((call: unknown[]) => (
+      typeof call[0] === 'string' && call[0].includes('PowerMeasurement')
+    ))).toBe(true)
   })
 
   it('routes a complete ModeInstruction payload to OMBC confirmation before D-Bus measurement caching', () => {

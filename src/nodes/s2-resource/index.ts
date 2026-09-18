@@ -76,9 +76,12 @@ export = function (RED: NodeRedApp): void {
     RED.nodes.createNode(this, config)
     const node = this
 
-    function parsePowerMeasurementTypes (value: unknown): string[] {
+    function parsePowerMeasurementTypes (value: unknown, nrOfPhases = 1, phaseSetting = 1): string[] {
       if (value === true || value === '3_PHASE_SYMMETRIC') return ['ELECTRIC.POWER.3_PHASE_SYMMETRIC']
-      if (value === 'L1_L2_L3') return ['ELECTRIC.POWER.L1', 'ELECTRIC.POWER.L2', 'ELECTRIC.POWER.L3']
+      if (value === 'L1_L2_L3') {
+        if (nrOfPhases === 1) return [`ELECTRIC.POWER.L${phaseSetting}`]
+        return Array.from({ length: nrOfPhases }, (_, index) => `ELECTRIC.POWER.L${index + 1}`)
+      }
       return []
     }
 
@@ -104,7 +107,7 @@ export = function (RED: NodeRedApp): void {
         .split(',').map((s: string) => s.trim()).filter(Boolean),
       providesForecast: config.providesForecast === true,
       providesPowerMeasurementTypes: isDbusTransport
-        ? parsePowerMeasurementTypes(dbusConfig?.measurementType)
+        ? parsePowerMeasurementTypes(dbusConfig?.measurementType, dbusConfig?.nrOfPhases, dbusConfig?.phaseSetting)
         : parsePowerMeasurementTypes(config.providesPowerMeasurement),
       instructionProcessingDelay: 0,
       manufacturer: config.manufacturer || 'Custom (Node-RED)',
@@ -442,7 +445,7 @@ export = function (RED: NodeRedApp): void {
           'confirmedOperationModeLabel' in payloadObj)
       )
 
-      if (!hasCommand && !isModeConfirmation && measurementCache && payloadObj) {
+      if (!hasCommand && !isModeConfirmation && measurementCache && payloadObj && (!ombcController || msg.topic !== 'PowerMeasurement')) {
         const update = measurementCache.update(payloadObj)
         if (update) {
           if (update.warning) node.warn(`[s2-resource] ${update.warning}`)

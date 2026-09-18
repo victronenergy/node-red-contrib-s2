@@ -171,7 +171,7 @@ export class OMBCController {
       }
       if (measurement.nrOfPhases === 3) {
         const phases = profile.hasSymmetric
-          ? [1, 2, 3].map(() => Math.round(profile.symmetric / 3))
+          ? [1, 2, 3].map(() => profile.symmetric / 3)
           : profile.phases
         return phases.map((value, index) => ({ commodity_quantity: `ELECTRIC.POWER.L${index + 1}`, value }))
       }
@@ -199,7 +199,7 @@ export class OMBCController {
       return [profile.hasSymmetric ? Math.round(profile.symmetric / 3) : profile.phases[phase - 1]]
     }
     if (measurement?.measurementType === 'L1_L2_L3' && measurement.nrOfPhases === 3) {
-      return profile.hasSymmetric ? [1, 2, 3].map(() => Math.round(profile.symmetric / 3)) : profile.phases
+      return profile.hasSymmetric ? [1, 2, 3].map(() => profile.symmetric / 3) : profile.phases
     }
     return profile.hasSymmetric ? profile.symmetric : profile.phases
   }
