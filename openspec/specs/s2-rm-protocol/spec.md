@@ -3,6 +3,19 @@
 ## Purpose
 Defines the generic S2 protocol behavior of the `s2-rm` node: session lifecycle, control-type selection, and instruction acknowledgment/routing, independent of any specific control type's semantics.
 ## Requirements
+### Requirement: Lower-level command interface is distinct from topic convenience messages
+The shared Resource Manager interface SHALL use `msg.payload.command` for transport and control-type commands, including `Connect`, `Message`, `Disconnect`, `PowerMeasurement`, `UpdateStatus`, `SystemDescription`, `Forecast`, and runtime control-type availability updates. These commands are the lower-level protocol boundary used by `s2-rm`, transports, and dedicated control-type nodes.
+
+Topic-based messages such as `ModeInstruction`, `ModeRequest`, `ModeConfirmation`, `PowerMeasurement`, and `ControlTypes` belong to the public convenience/control-flow interface of `s2-ombc` or `s2-resource`; they are not required to be accepted by every lower-level RM or dedicated control-type node. A composite node MAY translate a documented topic message into a command internally.
+
+#### Scenario: RM receives a lower-level power command
+- **WHEN** the RM receives `{ payload: { command: 'PowerMeasurement', cemId, values } }`
+- **THEN** it forwards the S2 power measurement for the addressed CEM
+
+#### Scenario: Topic convenience behavior remains node-specific
+- **WHEN** a flow sends `{ topic: 'PowerMeasurement', payload: { values: ... } }` to a node exposing a topic convenience interface
+- **THEN** that node may translate it to the lower-level command, but the shared RM command contract remains the `payload.command` form
+
 ### Requirement: Session handshake and identity exchange
 The RM SHALL initiate the S2 handshake when a CEM connects, and SHALL send its `ResourceManagerDetails` once the CEM's `HandshakeResponse` is received.
 

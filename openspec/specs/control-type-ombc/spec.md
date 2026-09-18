@@ -3,6 +3,20 @@
 ## Purpose
 Defines the behavior of the `s2-ombc` node: declaring OMBC operation modes to the CEM, resolving OMBC instructions into actionable events, and confirming operation mode changes back to the CEM once hardware state is confirmed.
 ## Requirements
+
+### Requirement: Topic-based control-flow interface
+The public `s2-ombc` control-flow interface SHALL use message topics to distinguish control operations. `ModeInstruction` and `ModeRequest` messages emitted downstream, and `ModeConfirmation` and `PowerMeasurement` messages accepted from a flow, SHALL use `msg.topic` with their operation data in `msg.payload`.
+
+This topic-based interface is intentionally distinct from the lower-level `payload.command` interface used to send `SystemDescription`, `UpdateStatus`, and `PowerMeasurement` commands to `s2-rm`. The two interfaces provide different feature sets and are not required to be interchangeable aliases.
+
+#### Scenario: Topic identifies a mode confirmation
+- **WHEN** a flow sends `{ topic: 'ModeConfirmation', payload: { id, factor } }`
+- **THEN** `s2-ombc` interprets it as a mode confirmation
+
+#### Scenario: Topic identifies a power measurement
+- **WHEN** a flow sends `{ topic: 'PowerMeasurement', payload: { values: ... } }`
+- **THEN** `s2-ombc` converts it to the lower-level `PowerMeasurement` command for the Resource Manager
+
 ### Requirement: OMBC system description from configuration
 `s2-ombc` SHALL derive the OMBC system description (operation modes and transitions) from its `s2-ombc-config` node. When it observes, on `s2-rm`'s "from CEM" output, that a CEM has selected `OPERATION_MODE_BASED_CONTROL`, it SHALL push that system description back to `s2-rm` via a `SystemDescription` command for `s2-rm` to send to that CEM.
 

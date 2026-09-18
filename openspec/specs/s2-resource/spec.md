@@ -6,6 +6,27 @@ Provides a single Node-RED node combining an S2 resource manager, a built-in tra
 
 ## Requirements
 
+### Requirement: Public topic API and lower-level command API are distinct
+`s2-resource` SHALL support two intentionally different message interfaces:
+
+- **Topic form:** public convenience/control-flow messages use `msg.topic` to identify the operation and place operation data in `msg.payload`, for example `{ topic: 'ModeConfirmation', payload: { ... } }`, `{ topic: 'PowerMeasurement', payload: { ... } }`, and `{ topic: 'ControlTypes', payload: { ... } }`.
+- **Command form:** lower-level Resource Manager and transport operations use `msg.payload.command`, for example `{ payload: { command: 'UpdateStatus', ... } }`, `{ payload: { command: 'SystemDescription', ... } }`, and `{ payload: { command: 'PowerMeasurement', ... } }`.
+
+The two forms SHALL NOT be treated as a library-wide aliasing requirement. Topic messages are the convenience interface exposed by the composite node and its built-in control behavior; command messages are the transport-agnostic Resource Manager interface used to connect `s2-rm`, transports, and dedicated control-type nodes. `s2-resource` MAY translate a documented topic convenience message into the corresponding lower-level command internally.
+
+#### Scenario: Topic convenience message reaches built-in control behavior
+- **WHEN** `s2-resource` receives `{ topic: 'ModeConfirmation', payload: { id, factor } }` with built-in OMBC enabled
+- **THEN** it processes the confirmation as a control-flow message rather than requiring a `payload.command` field
+
+#### Scenario: Lower-level command reaches the Resource Manager
+- **WHEN** `s2-resource` receives `{ payload: { command: 'UpdateStatus', ... } }`
+- **THEN** it forwards the command to the shared Resource Manager command interface
+
+#### Scenario: ControlTypes topic is a convenience translation
+- **WHEN** `s2-resource` receives `{ topic: 'ControlTypes', payload: { isControllable: false } }`
+- **THEN** it translates that message to the Resource Manager's available-control-types update operation
+
+
 ### Requirement: Composite session behavior
 `s2-resource` SHALL exhibit the same session handshake, control-type selection, instruction acknowledgment/routing, and `S2/0/Active` transport signal behavior that `s2-rm-protocol` defines for `s2-rm`, without wiring a separate `s2-rm` node.
 
