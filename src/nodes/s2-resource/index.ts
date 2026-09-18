@@ -434,8 +434,15 @@ export = function (RED: NodeRedApp): void {
         : msg
       const routedPayload = routedMsg.payload as Record<string, unknown> | undefined
       const hasCommand = !!(routedPayload && routedPayload.command)
+      const isModeConfirmation = !!(
+        ombcController && payloadObj &&
+        (msg.topic === 'ModeConfirmation' ||
+          'confirmedOperationModeId' in payloadObj ||
+          'confirmedOperationModeIndex' in payloadObj ||
+          'confirmedOperationModeLabel' in payloadObj)
+      )
 
-      if (!hasCommand && measurementCache && payloadObj) {
+      if (!hasCommand && !isModeConfirmation && measurementCache && payloadObj) {
         const update = measurementCache.update(payloadObj)
         if (update) {
           if (update.warning) node.warn(`[s2-resource] ${update.warning}`)

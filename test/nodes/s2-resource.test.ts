@@ -763,6 +763,35 @@ describe('s2-resource - Control type: OMBC', () => {
     expect(instr.payload.values).toEqual([300])
   })
 
+  it('routes a complete ModeInstruction payload to OMBC confirmation before D-Bus measurement caching', () => {
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 3 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      cemId: 'cem-1',
+      topic: 'ModeConfirmation',
+      payload: {
+        id: 'mode-standby',
+        index: 0,
+        label: 'Standby',
+        factor: 1,
+        commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 0 }],
+        values: 0
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).not.toHaveBeenCalled()
+    const statusMessage = (mockDbusTransport.send as jest.Mock).mock.calls
+      .map((call: unknown[]) => call[0])
+      .find((raw) => typeof raw === 'string' && raw.includes('OMBC.Status'))
+    expect(statusMessage).toBeDefined()
+  })
+
   function sendOmbcInstruction (handlers: Record<string, (...args: unknown[]) => void>): void {
     handlers.input({
       payload: {
