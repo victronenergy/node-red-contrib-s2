@@ -322,6 +322,14 @@ export class S2ResourceManager {
           done(new Error('SetAvailableControlTypes requires an availableControlTypes array'))
           return
         }
+        if (availableControlTypes.length === 0) {
+          done(new Error('SetAvailableControlTypes requires at least one control type'))
+          return
+        }
+        if (availableControlTypes.includes(ControlType.NO_SELECTION)) {
+          done(new Error('SetAvailableControlTypes cannot advertise NO_SELECTION'))
+          return
+        }
         const invalidType = availableControlTypes.find(type => !Object.values(ControlType).includes(type as typeof ControlType[keyof typeof ControlType]))
         if (invalidType !== undefined) {
           done(new Error(`SetAvailableControlTypes contains unknown control type: ${invalidType}`))

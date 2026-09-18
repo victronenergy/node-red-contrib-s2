@@ -231,6 +231,21 @@ describe('S2ResourceManager - available control types', () => {
     expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL'])
   })
 
+  it.each([
+    { label: 'an empty list', availableControlTypes: [] },
+    { label: 'NO_SELECTION', availableControlTypes: ['NO_SELECTION'] }
+  ])('rejects $label before changing state or resending ResourceManagerDetails', ({ availableControlTypes }) => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.any(Error))
+    expect(transportMsgs).toHaveLength(0)
+  })
+
   it('applies before any CEM connects and is reflected in the next handshake', () => {
     const { rm, transportMsgs } = setup()
 
