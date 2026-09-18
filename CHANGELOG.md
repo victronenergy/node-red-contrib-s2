@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-ombc` and D-Bus-backed `s2-resource` now emit S2-aligned `commodityPower` and `values` payloads for symmetric, single-phase, and three-phase per-phase measurements. `ModeInstruction` payloads can be reused directly as `ModeConfirmation` or `PowerMeasurement`; `PowerMeasurement` accepts `commodityPower` as a fallback when `values` is absent.
 - Power measurement input now supports phase-aware conversion and validation, including single-phase selection from three-phase arrays, equal distribution of a three-phase scalar, symmetric array summing, silent zero defaults for `null`/`undefined`/`0`, and warnings for non-trivial conversions.
 - Runtime control-type updates now validate control types before changing Resource Manager state. The `s2-resource` `ControlTypes` topic convenience path follows the deploy-time "Not Controllable" checkbox and rejects invalid uncontrollable states that would produce an empty S2 control-type list.
+- `s2-resource`: complete `ModeInstruction` payloads passed back as `ModeConfirmation` now reach OMBC status handling instead of being interpreted as D-Bus measurements.
+- Runtime control-type updates now reject malformed `isControllable` values, empty advertised control-type lists, and `NO_SELECTION` before changing Resource Manager state.
 
 ## [0.7.0]
 
