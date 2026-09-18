@@ -27,7 +27,7 @@ export interface PowerMeasurementUpdate {
   /** S2-shaped snapshot of every cached value, to relay to the CEM - null if measurement isn't
    * currently active for a CEM, or if this call changed nothing. */
   s2Values: PowerMeasurementValue[] | null
-  /** Set when `values` couldn't be applied (e.g. an array on a single-phase device); callers should surface this via their own node.warn(). */
+  /** Set when `values` couldn't be applied; callers should surface this via their own node.warn(). */
   warning?: string
 }
 
@@ -40,7 +40,8 @@ export interface PowerMeasurementUpdate {
  * both relay measurements identically without duplicating the logic.
  *
  * Accepts either the raw D-Bus-key shape (`{ 'Ac/Power': 1800 }`) or a friendlier `values` shape
- * (`{ values: 10 | [11, 22, 33] }`) whose meaning depends on measurement type/phase count - see update() below.
+ * (`{ values: 10 | [11, 22, 33] }`). When `values` is absent, `commodityPower` can provide
+ * S2-shaped commodity/value entries; `values` takes precedence when both are present.
  */
 export class PowerMeasurementCache {
   private readonly measurementType: string
@@ -78,23 +79,65 @@ export class PowerMeasurementCache {
     }
 
     // `values` shape.
-    const values = (payload as { values?: unknown }).values
-    if (values !== undefined) {
-      if (this.measurementType === 'L1_L2_L3') {
+    const hasValues = Object.prototype.hasOwnProperty.call(payload, 'values')
+    const hasCommodityPower = Object.prototype.hasOwnProperty.call(payload, 'commodityPower')
+    const valuesKey = hasValues ? 'values' : hasCommodityPower ? 'commodityPower' : undefined
+    const values = valuesKey ? payload[valuesKey] : undefined
+    if (valuesKey) {
+      if (values === undefined || values === null || values === 0) {
+        const phaseKeys = Object.keys(this.props)
+        if (this.measurementType === 'L1_L2_L3') {
+          phaseKeys.forEach(key => setValue(key, 0))
+        } else if (this.measurementType === '3_PHASE_SYMMETRIC') {
+          setValue('Ac/Power', 0)
+        }
+      } else if (valuesKey === 'commodityPower' && Array.isArray(values) && values.length > 0 && values.every((value) => {
+        const item = value as Record<string, unknown>
+        return item !== null && typeof item === 'object' && typeof item.commodity_quantity === 'string' && typeof item.value === 'number'
+      })) {
+        const commodityValues = values as PowerMeasurementValue[]
+        const byCommodity = new Map(commodityValues.map(value => [value.commodity_quantity, value.value]))
+        if (this.measurementType === '3_PHASE_SYMMETRIC') {
+          const symmetric = byCommodity.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
+          if (symmetric !== undefined) {
+            setValue('Ac/Power', symmetric)
+          } else {
+            const phaseValues = ['L1', 'L2', 'L3'].map(phase => byCommodity.get(`ELECTRIC.POWER.${phase}`) || 0)
+            if (phaseValues.some((value, index) => byCommodity.has(`ELECTRIC.POWER.L${index + 1}`))) {
+              phaseValues.forEach((value, index) => setValue(`Ac/L${index + 1}/Power`, value))
+              setValue('Ac/Power', phaseValues.reduce((sum, value) => sum + value, 0))
+            }
+          }
+        } else if (this.measurementType === 'L1_L2_L3') {
+          const phaseKeys = Object.keys(this.props)
+          phaseKeys.forEach(key => {
+            const commodity = this.props[key]
+            const value = byCommodity.get(commodity)
+            if (value !== undefined) setValue(key, value)
+          })
+        }
+      } else if (this.measurementType === 'L1_L2_L3') {
         const phaseKeys = Object.keys(this.props)
         if (phaseKeys.length === 1) {
           if (typeof values === 'number') {
             setValue(phaseKeys[0], values)
+          } else if (Array.isArray(values) && values.length === 3 && values.every((v) => typeof v === 'number')) {
+            const phaseIndex = Number(phaseKeys[0].match(/L(\d)/)?.[1]) - 1
+            setValue(phaseKeys[0], values[phaseIndex] as number)
+            warning = `values array of length 3 reduced to wired phase (${phaseKeys[0]})`
+          } else if (Array.isArray(values) && values.length === 1 && typeof values[0] === 'number') {
+            setValue(phaseKeys[0], values[0])
           } else {
-            // A genuinely single-phase device has no second/third line to attribute array elements to.
-            warning = 'values array input is not supported for a single-phase device (nrOfPhases: 1) - use a scalar value instead'
+            warning = 'values for a single-phase device (nrOfPhases: 1) must be a scalar or an array of exactly 3 numbers'
           }
         } else if (Array.isArray(values) && values.length === phaseKeys.length && values.every((v) => typeof v === 'number')) {
           phaseKeys.forEach((key, i) => setValue(key, values[i] as number))
+        } else if (phaseKeys.length === 3 && typeof values === 'number') {
+          const perPhase = values / 3
+          phaseKeys.forEach(key => setValue(key, perPhase))
+          warning = 'scalar divided equally across L1, L2, and L3'
         } else {
-          // A scalar is deliberately rejected too (not broadcast) - which line each phase should
-          // report is ambiguous for a per-phase measurement, unlike 3-phase-symmetric below.
-          warning = `values must be an array of exactly ${phaseKeys.length} numbers (one per phase) for a per-phase measurement`
+          warning = `values must be a scalar or an array of exactly ${phaseKeys.length} numbers (one per phase)`
         }
       } else if (this.measurementType === '3_PHASE_SYMMETRIC') {
         if (typeof values === 'number') {
@@ -105,6 +148,7 @@ export class PowerMeasurementCache {
           setValue('Ac/L2/Power', l2)
           setValue('Ac/L3/Power', l3)
           setValue('Ac/Power', l1 + l2 + l3)
+          warning = 'three values summed for 3-phase symmetric power'
         } else {
           warning = 'values array for 3-phase symmetric measurement must have exactly 3 numbers'
         }

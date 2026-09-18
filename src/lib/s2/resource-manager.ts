@@ -322,9 +322,20 @@ export class S2ResourceManager {
           done(new Error('SetAvailableControlTypes requires an availableControlTypes array'))
           return
         }
+        const invalidType = availableControlTypes.find(type => !Object.values(ControlType).includes(type as typeof ControlType[keyof typeof ControlType]))
+        if (invalidType !== undefined) {
+          done(new Error(`SetAvailableControlTypes contains unknown control type: ${invalidType}`))
+          return
+        }
         this.rmDetails.availableControlTypes = availableControlTypes
       } else {
-        this.rmDetails.availableControlTypes = isControllable ? [...this.configuredControlTypes] : [ControlType.NOT_CONTROLABLE]
+        if (!isControllable && !this.configuredControlTypes.includes(ControlType.NOT_CONTROLABLE)) {
+          done(new Error('Cannot set isControllable to false because NOT_CONTROLABLE was not enabled at deploy time'))
+          return
+        }
+        this.rmDetails.availableControlTypes = isControllable
+          ? [...this.configuredControlTypes]
+          : [ControlType.NOT_CONTROLABLE]
       }
       for (const session of this.sessions.values()) {
         session.resendResourceManagerDetails(this.resolveRmDetails())

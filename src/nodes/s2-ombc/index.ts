@@ -43,12 +43,13 @@ interface S2OmbcNodeConfig extends NodeConfig {
  *
  * Output port 1 - instructions:
  *   ModeInstruction: { topic: 'ModeInstruction', payload: { id, index, label, factor, commodityPower, values }, cemId, rawS2Message }
- *     commodityPower: one { commodity_quantity, value } pair per phase (L1/L2/L3, watts),
- *     derived from the mode's power_ranges and factor - the same shape S2's own
- *     PowerMeasurement/PowerRange values use.
+ *     commodityPower: S2-shaped { commodity_quantity, value } pairs derived from the mode's
+ *     power_ranges and factor. Symmetric power uses ELECTRIC.POWER.3_PHASE_SYMMETRIC; per-phase
+ *     power uses one ELECTRIC.POWER.L1/L2/L3 pair for each phase. The built-in D-Bus path on
+ *     s2-resource further constrains this to its configured Power Meas./Phases shape.
  *     values: the same requested power in the convenience shape PowerMeasurement input accepts
- *     (a plain number for a 3-phase-symmetric mode, or an [L1, L2, L3] array for a per-phase
- *     mode) - feed it straight into a PowerMeasurement input to fake a matching measurement.
+ *     (a plain number for a 3-phase-symmetric mode, or an array whose length matches the
+ *     configured per-phase count) - feed it straight into a PowerMeasurement input.
  *   Non-OMBC instructions: ignored silently.
  *   ModeRequest: { topic: 'ModeRequest', payload: null, cemId }
  *
@@ -82,6 +83,7 @@ export = function (RED: NodeRedApp): void {
       onEmitInstruction: (msg) => node.send([msg, null]),
       onSendCommand: (msg) => node.send([null, msg]),
       onStatus: (status) => node.status(status),
+      onWarn: (message) => node.warn(message),
       getContextValue: (key) => node.context().get(key),
       setContextValue: (key, value) => node.context().set(key, value)
     })

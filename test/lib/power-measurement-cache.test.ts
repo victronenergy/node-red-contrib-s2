@@ -67,18 +67,37 @@ describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 1', () => 
     expect(update?.warning).toBeUndefined()
   })
 
-  it('rejects an array values input with a warning and no cache changes', () => {
+  it('uses the respective wired phase from a three-element array', () => {
     const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
     const update = cache.update({ values: [11, 22, 33] })
-    expect(update?.raw).toEqual({})
-    expect(update?.warning).toMatch(/single-phase/)
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 22, 'Ac/Power': 22 })
+    expect(update?.warning).toMatch(/wired phase/)
   })
 
-  it('a subsequent valid update after a rejection is unaffected', () => {
+  it('accepts a one-element array for a single-phase device', () => {
     const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
-    cache.update({ values: [11, 22, 33] })
-    const update = cache.update({ values: 5 })
-    expect(update?.raw).toEqual({ 'Ac/L2/Power': 5, 'Ac/Power': 5 })
+    const update = cache.update({ values: [11] })
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 11, 'Ac/Power': 11 })
+    expect(update?.warning).toBeUndefined()
+  })
+
+  it('accepts commodityPower values and uses the wired commodity', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
+    const update = cache.update({ commodityPower: [
+      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 11 },
+      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 22 },
+      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 33 }
+    ] })
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 22, 'Ac/Power': 22 })
+  })
+
+  it('prefers values over commodityPower when both are present', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 1, 2)
+    const update = cache.update({
+      values: 10,
+      commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 99 }]
+    })
+    expect(update?.raw).toEqual({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
   })
 })
 
@@ -89,11 +108,21 @@ describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 3', () => 
     expect(update?.raw).toEqual({ 'Ac/L1/Power': 11, 'Ac/L2/Power': 22, 'Ac/L3/Power': 33, 'Ac/Power': 66 })
   })
 
-  it('a scalar is rejected, not broadcast, with a warning and no cache changes', () => {
+  it('accepts three per-phase commodityPower values', () => {
     const cache = new PowerMeasurementCache('L1_L2_L3', 3)
-    const update = cache.update({ values: 7 })
-    expect(update?.raw).toEqual({})
-    expect(update?.warning).toMatch(/exactly 3 numbers/)
+    const update = cache.update({ commodityPower: [
+      { commodity_quantity: 'ELECTRIC.POWER.L1', value: 11 },
+      { commodity_quantity: 'ELECTRIC.POWER.L2', value: 22 },
+      { commodity_quantity: 'ELECTRIC.POWER.L3', value: 33 }
+    ] })
+    expect(update?.raw).toEqual({ 'Ac/L1/Power': 11, 'Ac/L2/Power': 22, 'Ac/L3/Power': 33, 'Ac/Power': 66 })
+  })
+
+  it('divides a scalar equally across all three phases with a warning', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 3)
+    const update = cache.update({ values: 9 })
+    expect(update?.raw).toEqual({ 'Ac/L1/Power': 3, 'Ac/L2/Power': 3, 'Ac/L3/Power': 3, 'Ac/Power': 9 })
+    expect(update?.warning).toMatch(/divided/)
   })
 
   it('an array of the wrong length is rejected with a warning', () => {
@@ -101,6 +130,20 @@ describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 3', () => 
     const update = cache.update({ values: [1, 2] })
     expect(update?.raw).toEqual({})
     expect(update?.warning).toMatch(/exactly 3 numbers/)
+  })
+
+  it('defaults null values to zero without a warning', () => {
+    const cache = new PowerMeasurementCache('L1_L2_L3', 3)
+    const update = cache.update({ values: null })
+    expect(update?.raw).toEqual({ 'Ac/L1/Power': 0, 'Ac/L2/Power': 0, 'Ac/L3/Power': 0, 'Ac/Power': 0 })
+    expect(update?.warning).toBeUndefined()
+  })
+
+  it('defaults an explicit undefined value to zero without a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ values: undefined })
+    expect(update?.raw).toMatchObject({ 'Ac/Power': 0 })
+    expect(update?.warning).toBeUndefined()
   })
 })
 
@@ -132,6 +175,21 @@ describe('PowerMeasurementCache - 3_PHASE_SYMMETRIC', () => {
     const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
     const update = cache.update({ values: 9 })
     expect(update?.raw).toEqual({ 'Ac/Power': 9, 'Ac/L1/Power': 3, 'Ac/L2/Power': 3, 'Ac/L3/Power': 3 })
+  })
+
+  it('accepts a symmetric commodityPower value', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ commodityPower: [
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 90 }
+    ] })
+    expect(update?.raw).toMatchObject({ 'Ac/Power': 90 })
+  })
+
+  it('defaults numeric zero to zero without a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ values: 0 })
+    expect(update?.raw).toMatchObject({ 'Ac/Power': 0 })
+    expect(update?.warning).toBeUndefined()
   })
 
   it('an array (values shape) writes per-phase values directly, unsplit, and sums into Ac/Power', () => {

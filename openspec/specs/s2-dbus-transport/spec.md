@@ -90,9 +90,11 @@ When an `s2-dbus-config` node is created via the "add new" flow from inside an `
 The `s2-dbus` node SHALL cache the latest power value(s) received on its input and, while power measurement is active for a CEM, SHALL emit them as `{ command: 'PowerMeasurement', cemId, values }` for `s2-rm` to convert into S2 messages. Two independent input shapes SHALL be recognized on every message, checked independently (a message can use either):
 - **Raw D-Bus-key shape**: keyed by `Ac/Power` or `Ac/L{1,2,3}/Power`, matching the configured measurement type - e.g. `{ payload: { 'Ac/Power': 1800 } }`.
 - **`values` shape**: `{ payload: { values: <number | number[]> } }`, whose meaning is derived from the configured `measurementType`/`nrOfPhases`/`phaseSetting`:
-  - `measurementType: L1_L2_L3`, `nrOfPhases: 1`: a scalar `values` is the single wired phase's power (`phaseSetting` names which S2 commodity, e.g. `ELECTRIC.POWER.L2`). An array `values` SHALL be rejected (a `node.warn` and no cache update) - a genuinely single-phase device has no second or third line to attribute array elements to.
-  - `measurementType: L1_L2_L3`, `nrOfPhases: 3`: only an array `values` of length exactly 3 is accepted, mapping element-by-element to `ELECTRIC.POWER.L1`, `L2`, `L3` in order. A scalar `values` SHALL be rejected (a `node.warn` and no cache update), not broadcast - which single phase a lone value belongs to is ambiguous for a per-phase measurement.
-  - `measurementType: 3_PHASE_SYMMETRIC` (only valid at `nrOfPhases: 3`): a scalar `values` is sent as a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value. An array `values` of length 3 is summed into a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value for S2 (the array elements individually affect only the D-Bus per-phase properties - see the BusItem requirement below). An array of any other length SHALL be rejected (a `node.warn` and no cache update).
+  If `values` is absent, a `commodityPower` field MAY provide an array of S2-shaped `{ commodity_quantity, value }` objects, such as `ModeInstruction.payload.commodityPower`; matching configured commodities are consumed using the same phase rules below. When both fields are present, `values` takes precedence and `commodityPower` is ignored.
+  - `measurementType: L1_L2_L3`, `nrOfPhases: 1`: a scalar `values` is the single wired phase's power, while an array `values` of length 3 selects the value at the wired phase's index. Other array lengths SHALL be rejected with a warning.
+  - `measurementType: L1_L2_L3`, `nrOfPhases: 3`: an array `values` of length 3 maps element-by-element to `ELECTRIC.POWER.L1`, `L2`, `L3`; a scalar `values` is divided equally across all three phases with a warning. An array of length 1 SHALL be rejected.
+  - `measurementType: 3_PHASE_SYMMETRIC` (only valid at `nrOfPhases: 3`): a scalar `values` is sent as a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value. An array `values` of length 3 is summed into a single symmetric value for S2. An array of length 1 SHALL be rejected.
+  - When `values` is present as `undefined` or `null`, or is numeric `0`, it SHALL be treated as 0 W without a warning.
   - `measurementType: ''` (None): `values` has nothing configured to map to - no-op, matching the raw-key shape's own behavior with no measurement type configured.
 
 #### Scenario: CEM starts power measurement
@@ -111,7 +113,11 @@ The `s2-dbus` node SHALL cache the latest power value(s) received on its input a
 - **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`, and the node receives `{ payload: { values: 10 } }` while measurement is active
 - **THEN** it emits a `PowerMeasurement` with a single `{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 10 }`
 
-#### Scenario: Array `values` rejected on a single-phase device
+#### Scenario: One-element array `values` on a single-phase device
+- **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, `phaseSetting: 2`, and the node receives `{ payload: { values: [11] } }`
+- **THEN** it emits a `PowerMeasurement` with a single `{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 11 }`
+
+#### Scenario: Multi-element array `values` rejected on a single-phase device
 - **WHEN** `measurementType: L1_L2_L3`, `nrOfPhases: 1`, and the node receives `{ payload: { values: [11, 22, 33] } }`
 - **THEN** the cache is not updated, a warning is logged, and no `PowerMeasurement` reflecting those values is ever emitted
 

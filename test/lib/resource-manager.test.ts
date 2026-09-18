@@ -215,6 +215,22 @@ describe('S2ResourceManager - available control types', () => {
     expect(rmd.available_control_types).toEqual(['POWER_ENVELOPE_BASED_CONTROL'])
   })
 
+  it('rejects an unknown control type before changing state or resending ResourceManagerDetails', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['OPERATION_MODE_BASED_CONTROOL'] } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('unknown control type') }))
+    expect(transportMsgs).toHaveLength(0)
+
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', isControllable: true } }, jest.fn())
+    const [rmd] = rmdMessages(transportMsgs)
+    expect(rmd.available_control_types).toEqual(['OPERATION_MODE_BASED_CONTROL'])
+  })
+
   it('applies before any CEM connects and is reflected in the next handshake', () => {
     const { rm, transportMsgs } = setup()
 
@@ -226,8 +242,10 @@ describe('S2ResourceManager - available control types', () => {
     expect(rmd.available_control_types).toEqual(['FILL_RATE_BASED_CONTROL'])
   })
 
-  it('isControllable: false advertises exactly [NOT_CONTROLABLE]', () => {
-    const { rm, transportMsgs } = setup()
+  it('isControllable: false advertises exactly [NOT_CONTROLABLE] when initially available', () => {
+    const { rm, transportMsgs } = setup({
+      rmDetails: { ...RM_DETAILS, availableControlTypes: ['NOT_CONTROLABLE', 'OPERATION_MODE_BASED_CONTROL'] }
+    })
     connectAndHandshake(rm)
     transportMsgs.length = 0
 
@@ -237,6 +255,20 @@ describe('S2ResourceManager - available control types', () => {
     expect(done).toHaveBeenCalledWith()
     const [rmd] = rmdMessages(transportMsgs)
     expect(rmd.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
+
+  it('rejects isControllable: false when NOT_CONTROLABLE was initially unavailable', () => {
+    const { rm, transportMsgs } = setup({
+      rmDetails: { ...RM_DETAILS, availableControlTypes: ['OPERATION_MODE_BASED_CONTROL'] }
+    })
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', isControllable: false } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('NOT_CONTROLABLE') }))
+    expect(transportMsgs).toHaveLength(0)
   })
 
   it('isControllable: true restores the constructor\'s configured list, including after a prior list-form SetAvailableControlTypes call', () => {

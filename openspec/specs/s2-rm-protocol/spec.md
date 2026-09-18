@@ -83,7 +83,7 @@ Every RM (both `s2-rm`, configured via `s2-rm-config`, and `s2-resource`) SHALL 
 The RM SHALL accept a `SetAvailableControlTypes` command specifying a replacement for its advertised control types in one of two mutually exclusive forms (no `cemId` in either form, since it is not addressed to a specific CEM session):
 
 - **List form**: an `availableControlTypes` array. The RM SHALL replace its currently advertised `available_control_types` with exactly that list (no types added or removed beyond what the caller specified).
-- **Toggle form**: an `isControllable` boolean. `isControllable: false` SHALL replace the advertised list with exactly `[NOT_CONTROLABLE]`. `isControllable: true` SHALL replace the advertised list with the RM's deploy-time configured control types (the list derived from `s2-rm-config`'s or `s2-resource`'s control-types configuration, including whether its `NOT_CONTROLABLE` checkbox was checked), discarding any list currently in effect from a prior `SetAvailableControlTypes` command.
+- **Toggle form**: an `isControllable` boolean. `isControllable: false` SHALL replace the advertised list with `[NOT_CONTROLABLE]` when `NOT_CONTROLABLE` was present in the RM's deploy-time configured control types. If it was not enabled, the command SHALL be rejected because S2 requires at least one advertised control type. `isControllable: true` SHALL replace the advertised list with the RM's deploy-time configured control types (the list derived from `s2-rm-config`'s or `s2-resource`'s control-types configuration, including whether its `NOT_CONTROLABLE` checkbox was checked), discarding any list currently in effect from a prior `SetAvailableControlTypes` command.
 
 A command payload that specifies both `availableControlTypes` and `isControllable`, or neither, SHALL be rejected without changing the advertised list.
 
@@ -101,9 +101,9 @@ In either form, once the new list is determined, the RM SHALL re-send `ResourceM
 - **WHEN** a `SetAvailableControlTypes` command is received while more than one CEM session is connected
 - **THEN** each connected CEM receives its own updated `ResourceManagerDetails` reflecting the new list
 
-#### Scenario: isControllable false advertises only NOT_CONTROLABLE
+#### Scenario: isControllable false preserves the initial Not Controllable choice
 - **WHEN** a `SetAvailableControlTypes` command `{ isControllable: false }` is received
-- **THEN** the RM's advertised `available_control_types` becomes exactly `['NOT_CONTROLABLE']`, regardless of what was previously advertised or configured
+- **THEN** the RM advertises exactly `['NOT_CONTROLABLE']` if it was present in the deploy-time configured list, otherwise it rejects the command because an empty S2 control-type list is invalid
 
 #### Scenario: isControllable true restores the deploy-time configured list
 - **WHEN** an RM configured with `['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE']` has previously received `{ isControllable: false }`, and then receives `{ isControllable: true }`

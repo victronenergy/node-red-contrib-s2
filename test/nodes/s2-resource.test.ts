@@ -254,6 +254,28 @@ describe('s2-resource - NOT_CONTROLABLE opt-out', () => {
     const rmd = findRmd(node)
     expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
   })
+
+  it('accepts SetAvailableControlTypes as a topic convenience command', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ topic: 'SetAvailableControlTypes', payload: { isControllable: false } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
+
+  it('accepts ControlTypes as the topic convenience command', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', controlTypes: 'NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    connectAndHandshake(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ topic: 'ControlTypes', payload: { isControllable: false } }, jest.fn(), jest.fn())
+
+    const rmd = findRmd(node)
+    expect(rmd?.available_control_types).toEqual(['NOT_CONTROLABLE'])
+  })
 })
 
 // --- Transport (task 3.2) ---
@@ -619,12 +641,13 @@ describe('s2-resource - Transport: D-Bus power measurement relay', () => {
     expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 10, 'Ac/Power': 10 })
   })
 
-  it('warns and does not update the transport when a `values` array is sent to a single-phase device', () => {
+  it('selects the wired phase from a three-element `values` array on a single-phase device', () => {
     const { node, handlers } = setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 })
 
     handlers.input({ payload: { values: [11, 22, 33] } }, jest.fn(), jest.fn())
 
-    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('single-phase'))
+    expect(node.warn as jest.Mock).toHaveBeenCalledWith(expect.stringContaining('wired phase'))
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({ 'Ac/L2/Power': 22, 'Ac/Power': 22 })
   })
 })
 
@@ -702,6 +725,42 @@ describe('s2-resource - Control type: OMBC', () => {
     const instr = downstream.find((m) => (m as { topic?: string }).topic === 'ModeInstruction')
     expect(instr).toBeDefined()
     expect((instr as { payload: { id: string } }).payload.id).toBe('mode-standby')
+  })
+
+  it('uses the configured wired phase shape for a single-phase ModeInstruction', () => {
+    const systemDescription = JSON.stringify({
+      operationModes: [{
+        id: 'mode-phase', diagnostic_label: 'Phase mode', abnormal_condition_only: false,
+        power_ranges: [
+          { commodity_quantity: 'ELECTRIC.POWER.L1', start_of_range: 0, end_of_range: 300 },
+          { commodity_quantity: 'ELECTRIC.POWER.L2', start_of_range: 0, end_of_range: 600 },
+          { commodity_quantity: 'ELECTRIC.POWER.L3', start_of_range: 0, end_of_range: 900 }
+        ]
+      }],
+      transitions: [], timers: []
+    })
+    const { node, handlers } = setupNode(
+      { transport: 'dbus', controlType: 'ombc', systemDescription },
+      DEFAULT_CEM_CONFIG,
+      { ...DEFAULT_DBUS_CONFIG, measurementType: 'L1_L2_L3', nrOfPhases: 1, phaseSetting: 2 }
+    )
+    connectAndSelectOmbc(handlers)
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({
+      payload: {
+        command: 'Message', cemId: 'cem-1',
+        message: serialize({
+          message_type: MessageType.OMBC_INSTRUCTION, message_id: 'msg-phase', id: 'instr-phase',
+          execution_time: new Date(Date.now() - 1000).toISOString(), operation_mode_id: 'mode-phase',
+          operation_mode_factor: 0.5, abnormal_condition: false
+        })
+      }
+    }, jest.fn(), jest.fn())
+
+    const instr = outputAt(node, 0).find((m) => (m as { topic?: string }).topic === 'ModeInstruction') as { payload: { commodityPower: unknown, values: unknown } }
+    expect(instr.payload.commodityPower).toEqual([{ commodity_quantity: 'ELECTRIC.POWER.L2', value: 300 }])
+    expect(instr.payload.values).toEqual([300])
   })
 
   function sendOmbcInstruction (handlers: Record<string, (...args: unknown[]) => void>): void {
