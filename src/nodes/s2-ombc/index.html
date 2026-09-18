@@ -58,7 +58,7 @@
     <dt>topic <span class="property-type">string</span></dt>
     <dd><code>'ModeConfirmation'</code></dd>
     <dt>payload <span class="property-type">object</span></dt>
-    <dd>Exactly one of <code>id</code> (mode id), <code>index</code> (0-based index into the configured operation modes), or <code>label</code> (matches a mode's diagnostic label; must be unique). Optional <code>factor</code>, defaults to 1.</dd>
+    <dd>At least one of <code>id</code> (mode id), <code>index</code> (0-based index into the configured operation modes), or <code>label</code> (matches a mode's diagnostic label; must be unique). If more than one is present, priority is <code>id</code> &gt; <code>index</code> &gt; <code>label</code>. Optional <code>factor</code>, defaults to 1. A complete <code>ModeInstruction</code> payload can be passed back unchanged; its extra fields are ignored.</dd>
     <dt>cemId <span class="property-type">string</span></dt>
     <dd>Optional. Resolves to the one CEM currently with OMBC selected (error if more than one), or - if none - stored as the default status applied to whichever CEM next selects OMBC.</dd>
   </dl>
@@ -68,7 +68,7 @@
     <dt>topic <span class="property-type">string</span></dt>
     <dd><code>'PowerMeasurement'</code></dd>
     <dt>payload.values <span class="property-type">number | array</span></dt>
-    <dd>A number for 3-phase symmetric power, a 3-element array <code>[L1, L2, L3]</code> for per-phase power, or an array of <code>{ commodity_quantity, value }</code> objects passed through as-is.</dd>
+    <dd>A number for 3-phase symmetric power, a phase-shaped array for per-phase power, or an array of <code>{ commodity_quantity, value }</code> objects. If <code>values</code> is absent, <code>payload.commodityPower</code> is accepted as the S2-shaped fallback. When both are present, <code>values</code> takes precedence.</dd>
     <dt>cemId <span class="property-type">string</span></dt>
     <dd>Optional. Resolves the same way as <code>ModeConfirmation</code>'s cemId, except the message is silently dropped (no output) when no single CEM can be determined.</dd>
   </dl>
@@ -79,7 +79,7 @@
         <dt>topic <span class="property-type">string</span></dt>
         <dd><code>'ModeInstruction'</code> for a resolved OMBC instruction, or <code>'ModeRequest'</code> sent after a newly OMBC-selecting CEM has neither a persisted status nor a default available.</dd>
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, commodityPower }</code> for the resolved mode, where <code>commodityPower</code> contains S2-shaped <code>{ commodity_quantity, value }</code> pairs derived from the mode's power ranges and factor. Symmetric power uses <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>; per-phase power uses one <code>ELECTRIC.POWER.L1/L2/L3</code> pair per phase. For <code>ModeRequest</code>: <code>null</code>.</dd>
+        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, commodityPower, values }</code> for the resolved mode. <code>commodityPower</code> contains S2-shaped <code>{ commodity_quantity, value }</code> pairs derived from the mode's power ranges and factor. Symmetric power uses <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>; per-phase power uses one <code>ELECTRIC.POWER.L1/L2/L3</code> pair per phase. <code>values</code> is the matching convenience shape for <code>PowerMeasurement</code>. The complete payload can be passed to <code>ModeConfirmation</code> or <code>PowerMeasurement</code>; each handler uses only the fields relevant to it. For <code>ModeRequest</code>: <code>null</code>.</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>The CEM this message applies to.</dd>
         <dt>rawS2Message <span class="property-type">object</span></dt>
