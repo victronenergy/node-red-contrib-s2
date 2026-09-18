@@ -73,7 +73,7 @@ The two forms SHALL NOT be treated as a library-wide aliasing requirement. Topic
 - **THEN** it exposes a "from CEM"/command input/output pair carrying the same message shapes `s2-rm`'s corresponding ports carry today, for wiring a dedicated control-type node instead
 
 ### Requirement: Advertised control type follows the Control Type tab when built in
-When `Control type: OMBC` is selected, `s2-resource`'s Resource Manager tab SHALL NOT offer a separate, manually-editable list of advertised control types for OMBC - the advertised `ResourceManagerDetails.available_control_types` SHALL include `OPERATION_MODE_BASED_CONTROL` automatically. The manually-editable advertised-control-types list SHALL be offered only when `Control type: None`, for whatever control-type node(s) are wired externally, and SHALL NOT include a `NOT_CONTROLABLE` checkbox - per `s2-rm-protocol`'s "`NOT_CONTROLABLE` is always advertised and cannot be disabled" requirement, `NOT_CONTROLABLE` is included automatically in both cases by the shared protocol layer, not by anything specific to this node.
+When `Control type: OMBC` is selected, `s2-resource`'s Resource Manager tab SHALL NOT offer a separate, manually-editable list of advertised control types for OMBC - the advertised `ResourceManagerDetails.available_control_types` SHALL include `OPERATION_MODE_BASED_CONTROL` automatically. The manually-editable advertised-control-types list SHALL be offered only when `Control type: None`, for whatever control-type node(s) are wired externally. Regardless of `Control type`, the Control Type tab SHALL also offer the standalone `NOT_CONTROLABLE`/"Not Controllable" checkbox described in `s2-rm-protocol`'s "`NOT_CONTROLABLE` is opt-out, checked by default" requirement - it is a single control specific to this node, applying whether `Control type` is `OMBC` or `None`, not part of the manually-editable list itself.
 
 #### Scenario: Control type: OMBC advertises OMBC without manual selection
 - **WHEN** `s2-resource` is configured with `Control type: OMBC`
@@ -83,9 +83,13 @@ When `Control type: OMBC` is selected, `s2-resource`'s Resource Manager tab SHAL
 - **WHEN** `s2-resource` is configured with `Control type: None` and the Resource Manager tab's control-types selection includes e.g. `POWER_ENVELOPE_BASED_CONTROL`
 - **THEN** it advertises that selection to the CEM, unchanged from today's `s2-rm-config` behavior
 
-#### Scenario: Control type: None manual list has no Not Ctrl checkbox
+#### Scenario: Control type: None manual list has no Not Ctrl checkbox among the manual options
 - **WHEN** the Resource Manager tab's manually-editable control-types list is rendered (`Control type: None`)
-- **THEN** no checkbox for `NOT_CONTROLABLE` is shown among FRBC/DDBC/PPBC/PEBC, consistent with `s2-rm-config`'s equivalent list
+- **THEN** no checkbox for `NOT_CONTROLABLE` is shown among FRBC/DDBC/PPBC/PEBC - it remains the Control Type tab's separate, standalone checkbox instead
+
+#### Scenario: Not Controllable checkbox applies regardless of Control type
+- **WHEN** the Control Type tab is rendered, with `Control type` set to either `OMBC` or `None`
+- **THEN** the standalone "Not Controllable" checkbox is shown and, when checked, `NOT_CONTROLABLE` is included in `ResourceManagerDetails.available_control_types`
 
 ### Requirement: Advertised power measurement follows the D-Bus config when Transport: D-Bus
 When `Transport: D-Bus` is selected, `s2-resource`'s Resource Manager tab's Power Meas. field SHALL NOT determine the advertised power-measurement capability - `ResourceManagerDetails.provides_power_measurement_types` SHALL be derived from the referenced `s2-dbus-config` node's measurement type instead, the same value that determines the actual declared D-Bus propert(y/ies). For any other `Transport`, the Resource Manager tab's Power Meas. field SHALL be used, unchanged from today's `s2-rm-config` behavior.

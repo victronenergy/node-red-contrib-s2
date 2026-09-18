@@ -128,7 +128,7 @@ export class PowerMeasurementCache {
           } else if (Array.isArray(values) && values.length === 1 && typeof values[0] === 'number') {
             setValue(phaseKeys[0], values[0])
           } else {
-            warning = 'values for a single-phase device (nrOfPhases: 1) must be a scalar or an array of exactly 3 numbers'
+            warning = 'values for a single-phase device (nrOfPhases: 1) must be a scalar, a 1-element array, or a 3-element array'
           }
         } else if (Array.isArray(values) && values.length === phaseKeys.length && values.every((v) => typeof v === 'number')) {
           phaseKeys.forEach((key, i) => setValue(key, values[i] as number))
