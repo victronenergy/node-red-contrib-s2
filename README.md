@@ -87,17 +87,15 @@ Import any of these from the Node-RED palette manager's "Import Examples" menu (
 
 ## Sending PowerMeasurements
 
-To send power measurements to the CEM, inject a message into the s2-rm input:
+To send power measurements to the CEM, set an inject node's payload to type JSON with the following value, and wire it into the s2-rm input (this is `msg.payload`, not the whole `msg` - don't wrap it in another `{ "payload": ... }`):
 
 ```json
 {
-  "payload": {
-    "command": "PowerMeasurement",
-    "cemId": "cem",
-    "values": [
-      { "commodity_quantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC", "value": 1500 }
-    ]
-  }
+  "command": "PowerMeasurement",
+  "cemId": "cem",
+  "values": [
+    { "commodity_quantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC", "value": 1500 }
+  ]
 }
 ```
 
@@ -135,22 +133,22 @@ Apply `limitW` to your single actuator instead of always using `upperBound`. If 
 
 ## Sending PowerForecasts
 
+Set an inject node's payload (`msg.payload`, type JSON) to:
+
 ```json
 {
-  "payload": {
-    "command": "Forecast",
-    "cemId": "cem",
-    "forecast": {
-      "startTime": "2026-04-14T10:00:00Z",
-      "elements": [
-        {
-          "duration": 900000,
-          "power_values": [
-            { "commodity_quantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC", "value_expected": 1500 }
-          ]
-        }
-      ]
-    }
+  "command": "Forecast",
+  "cemId": "cem",
+  "forecast": {
+    "startTime": "2026-04-14T10:00:00Z",
+    "elements": [
+      {
+        "duration": 900000,
+        "power_values": [
+          { "commodity_quantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC", "value_expected": 1500 }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -159,17 +157,15 @@ If a `s2-pebc` node is present, inject this into its input instead of directly i
 
 ## Updating PEBC PowerConstraints
 
-`s2-pebc` pushes a default constraints range on deploy (derived from its `s2-pebc-config`). To override it at runtime, inject a message into the s2-rm input - unlike every other command, `PowerConstraints` applies globally and does not require a `cemId`:
+`s2-pebc` pushes a default constraints range on deploy (derived from its `s2-pebc-config`). To override it at runtime, set an inject node's payload (`msg.payload`, type JSON) to the following and wire it into the s2-rm input - unlike every other command, `PowerConstraints` applies globally and does not require a `cemId`:
 
 ```json
 {
-  "payload": {
-    "command": "PowerConstraints",
-    "constraints": {
-      "commodityQuantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC",
-      "minPower": -3000,
-      "maxPower": 3000
-    }
+  "command": "PowerConstraints",
+  "constraints": {
+    "commodityQuantity": "ELECTRIC.POWER.3_PHASE_SYMMETRIC",
+    "minPower": -3000,
+    "maxPower": 3000
   }
 }
 ```
@@ -180,14 +176,12 @@ Constraints are stored at the node level and automatically (re-)sent whenever a 
 
 `NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` is opt-out: `s2-rm-config`'s and `s2-resource`'s control-types checklist has a "Not Ctrl" checkbox, checked by default for newly created nodes, so a CEM can choose "don't control this resource" unless you explicitly uncheck it. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
 
-To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - inject a `SetAvailableControlTypes` command into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`. It takes either a full replacement list:
+To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - set an inject node's payload (`msg.payload`, type JSON) to a `SetAvailableControlTypes` command and wire it into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`. It takes either a full replacement list:
 
 ```json
 {
-  "payload": {
-    "command": "SetAvailableControlTypes",
-    "availableControlTypes": ["OPERATION_MODE_BASED_CONTROL"]
-  }
+  "command": "SetAvailableControlTypes",
+  "availableControlTypes": ["OPERATION_MODE_BASED_CONTROL"]
 }
 ```
 
@@ -195,10 +189,8 @@ or an `isControllable` toggle for the common on/off case:
 
 ```json
 {
-  "payload": {
-    "command": "SetAvailableControlTypes",
-    "isControllable": false
-  }
+  "command": "SetAvailableControlTypes",
+  "isControllable": false
 }
 ```
 
