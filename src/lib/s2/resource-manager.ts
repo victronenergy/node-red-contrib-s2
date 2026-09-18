@@ -337,6 +337,10 @@ export class S2ResourceManager {
         }
         this.rmDetails.availableControlTypes = availableControlTypes
       } else {
+        if (typeof isControllable !== 'boolean') {
+          done(new Error('SetAvailableControlTypes requires isControllable to be a boolean'))
+          return
+        }
         if (!isControllable && !this.configuredControlTypes.includes(ControlType.NOT_CONTROLABLE)) {
           done(new Error('Cannot set isControllable to false because NOT_CONTROLABLE was not enabled at deploy time'))
           return

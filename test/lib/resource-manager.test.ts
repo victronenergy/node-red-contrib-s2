@@ -286,6 +286,20 @@ describe('S2ResourceManager - available control types', () => {
     expect(transportMsgs).toHaveLength(0)
   })
 
+  it.each(['false', 'true', 0, 1, null, {}])('rejects malformed isControllable value %p before changing state', (isControllable) => {
+    const { rm, transportMsgs } = setup({
+      rmDetails: { ...RM_DETAILS, availableControlTypes: ['NOT_CONTROLABLE', 'OPERATION_MODE_BASED_CONTROL'] }
+    })
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'SetAvailableControlTypes', isControllable } }, done)
+
+    expect(done).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('boolean') }))
+    expect(transportMsgs).toHaveLength(0)
+  })
+
   it('isControllable: true restores the constructor\'s configured list, including after a prior list-form SetAvailableControlTypes call', () => {
     const { rm, transportMsgs } = setup({
       rmDetails: { ...RM_DETAILS, availableControlTypes: ['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'] }
