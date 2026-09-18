@@ -84,7 +84,7 @@ export class PowerMeasurementCache {
     const valuesKey = hasValues ? 'values' : hasCommodityPower ? 'commodityPower' : undefined
     const values = valuesKey ? payload[valuesKey] : undefined
     if (valuesKey) {
-      if (values === undefined || values === null || values === 0) {
+      if (values === null || values === 0) {
         const phaseKeys = Object.keys(this.props)
         if (this.measurementType === 'L1_L2_L3') {
           phaseKeys.forEach(key => setValue(key, 0))

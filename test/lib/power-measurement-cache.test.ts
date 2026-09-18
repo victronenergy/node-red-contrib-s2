@@ -139,11 +139,11 @@ describe('PowerMeasurementCache - values shape, L1_L2_L3, nrOfPhases: 3', () => 
     expect(update?.warning).toBeUndefined()
   })
 
-  it('defaults an explicit undefined value to zero without a warning', () => {
+  it('rejects an explicit undefined value', () => {
     const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
     const update = cache.update({ values: undefined })
-    expect(update?.raw).toMatchObject({ 'Ac/Power': 0 })
-    expect(update?.warning).toBeUndefined()
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/exactly 3 numbers/)
   })
 })
 

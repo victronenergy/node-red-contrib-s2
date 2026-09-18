@@ -770,6 +770,27 @@ describe('s2-ombc - PowerMeasurement passthrough', () => {
     })
   })
 
+  it('uses commodityPower when values is absent', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    const done = jest.fn()
+    handlers.input({
+      topic: 'PowerMeasurement',
+      payload: {
+        commodityPower: [
+          { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }
+        ]
+      }
+    }, jest.fn(), done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect((node.send as jest.Mock).mock.calls[0][0][1].payload.values).toEqual([
+      { commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1200 }
+    ])
+  })
+
   it('uses explicit cemId from message when provided', () => {
     const { node, handlers } = setupNode()
 

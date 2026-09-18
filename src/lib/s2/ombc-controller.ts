@@ -215,7 +215,7 @@ export class OMBCController {
     const numericArray = Array.isArray(rawValues) && rawValues.every(value => typeof value === 'number')
     const warn = (message: string): void => this.opts.onWarn?.(`PowerMeasurement values: ${message}`)
 
-    if (rawValues === undefined || rawValues === null || rawValues === 0) {
+    if (rawValues === null || rawValues === 0) {
       rawValues = 0
     }
 
@@ -436,7 +436,8 @@ export class OMBCController {
           return
         }
       }
-      const rawValues = (payload as Record<string, unknown>).values
+      const hasValues = Object.prototype.hasOwnProperty.call(payload, 'values')
+      const rawValues = hasValues ? payload.values : payload.commodityPower
       let values: PowerMeasurementValue[]
       try {
         values = this.toPowerMeasurementValues(rawValues)

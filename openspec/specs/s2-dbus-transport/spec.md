@@ -94,7 +94,7 @@ The `s2-dbus` node SHALL cache the latest power value(s) received on its input a
   - `measurementType: L1_L2_L3`, `nrOfPhases: 1`: a scalar `values` is the single wired phase's power, while an array `values` of length 3 selects the value at the wired phase's index. Other array lengths SHALL be rejected with a warning.
   - `measurementType: L1_L2_L3`, `nrOfPhases: 3`: an array `values` of length 3 maps element-by-element to `ELECTRIC.POWER.L1`, `L2`, `L3`; a scalar `values` is divided equally across all three phases with a warning. An array of length 1 SHALL be rejected.
   - `measurementType: 3_PHASE_SYMMETRIC` (only valid at `nrOfPhases: 3`): a scalar `values` is sent as a single `ELECTRIC.POWER.3_PHASE_SYMMETRIC` value. An array `values` of length 3 is summed into a single symmetric value for S2. An array of length 1 SHALL be rejected.
-  - When `values` is present as `undefined` or `null`, or is numeric `0`, it SHALL be treated as 0 W without a warning.
+  - When `values` is present as `null`, or is numeric `0`, it SHALL be treated as 0 W without a warning. An explicitly present `values: undefined` is invalid and SHALL be rejected with a warning; an absent `values` key may use `commodityPower` instead.
   - `measurementType: ''` (None): `values` has nothing configured to map to - no-op, matching the raw-key shape's own behavior with no measurement type configured.
 
 #### Scenario: CEM starts power measurement
