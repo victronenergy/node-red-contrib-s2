@@ -627,6 +627,27 @@ describe('s2-resource - Transport: D-Bus power measurement relay', () => {
     expect(findSentPowerMeasurement()).toBeUndefined()
   })
 
+  it('updates the D-Bus cache from a native `command: PowerMeasurement` message, in addition to relaying it to the CEM as-is', () => {
+    const { handlers } = setupNode({ transport: 'dbus', controlType: 'none', providesPowerMeasurement: '3_PHASE_SYMMETRIC' })
+    connectAndSelect()
+    ;(mockDbusTransport.send as jest.Mock).mockClear()
+
+    handlers.input({
+      payload: {
+        command: 'PowerMeasurement',
+        cemId: 'cem',
+        values: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1500 }]
+      }
+    }, jest.fn(), jest.fn())
+
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({
+      'Ac/Power': 1500, 'Ac/L1/Power': 500, 'Ac/L2/Power': 500, 'Ac/L3/Power': 500
+    })
+    const sent = findSentPowerMeasurement()
+    expect(sent).toBeDefined()
+    expect(sent!.values).toEqual([{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', value: 1500 }])
+  })
+
   it('updates the D-Bus BusItem property even before the CEM has started measurement (and splits evenly across per-phase properties, per 3-phase-symmetric)', () => {
     const { handlers } = setupNode({ transport: 'dbus', controlType: 'none' })
 
@@ -777,7 +798,7 @@ describe('s2-resource - Control type: OMBC', () => {
     expect(instr.payload.values).toEqual([300])
   })
 
-  it('routes topic PowerMeasurement through built-in OMBC before the D-Bus cache', () => {
+  it('routes topic PowerMeasurement through built-in OMBC for S2 relay, and also updates the D-Bus cache', () => {
     const { node, handlers } = setupNode(
       { transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION },
       DEFAULT_CEM_CONFIG,
@@ -794,10 +815,14 @@ describe('s2-resource - Control type: OMBC', () => {
       }
     }, jest.fn(), jest.fn())
 
-    expect(mockDbusTransport.setMeasurementValues).not.toHaveBeenCalled()
-    expect((mockDbusTransport.send as jest.Mock).mock.calls.some((call: unknown[]) => (
+    expect(mockDbusTransport.setMeasurementValues).toHaveBeenCalledWith({
+      'Ac/Power': 1200, 'Ac/L1/Power': 400, 'Ac/L2/Power': 400, 'Ac/L3/Power': 400
+    })
+    const sends = (mockDbusTransport.send as jest.Mock).mock.calls.filter((call: unknown[]) => (
       typeof call[0] === 'string' && call[0].includes('PowerMeasurement')
-    ))).toBe(true)
+    ))
+    // Sent to the CEM exactly once - via OMBC, not duplicated by the D-Bus cache path.
+    expect(sends).toHaveLength(1)
   })
 
   it('routes a complete ModeInstruction payload to OMBC confirmation before D-Bus measurement caching', () => {

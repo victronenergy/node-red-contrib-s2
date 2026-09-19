@@ -445,14 +445,33 @@ export = function (RED: NodeRedApp): void {
           'confirmedOperationModeLabel' in payloadObj)
       )
 
-      if (!hasCommand && !isModeConfirmation && measurementCache && payloadObj && (!ombcController || msg.topic !== 'PowerMeasurement')) {
-        const update = measurementCache.update(payloadObj)
+      // A `command: 'PowerMeasurement'` (native S2 values: PowerMeasurementValue[]) or a topic
+      // `PowerMeasurement` message already gets its S2 relay below (via rm.handleInput/
+      // ombcController, which applies the configured phase shape) - the cache update here only
+      // needs to expose the raw values as D-Bus BusItems, not relay them to the CEM a second time.
+      const isPowerMeasurementCommand = !!(routedPayload && routedPayload.command === 'PowerMeasurement')
+      const isOmbcPowerMeasurement = !!ombcController && msg.topic === 'PowerMeasurement'
+      const relayedElsewhere = isPowerMeasurementCommand || isOmbcPowerMeasurement
+
+      if (!isModeConfirmation && measurementCache && payloadObj && (!hasCommand || isPowerMeasurementCommand)) {
+        // command: 'PowerMeasurement' carries native S2 values (PowerMeasurementValue[]), the same
+        // shape PowerMeasurementCache accepts as `commodityPower`, not its `values` convenience shape.
+        const cacheInput = isPowerMeasurementCommand
+          ? { commodityPower: (routedPayload as { values?: unknown }).values }
+          : payloadObj
+        const update = measurementCache.update(cacheInput)
         if (update) {
-          if (update.warning) node.warn(`[s2-resource] ${update.warning}`)
+          // When the message is also relayed below (rm/ombcController), that path runs its own
+          // native S2 validation and warns accordingly - surfacing the cache's warning too would
+          // be redundant at best (duplicate warning) and misleading at worst (worded for the
+          // cache's own `values`/`commodityPower` shapes, not the native command's).
+          if (update.warning && !relayedElsewhere) node.warn(`[s2-resource] ${update.warning}`)
           dbusTransport?.setMeasurementValues(update.raw)
-          if (update.s2Values) rm.handleInput({ payload: { command: 'PowerMeasurement', cemId: TRANSPORT_CEM_ID, values: update.s2Values } }, () => {})
-          done()
-          return
+          if (!relayedElsewhere) {
+            if (update.s2Values) rm.handleInput({ payload: { command: 'PowerMeasurement', cemId: TRANSPORT_CEM_ID, values: update.s2Values } }, () => {})
+            done()
+            return
+          }
         }
       }
 
