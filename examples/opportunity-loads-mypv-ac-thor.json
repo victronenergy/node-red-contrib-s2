@@ -1,0 +1,1031 @@
+[
+    {
+        "id": "9172564631900839",
+        "type": "tab",
+        "label": "my-PV AC•THOR – Opportunity Loads",
+        "disabled": false,
+        "info": "My-PV AC-Thor using s2-resource's built-in D-Bus transport. Set the device IP in the inject node before deploying.\n\n**My-PV device setup (required):** in the My-PV web interface, go to Device Setup > Control settings and set the control type to **HTTP**. This flow drives the device purely through its `/control.html?power=` and reads `/data.jsn`, `/setup.jsn` HTTP endpoints - those only accept external setpoints while HTTP Control is selected; any other control mode (e.g. PV/Loop control) will ignore the power values this flow sends.\n\n**Assumed device:** this flow assumes a My-PV AC-Thor 9s with three 3000 W heating elements (one per phase, 9 kW total), matching the `s2-resource` node's System Description (four operation modes: Off, and L1/L1+L2/L1+L2+L3 on at up to 3000 W each) and the D-Bus config's 3-phase L1_L2_L3 measurement.\n\nThis flow has only been tested with the device's device mode \"1: Hot water 9 kW\" - not with Boost mode or legionella protection interaction, so behavior with those features active is unverified.\n\nTo adapt this for a different My-PV model or wiring (e.g. a single-phase AC-Thor, or different element wattages):\n- Open the `s2-resource` node's Control Type tab and edit the System Description's operation modes/power ranges to match your device's actual heating-element wattage(s) and phase wiring.\n- Open the `mypv-dbus-config` node and adjust `nrOfPhases`/`phaseSetting`/`measurementType` to match how the device is actually wired (single-phase vs. 3-phase).\n\n**Status label language:** the \"Retrieve data\" function node's `LANGUAGE_CODE` constant controls which language the Status indicator's labels are shown in (defaults to `en`); change it to `de`, `es`, `fr`, `it`, or `nl` for the other supported languages."
+    },
+    {
+        "id": "198df8a158c9caff",
+        "type": "group",
+        "z": "9172564631900839",
+        "name": "my-PV control with Opportunity Loads",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "28e45d65fc344a6d",
+            "e4040dae243b6ac1",
+            "4d2f5069325e7f2f",
+            "a4613101ccc3d64a",
+            "aa63b85150d0fb78",
+            "42082b749eb6f7e1",
+            "1b3345331b26ec43",
+            "88768d8ed12abba4",
+            "937c0d734bfd2364",
+            "0b11769cecb85425",
+            "070625abb61d13c4",
+            "8392e2d360205ba9",
+            "a09aa7a426ed47d5",
+            "ba69838dfe2de083",
+            "d729f32923d85652",
+            "220308ffedf72d4b",
+            "bbfa58606913a081",
+            "350dbbf323f981fd",
+            "40f246111d14752f",
+            "71438f98e8f98712",
+            "bf2394c422dffc4b",
+            "c873af3fe3c1e72b",
+            "e2e92ac4b43419bc",
+            "c37b937e2a5ca595",
+            "9f80e0ef45e7ad97",
+            "5d73059fd87cad6f"
+        ],
+        "x": 44,
+        "y": 139,
+        "w": 1132,
+        "h": 462
+    },
+    {
+        "id": "42d755d65a451323",
+        "type": "group",
+        "z": "9172564631900839",
+        "name": "my-PV config: Edit IP address in Inject node",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "5998e676a0e87470",
+            "5a8aafee3e069e9e",
+            "15651132b302fdc3"
+        ],
+        "x": 34,
+        "y": 39,
+        "w": 502,
+        "h": 82
+    },
+    {
+        "id": "5793ed93eb74c833",
+        "type": "group",
+        "z": "9172564631900839",
+        "name": "Switch, indicators & temperature sensor",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "b62b06e451ba964e",
+            "86cb4ff21d1c780d",
+            "671ae3b3a2a00925",
+            "8747536b476f9a7f",
+            "09af81b4c1e0ba52",
+            "822291ad2d4e3708",
+            "632652deae580352",
+            "1940c530a62adb57",
+            "61b2e98816889953"
+        ],
+        "x": 34,
+        "y": 619,
+        "w": 1192,
+        "h": 322
+    },
+    {
+        "id": "28e45d65fc344a6d",
+        "type": "s2-resource",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "my-PV AC•THOR 9s",
+        "rmName": "RM: My-PV AC-Thor (9S)",
+        "resourceId": "7a89f85b-6c3a-4c68-8cc0-9683cbcbab29",
+        "roles": "ENERGY_CONSUMER",
+        "controlTypes": "NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL",
+        "providesPowerMeasurement": "L1_L2_L3",
+        "providesForecast": false,
+        "manufacturer": "My-PV",
+        "model": "AC-Thor 9S",
+        "serialNumber": "",
+        "firmwareVersion": "1.0.0",
+        "instructionPollIntervalMs": 2000,
+        "skipInstructionStatus": false,
+        "transport": "dbus",
+        "cem": "",
+        "reconnectInterval": "",
+        "dbusConfig": "mypv-dbus-config",
+        "debug": false,
+        "controlType": "ombc",
+        "systemDescription": "{\"operationModes\":[{\"id\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"diagnostic_label\":\"Off\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"diagnostic_label\":\"On [1-3000, 0, 0]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"diagnostic_label\":\"On [1-3000, 3000, 0]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":3000,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"diagnostic_label\":\"On [1-3000, 3000, 3000]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":3000,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":3000,\"end_of_range\":3000}],\"abnormal_condition_only\":false}],\"transitions\":[{\"id\":\"385fb10e-f66f-4854-81ad-5169764550d5\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"80f57525-0cf9-4206-9bf8-4459570fe93c\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"2f02b226-febc-4883-b4db-8b40abbdbb68\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"f79726c8-9057-4204-af7a-86b3e046c82c\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"c75f74eb-a34d-4963-b3bb-2264abdeb7d5\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"6153e823-1627-4af7-82da-196f982bfc75\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"c3e8b8d9-5f03-415f-ada9-33d0a4ddb021\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"2ca17b7e-ff86-4e59-9fde-af13328662b8\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"211a66b6-44ec-42b9-9d4b-21f19ff3464a\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"5baff419-70bb-48bf-9421-70a2c4ae5f5c\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false},{\"id\":\"30ae3c1b-196d-4c5a-abd0-33913a6a3805\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false},{\"id\":\"328f295e-3308-42ee-893f-c421a60b05d6\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false}],\"timers\":[{\"id\":\"8ed031a6-777c-4f95-b4aa-2da871e43ece\",\"duration\":30000},{\"id\":\"cdcd33d8-aaab-459e-8b36-abf75dafab08\",\"duration\":30000},{\"id\":\"2e37a395-988c-4b13-b1b5-dae358931a58\",\"duration\":30000},{\"id\":\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\",\"duration\":30000}]}",
+        "defaultOperationModeId": "5c5b5d80-d1d0-476a-9108-a648ad24b66f",
+        "autoConfirmInstructions": false,
+        "outputs": 1,
+        "x": 220,
+        "y": 180,
+        "wires": [
+            [
+                "d729f32923d85652"
+            ]
+        ]
+    },
+    {
+        "id": "e4040dae243b6ac1",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Calculate power setpoint",
+        "func": "// ModeInstruction.values contains the requested per-phase power values.\n// The My-PV endpoint accepts one total power value, so sum all phases.\nconst rawValues = msg.payload?.values\nconst phaseValues = Array.isArray(rawValues) ? rawValues : [rawValues ?? 0]\nconst powerSetpoint = phaseValues.reduce(\n    (sum, value) => sum + (Number(value) || 0),\n    0\n)\n\nconst now = Date.now()\n\n// Keep the original S2 mode instruction on this message. The response handler\n// uses its presence to distinguish a real S2 instruction from a heartbeat.\nmsg.modeConfirmationPayload = { ...msg.payload }\nmsg.payload = powerSetpoint\n\n// Always remember the latest requested S2 setpoint, even while the My-PV\n// device is switched off. This lets control resume with the newest request\n// after devmode returns to 1.\nflow.set('mypv_setpoint', {\n    power: powerSetpoint,\n    lastUpdated: now,\n    lastSent: now\n})\n\nconst setup = flow.get('mypv_setup') || {}\nconst deviceOff = Number(setup.devmode ?? 1) === 0\n\n// devmode = 0 means the My-PV device is switched off. Do not send any\n// control.html request while it is off. The S2 instruction remains stored,\n// but it is intentionally not confirmed because the device did not receive it.\nif (deviceOff) {\n    node.status({\n        shape: 'ring',\n        fill: 'grey',\n        text: 'Device off (devmode 0); setpoint stored'\n    })\n    return null\n}\n\nnode.status({\n    shape: 'dot',\n    fill: 'blue',\n    text:\n        (msg.modeConfirmationPayload.label || 'Mode') +\n        ' | Factor ' +\n        (msg.modeConfirmationPayload.factor ?? 1) +\n        ' | Total: ' +\n        powerSetpoint +\n        ' W'\n})\n\nreturn msg",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 230,
+        "y": 260,
+        "wires": [
+            [
+                "4d2f5069325e7f2f"
+            ]
+        ]
+    },
+    {
+        "id": "4d2f5069325e7f2f",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Insert My-PV IP",
+        "rules": [
+            {
+                "t": "set",
+                "p": "ip",
+                "pt": "msg",
+                "to": "mypv_ip",
+                "tot": "flow"
+            }
+        ],
+        "x": 520,
+        "y": 260,
+        "wires": [
+            [
+                "a4613101ccc3d64a"
+            ]
+        ]
+    },
+    {
+        "id": "a4613101ccc3d64a",
+        "type": "http request",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "SET power",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://{{{ip}}}/control.html?power={{{payload}}}",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 710,
+        "y": 260,
+        "wires": [
+            [
+                "aa63b85150d0fb78"
+            ]
+        ]
+    },
+    {
+        "id": "aa63b85150d0fb78",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Return mode confirmation",
+        "func": "const COMMUNICATION_TIMEOUT_MS = 30000\n\nconst now = Date.now()\nconst requestSucceeded =\n    !msg.error &&\n    Number(msg.statusCode) >= 200 &&\n    Number(msg.statusCode) < 300\n\n// Send zero, one, or multiple messages through this function node's single output.\nfunction sendMessages(messages) {\n    if (messages.length === 0) return null\n    if (messages.length === 1) return messages[0]\n    return [messages]\n}\n\n// The device is considered switched off when devmode is explicitly 0.\n// Before setup.jsn has been read, devmode defaults to 1.\nfunction isDeviceOff() {\n    const setup = flow.get('mypv_setup') || {}\n    return Number(setup.devmode ?? 1) === 0\n}\n\n// Communication health is shared across all My-PV HTTP endpoints.\n// A success on any endpoint refreshes mypv_last_comm_success. Until the first\n// success, mypv_comm_watch_started provides the same 30-second startup grace.\nfunction communicationTimedOut(time) {\n    let reference = Number(flow.get('mypv_last_comm_success'))\n\n    if (!Number.isFinite(reference) || reference <= 0) {\n        reference = Number(flow.get('mypv_comm_watch_started'))\n\n        if (!Number.isFinite(reference) || reference <= 0) {\n            reference = time\n            flow.set('mypv_comm_watch_started', reference)\n        }\n    }\n\n    return time - reference >= COMMUNICATION_TIMEOUT_MS\n}\n\nconst previousCommunicationDisabled = flow.get('mypv_ombc_disabled') === true\nconst temperatureBlocked = flow.get('mypv_temperature_blocked') === true\nconst deviceOff = isDeviceOff()\nconst advertisedOff = flow.get('mypv_control_advertised_off') === true\nconst output = []\n\nif (requestSucceeded) {\n    // Any successful My-PV HTTP request proves that the device is reachable.\n    // Refresh the one shared communication-health timestamp immediately.\n    flow.set('mypv_last_comm_success', now)\n    flow.set('mypv_comm_watch_started', now)\n    flow.set('mypv_ombc_disabled', false)\n\n    // Keep the heartbeat timestamp synchronized with the completed SET request.\n    const storedSetpoint = flow.get('mypv_setpoint')\n    if (storedSetpoint && typeof storedSetpoint === 'object') {\n        storedSetpoint.lastSent = now\n        flow.set('mypv_setpoint', storedSetpoint)\n    }\n\n    // OMBC must remain unavailable while either the temperature gate is active\n    // or the My-PV device itself is switched off (devmode = 0).\n    const controlBlocked = temperatureBlocked || deviceOff\n\n    // Advertise a control-state transition only when the state actually changes.\n    if (controlBlocked && !advertisedOff) {\n        flow.set('mypv_control_advertised_off', true)\n        output.push({\n            topic: 'ControlTypes',\n            payload: { isControllable: false }\n        })\n    } else if (!controlBlocked && advertisedOff) {\n        flow.set('mypv_control_advertised_off', false)\n        output.push({\n            topic: 'ControlTypes',\n            payload: { isControllable: true }\n        })\n    }\n\n    // Only a real S2 ModeInstruction carries modeConfirmationPayload.\n    // Periodic heartbeat requests deliberately remove this property, so a\n    // successful heartbeat never creates a ModeConfirmation.\n    if (\n        msg.modeConfirmationPayload !== undefined &&\n        msg.modeConfirmationPayload !== null\n    ) {\n        output.push({\n            topic: 'ModeConfirmation',\n            payload: msg.modeConfirmationPayload\n        })\n    }\n\n    node.status({\n        shape: 'dot',\n        fill: deviceOff ? 'grey' : temperatureBlocked ? 'yellow' : 'green',\n        text: deviceOff\n            ? 'SET OK; device off (devmode 0)'\n            : temperatureBlocked\n              ? 'SET OK; temperature gate active'\n              : 'My-PV setpoint OK'\n    })\n\n    return sendMessages(output)\n}\n\n// A failed SET request is tolerated as long as some My-PV HTTP request has\n// succeeded within the last 30 seconds. This makes occasional ECONNREFUSED\n// responses harmless while still detecting a genuinely unreachable device.\nconst communicationDisabled = communicationTimedOut(now)\nflow.set('mypv_ombc_disabled', communicationDisabled)\n\nconst controlBlocked =\n    communicationDisabled ||\n    temperatureBlocked ||\n    deviceOff\n\nif (controlBlocked && !advertisedOff) {\n    flow.set('mypv_control_advertised_off', true)\n    output.push({\n        topic: 'ControlTypes',\n        payload: { isControllable: false }\n    })\n} else if (!controlBlocked && advertisedOff) {\n    // Another endpoint may have refreshed the shared communication timestamp\n    // since the previous SET attempt, so allow this path to advertise recovery.\n    flow.set('mypv_control_advertised_off', false)\n    output.push({\n        topic: 'ControlTypes',\n        payload: { isControllable: true }\n    })\n}\n\nif (communicationDisabled && !previousCommunicationDisabled) {\n    node.warn('No successful My-PV communication for 30 seconds; OMBC disabled')\n}\n\nconst reference =\n    Number(flow.get('mypv_last_comm_success')) ||\n    Number(flow.get('mypv_comm_watch_started')) ||\n    now\nconst secondsWithoutSuccess = Math.max(0, Math.floor((now - reference) / 1000))\n\nnode.status({\n    shape: 'ring',\n    fill: communicationDisabled ? 'red' : deviceOff ? 'grey' : 'yellow',\n    text: communicationDisabled\n        ? 'My-PV offline for 30+ s; OMBC off'\n        : deviceOff\n          ? 'Device off (devmode 0); OMBC off'\n          : 'SET refused; last communication ' + secondsWithoutSuccess + ' s ago'\n})\n\n// Never confirm an S2 mode when the device did not accept the SET request.\nreturn sendMessages(output)",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 260,
+        "wires": [
+            [
+                "a09aa7a426ed47d5"
+            ]
+        ]
+    },
+    {
+        "id": "42082b749eb6f7e1",
+        "type": "catch",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Handle My-PV setpoint HTTP errors",
+        "scope": [
+            "a4613101ccc3d64a"
+        ],
+        "uncaught": false,
+        "x": 640,
+        "y": 320,
+        "wires": [
+            [
+                "aa63b85150d0fb78"
+            ]
+        ]
+    },
+    {
+        "id": "5998e676a0e87470",
+        "type": "inject",
+        "z": "9172564631900839",
+        "g": "42d755d65a451323",
+        "name": "Set my-PV device IP",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.1",
+        "topic": "",
+        "payload": "192.168.1.100",
+        "payloadType": "str",
+        "x": 180,
+        "y": 80,
+        "wires": [
+            [
+                "5a8aafee3e069e9e"
+            ]
+        ]
+    },
+    {
+        "id": "5a8aafee3e069e9e",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "42d755d65a451323",
+        "name": "Store My-PV IP",
+        "rules": [
+            {
+                "t": "set",
+                "p": "mypv_ip",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "x": 380,
+        "y": 80,
+        "wires": [
+            [
+                "15651132b302fdc3"
+            ]
+        ]
+    },
+    {
+        "id": "1b3345331b26ec43",
+        "type": "inject",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Poll every 2 seconds",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "2",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "5",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "x": 200,
+        "y": 380,
+        "wires": [
+            [
+                "88768d8ed12abba4",
+                "c37b937e2a5ca595"
+            ]
+        ]
+    },
+    {
+        "id": "88768d8ed12abba4",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Insert My-PV IP & devmode",
+        "rules": [
+            {
+                "t": "set",
+                "p": "ip",
+                "pt": "msg",
+                "to": "mypv_ip",
+                "tot": "flow"
+            },
+            {
+                "t": "set",
+                "p": "devmode",
+                "pt": "msg",
+                "to": "($setup := $flowContext(\"mypv_setup\"); $exists($setup.devmode) ? $setup.devmode : 1)",
+                "tot": "jsonata"
+            }
+        ],
+        "x": 480,
+        "y": 380,
+        "wires": [
+            [
+                "937c0d734bfd2364"
+            ]
+        ]
+    },
+    {
+        "id": "937c0d734bfd2364",
+        "type": "http request",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "GET data.jsn",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://{{{ip}}}/data.jsn?devmode={{{devmode}}}",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 710,
+        "y": 380,
+        "wires": [
+            [
+                "0b11769cecb85425"
+            ]
+        ]
+    },
+    {
+        "id": "0b11769cecb85425",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Send My-PV power measurement",
+        "func": "const COMMUNICATION_TIMEOUT_MS = 30000\n\nconst now = Date.now()\nconst requestSucceeded =\n    !msg.error &&\n    Number(msg.statusCode) >= 200 &&\n    Number(msg.statusCode) < 300\n\n// Mark every completed data.jsn request, including failed requests. The\n// heartbeat function uses this marker to wait until the current telemetry\n// request has finished before it sends a SET request.\nconst completedDataCycle = (Number(flow.get('mypv_data_cycle')) || 0) + 1\nflow.set('mypv_data_cycle', completedDataCycle)\nflow.set('mypv_last_data_completion', now)\n\nconst numberOrZero = value =>\n    Number.isFinite(Number(value)) ? Number(value) : 0\n\n// The device is considered switched off when devmode is explicitly 0.\n// Before setup.jsn has been read, devmode defaults to 1.\nfunction isDeviceOff() {\n    const setup = flow.get('mypv_setup') || {}\n    return Number(setup.devmode ?? 1) === 0\n}\n\n// Communication health is shared across data.jsn, control.html and setup.jsn.\n// Until the first successful request, allow the device a 30-second startup grace.\nfunction communicationTimedOut(time) {\n    let reference = Number(flow.get('mypv_last_comm_success'))\n\n    if (!Number.isFinite(reference) || reference <= 0) {\n        reference = Number(flow.get('mypv_comm_watch_started'))\n\n        if (!Number.isFinite(reference) || reference <= 0) {\n            reference = time\n            flow.set('mypv_comm_watch_started', reference)\n        }\n    }\n\n    return time - reference >= COMMUNICATION_TIMEOUT_MS\n}\n\n// A successful HTTP exchange proves that the My-PV HTTP server is reachable.\n// Refresh the shared timestamp before parsing the payload; malformed telemetry\n// is a data-quality problem, not a communication outage.\nif (requestSucceeded) {\n    flow.set('mypv_last_comm_success', now)\n    flow.set('mypv_comm_watch_started', now)\n    flow.set('mypv_ombc_disabled', false)\n}\n\nlet deviceData = null\n\nif (requestSucceeded) {\n    try {\n        // The HTTP node returns text. Parse it here so malformed responses are\n        // handled cleanly without creating parser warnings.\n        deviceData =\n            typeof msg.payload === 'string'\n                ? JSON.parse(msg.payload)\n                : msg.payload\n    } catch (error) {\n        deviceData = null\n    }\n}\n\nif (!requestSucceeded || !deviceData || typeof deviceData !== 'object') {\n    const previousCommunicationDisabled = flow.get('mypv_ombc_disabled') === true\n    const communicationDisabled = communicationTimedOut(now)\n    flow.set('mypv_ombc_disabled', communicationDisabled)\n\n    const temperatureBlocked = flow.get('mypv_temperature_blocked') === true\n    const deviceOff = isDeviceOff()\n    const controlBlocked =\n        communicationDisabled ||\n        temperatureBlocked ||\n        deviceOff\n    const advertisedOff = flow.get('mypv_control_advertised_off') === true\n\n    if (communicationDisabled && !previousCommunicationDisabled) {\n        node.warn('No successful My-PV communication for 30 seconds; OMBC disabled')\n    }\n\n    const reference =\n        Number(flow.get('mypv_last_comm_success')) ||\n        Number(flow.get('mypv_comm_watch_started')) ||\n        now\n    const secondsWithoutSuccess = Math.max(\n        0,\n        Math.floor((now - reference) / 1000)\n    )\n\n    node.status({\n        shape: 'ring',\n        fill: communicationDisabled ? 'red' : deviceOff ? 'grey' : 'yellow',\n        text: communicationDisabled\n            ? 'My-PV offline for 30+ s; OMBC off'\n            : deviceOff\n              ? 'Device off (devmode 0); OMBC off'\n              : 'data.jsn error; last communication ' +\n                secondsWithoutSuccess +\n                ' s ago'\n    })\n\n    // Keep the advertised S2 state synchronized with the combined communication,\n    // temperature and devmode state. A success on another endpoint may have\n    // restored communication even though this particular data.jsn request failed.\n    if (controlBlocked && !advertisedOff) {\n        flow.set('mypv_control_advertised_off', true)\n        return {\n            topic: 'ControlTypes',\n            payload: { isControllable: false }\n        }\n    }\n\n    if (!controlBlocked && advertisedOff) {\n        flow.set('mypv_control_advertised_off', false)\n        return {\n            topic: 'ControlTypes',\n            payload: { isControllable: true }\n        }\n    }\n\n    return null\n}\n\n// Store the latest valid telemetry for the measurement and indicator paths.\nflow.set('mypv_data', deviceData)\nflow.set('mypv_last_data_success', now)\nflow.set('mypv_ombc_disabled', false)\n\nconst setup = flow.get('mypv_setup') || {}\nconst deviceOff = Number(setup.devmode ?? 1) === 0\nconst temperature = numberOrZero(deviceData.temp1) / 10\nconst targetTemperature = Number(setup.ww1target) / 10\nconst hysteresis = Math.max(0, Number(setup.ww_targ_h) / 10 || 0)\n\n// Apply hysteresis so control does not rapidly toggle around the target.\nlet temperatureBlocked = flow.get('mypv_temperature_blocked') === true\nif (Number.isFinite(targetTemperature)) {\n    if (temperatureBlocked) {\n        if (temperature < targetTemperature - hysteresis) {\n            temperatureBlocked = false\n        }\n    } else if (temperature >= targetTemperature) {\n        temperatureBlocked = true\n    }\n\n    flow.set('mypv_temperature_blocked', temperatureBlocked)\n}\n\nconst l1Power =\n    numberOrZero(deviceData.power1_solar) +\n    numberOrZero(deviceData.power1_grid)\nconst l2Power =\n    numberOrZero(deviceData.power2_solar) +\n    numberOrZero(deviceData.power2_grid)\nconst l3Power =\n    numberOrZero(deviceData.power3_solar) +\n    numberOrZero(deviceData.power3_grid)\n\nconst measurement = {\n    topic: 'PowerMeasurement',\n    payload: { values: [l1Power, l2Power, l3Power] }\n}\n\nconst controlBlocked = temperatureBlocked || deviceOff\nconst advertisedOff = flow.get('mypv_control_advertised_off') === true\n\n// Send ControlTypes only when the advertised state actually changes.\nif (controlBlocked && !advertisedOff) {\n    flow.set('mypv_control_advertised_off', true)\n\n    node.status({\n        shape: 'ring',\n        fill: deviceOff ? 'grey' : 'yellow',\n        text: deviceOff\n            ? 'Device off (devmode 0); OMBC off'\n            : 'Temperature high; OMBC off'\n    })\n\n    return [[\n        { topic: 'ControlTypes', payload: { isControllable: false } },\n        measurement\n    ]]\n}\n\nif (!controlBlocked && advertisedOff) {\n    flow.set('mypv_control_advertised_off', false)\n\n    node.status({\n        shape: 'dot',\n        fill: 'green',\n        text: 'My-PV available; OMBC enabled'\n    })\n\n    return [[\n        { topic: 'ControlTypes', payload: { isControllable: true } },\n        measurement\n    ]]\n}\n\nnode.status({\n    shape: 'dot',\n    fill: deviceOff ? 'grey' : temperatureBlocked ? 'yellow' : 'blue',\n    text: deviceOff\n        ? 'Device off (devmode 0); OMBC off'\n        : temperatureBlocked\n          ? 'Temperature high; OMBC off'\n          : 'Reported power: ' +\n            [l1Power, l2Power, l3Power].join(', ') +\n            ' W'\n})\n\nreturn measurement",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 960,
+        "y": 380,
+        "wires": [
+            [
+                "8392e2d360205ba9"
+            ]
+        ]
+    },
+    {
+        "id": "070625abb61d13c4",
+        "type": "catch",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Handle My-PV polling HTTP errors",
+        "scope": [
+            "937c0d734bfd2364"
+        ],
+        "uncaught": false,
+        "x": 640,
+        "y": 440,
+        "wires": [
+            [
+                "0b11769cecb85425"
+            ]
+        ]
+    },
+    {
+        "id": "8392e2d360205ba9",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link out 25",
+        "mode": "link",
+        "links": [
+            "ba69838dfe2de083"
+        ],
+        "x": 1135,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "a09aa7a426ed47d5",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link out 26",
+        "mode": "link",
+        "links": [
+            "ba69838dfe2de083"
+        ],
+        "x": 1135,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "ba69838dfe2de083",
+        "type": "link in",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link in 12",
+        "links": [
+            "8392e2d360205ba9",
+            "a09aa7a426ed47d5",
+            "9f80e0ef45e7ad97"
+        ],
+        "x": 85,
+        "y": 180,
+        "wires": [
+            [
+                "28e45d65fc344a6d"
+            ]
+        ]
+    },
+    {
+        "id": "d729f32923d85652",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link out 27",
+        "mode": "link",
+        "links": [
+            "220308ffedf72d4b"
+        ],
+        "x": 355,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "220308ffedf72d4b",
+        "type": "link in",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link in 16",
+        "links": [
+            "d729f32923d85652"
+        ],
+        "x": 85,
+        "y": 260,
+        "wires": [
+            [
+                "e4040dae243b6ac1"
+            ]
+        ]
+    },
+    {
+        "id": "bbfa58606913a081",
+        "type": "inject",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Refresh My-PV temperature settings",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.5",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "x": 250,
+        "y": 500,
+        "wires": [
+            [
+                "350dbbf323f981fd"
+            ]
+        ]
+    },
+    {
+        "id": "350dbbf323f981fd",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Insert My-PV IP",
+        "rules": [
+            {
+                "t": "set",
+                "p": "ip",
+                "pt": "msg",
+                "to": "mypv_ip",
+                "tot": "flow"
+            }
+        ],
+        "x": 520,
+        "y": 500,
+        "wires": [
+            [
+                "40f246111d14752f"
+            ]
+        ]
+    },
+    {
+        "id": "40f246111d14752f",
+        "type": "http request",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "GET setup.jsn",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://{{{ip}}}/setup.jsn",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 700,
+        "y": 500,
+        "wires": [
+            [
+                "71438f98e8f98712"
+            ]
+        ]
+    },
+    {
+        "id": "71438f98e8f98712",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Store settings",
+        "func": "const COMMUNICATION_TIMEOUT_MS = 30000\n\nconst now = Date.now()\nconst requestSucceeded =\n    !msg.error &&\n    Number(msg.statusCode) >= 200 &&\n    Number(msg.statusCode) < 300\n\n// Communication health is shared by all My-PV HTTP endpoints:\n//   - data.jsn\n//   - control.html\n//   - setup.jsn\n//\n// OMBC is considered unavailable only when NONE of these endpoints has\n// communicated successfully for 30 seconds. Until the first successful request,\n// mypv_comm_watch_started provides the same 30-second startup grace period.\nfunction communicationTimedOut(time) {\n    let reference = Number(flow.get('mypv_last_comm_success'))\n\n    if (!Number.isFinite(reference) || reference <= 0) {\n        reference = Number(flow.get('mypv_comm_watch_started'))\n\n        if (!Number.isFinite(reference) || reference <= 0) {\n            reference = time\n            flow.set('mypv_comm_watch_started', reference)\n        }\n    }\n\n    return time - reference >= COMMUNICATION_TIMEOUT_MS\n}\n\n// Return whether the device is explicitly switched off.\n// devmode defaults to 1 until setup information is available.\nfunction isDeviceOff(setup) {\n    return Number((setup || {}).devmode ?? 1) === 0\n}\n\n// Keep the ControlTypes state sent to S2 synchronized with the combined\n// communication, temperature and devmode block state. Return a message only\n// when the advertised state actually changes.\nfunction controlStateTransition(\n    communicationDisabled,\n    temperatureBlocked,\n    deviceOff\n) {\n    const controlBlocked =\n        communicationDisabled ||\n        temperatureBlocked ||\n        deviceOff\n    const advertisedOff = flow.get('mypv_control_advertised_off') === true\n\n    if (controlBlocked && !advertisedOff) {\n        flow.set('mypv_control_advertised_off', true)\n        return {\n            topic: 'ControlTypes',\n            payload: { isControllable: false }\n        }\n    }\n\n    if (!controlBlocked && advertisedOff) {\n        flow.set('mypv_control_advertised_off', false)\n        return {\n            topic: 'ControlTypes',\n            payload: { isControllable: true }\n        }\n    }\n\n    return null\n}\n\nconst temperatureBlocked = flow.get('mypv_temperature_blocked') === true\nconst currentSetup = flow.get('mypv_setup') || {}\nconst currentDeviceOff = isDeviceOff(currentSetup)\n\nif (!requestSucceeded) {\n    // A setup.jsn failure is handled exactly like failures on the other My-PV\n    // HTTP endpoints. Isolated ECONNREFUSED errors are harmless; OMBC is only\n    // disabled after 30 seconds without ANY successful My-PV HTTP exchange.\n    const previousCommunicationDisabled = flow.get('mypv_ombc_disabled') === true\n    const communicationDisabled = communicationTimedOut(now)\n    flow.set('mypv_ombc_disabled', communicationDisabled)\n\n    if (communicationDisabled && !previousCommunicationDisabled) {\n        node.warn('No successful My-PV communication for 30 seconds; OMBC disabled')\n    }\n\n    const reference =\n        Number(flow.get('mypv_last_comm_success')) ||\n        Number(flow.get('mypv_comm_watch_started')) ||\n        now\n    const secondsWithoutSuccess = Math.max(\n        0,\n        Math.floor((now - reference) / 1000)\n    )\n\n    node.status({\n        shape: 'ring',\n        fill: communicationDisabled ? 'red' : currentDeviceOff ? 'grey' : 'yellow',\n        text: communicationDisabled\n            ? 'My-PV offline for 30+ s; OMBC off'\n            : currentDeviceOff\n              ? 'Device off (devmode 0); OMBC off'\n              : 'setup.jsn error; last communication ' +\n                secondsWithoutSuccess +\n                ' s ago'\n    })\n\n    return controlStateTransition(\n        communicationDisabled,\n        temperatureBlocked,\n        currentDeviceOff\n    )\n}\n\n// Any successful My-PV HTTP response immediately proves that the device is\n// reachable. Refresh the single shared communication-health timestamp before\n// parsing the payload: malformed setup data is a data-quality issue, not a\n// communication outage.\nflow.set('mypv_last_comm_success', now)\nflow.set('mypv_comm_watch_started', now)\nflow.set('mypv_ombc_disabled', false)\n\nlet setup\n\ntry {\n    setup =\n        typeof msg.payload === 'string'\n            ? JSON.parse(msg.payload)\n            : msg.payload\n} catch (error) {\n    node.status({\n        shape: 'ring',\n        fill: currentDeviceOff ? 'grey' : 'yellow',\n        text: currentDeviceOff\n            ? 'Device off (devmode 0); OMBC off'\n            : 'My-PV reachable; setup.jsn invalid'\n    })\n\n    return controlStateTransition(\n        false,\n        temperatureBlocked,\n        currentDeviceOff\n    )\n}\n\nif (!setup || typeof setup !== 'object') {\n    node.status({\n        shape: 'ring',\n        fill: currentDeviceOff ? 'grey' : 'yellow',\n        text: currentDeviceOff\n            ? 'Device off (devmode 0); OMBC off'\n            : 'My-PV reachable; setup.jsn invalid'\n    })\n\n    return controlStateTransition(\n        false,\n        temperatureBlocked,\n        currentDeviceOff\n    )\n}\n\n// Keep the complete setup response available for the temperature gate and UI.\n// If the device did not provide devmode, default it to 1. This matches the\n// request-side startup default while preserving any explicit device value.\nif (setup.devmode === undefined || setup.devmode === null || setup.devmode === '') {\n    setup.devmode = 1\n}\n\nflow.set('mypv_setup', setup)\n\nconst deviceOff = isDeviceOff(setup)\n\n// setup.jsn is authoritative for devmode. Therefore a successful refresh can\n// immediately remove or restore OMBC when devmode changes.\nconst controlMessage = controlStateTransition(\n    false,\n    temperatureBlocked,\n    deviceOff\n)\n\n// My-PV reports these temperature settings in tenths of a degree Celsius.\nconst targetTemperature = Number(setup.ww1target) / 10\nconst hysteresis = Number(setup.ww_targ_h) / 10\n\nif (!Number.isFinite(targetTemperature)) {\n    node.status({\n        shape: 'ring',\n        fill: deviceOff ? 'grey' : 'yellow',\n        text: deviceOff\n            ? 'Device off (devmode 0); OMBC off'\n            : 'My-PV reachable; no temperature target configured'\n    })\n    return controlMessage\n}\n\nnode.status({\n    shape: 'dot',\n    fill: deviceOff ? 'grey' : temperatureBlocked ? 'yellow' : 'green',\n    text: deviceOff\n        ? 'Device off (devmode 0); OMBC off'\n        : 'Temp gate: ' +\n          targetTemperature +\n          ' °C +/- ' +\n          (Number.isFinite(hysteresis) ? hysteresis : 0) +\n          ' °C'\n})\n\nreturn controlMessage",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 900,
+        "y": 500,
+        "wires": [
+            [
+                "9f80e0ef45e7ad97"
+            ]
+        ]
+    },
+    {
+        "id": "bf2394c422dffc4b",
+        "type": "catch",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Handle My-PV setup HTTP errors",
+        "scope": [
+            "40f246111d14752f"
+        ],
+        "uncaught": false,
+        "x": 650,
+        "y": 560,
+        "wires": [
+            [
+                "71438f98e8f98712"
+            ]
+        ]
+    },
+    {
+        "id": "c873af3fe3c1e72b",
+        "type": "link in",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link in 17",
+        "links": [
+            "15651132b302fdc3"
+        ],
+        "x": 85,
+        "y": 540,
+        "wires": [
+            [
+                "e2e92ac4b43419bc"
+            ]
+        ]
+    },
+    {
+        "id": "15651132b302fdc3",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "42d755d65a451323",
+        "name": "link out 28",
+        "mode": "link",
+        "links": [
+            "c873af3fe3c1e72b"
+        ],
+        "x": 495,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "e2e92ac4b43419bc",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Reset My-PV runtime state",
+        "rules": [
+            {
+                "t": "delete",
+                "p": "mypv_setpoint_failures",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_data_failures",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_ombc_disabled",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_control_advertised_off",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_temperature_blocked",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_setup",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_last_comm_success",
+                "pt": "flow"
+            },
+            {
+                "t": "delete",
+                "p": "mypv_comm_watch_started",
+                "pt": "flow"
+            }
+        ],
+        "x": 280,
+        "y": 540,
+        "wires": [
+            [
+                "350dbbf323f981fd"
+            ]
+        ]
+    },
+    {
+        "id": "b62b06e451ba964e",
+        "type": "inject",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "Update indicators every 1 second",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "1",
+        "crontab": "",
+        "once": false,
+        "onceDelay": "1",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "x": 220,
+        "y": 740,
+        "wires": [
+            [
+                "8747536b476f9a7f"
+            ]
+        ]
+    },
+    {
+        "id": "86cb4ff21d1c780d",
+        "type": "victron-virtual-indicator",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "",
+        "customname": "Charge level",
+        "group": "my-PV AC•THOR",
+        "indicator_type": "3",
+        "unit": "°C",
+        "labels": "",
+        "primary_label": "",
+        "range_min": "0",
+        "range_max": "70",
+        "decimals": "1",
+        "show_ui_input": 1,
+        "x": 840,
+        "y": 720,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "671ae3b3a2a00925",
+        "type": "victron-virtual-indicator",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "",
+        "customname": "Status",
+        "group": "my-PV AC•THOR",
+        "indicator_type": "0",
+        "unit": "°C",
+        "labels": "Standby,Heating,Boost heating,Heating finished,No communication,Error,Device blocked,Unknown",
+        "primary_label": "Controller",
+        "range_min": "0",
+        "range_max": "55",
+        "decimals": "1",
+        "show_ui_input": 1,
+        "x": 800,
+        "y": 840,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "8747536b476f9a7f",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "Retrieve data",
+        "func": "// AC-Thor 9S operation state reported by data.jsn.\n\n// Language code used for state labels, supported: en, de, es, fr, it, nl\nconst LANGUAGE_CODE = \"en\";\n\nconst data = flow.get('mypv_data') || {}\nconst setup = flow.get('mypv_setup') || {}\n\n// Do not update indicators until both data and setup information are available.\nif (Object.keys(data).length === 0 || Object.keys(setup).length === 0) {\n    return null\n}\n\nfunction numberOrNull(value) {\n    if (value === undefined || value === null || value === '') {\n        return null\n    }\n\n    const number = Number(value)\n    return Number.isFinite(number) ? number : null\n}\n\nconst numberOrZero = value =>\n    Number.isFinite(Number(value)) ? Number(value) : 0\n\nconst infoStateLabels = {\n    en: [\n        'Standby',\n        'Heating',\n        'Boost heating',\n        'Heating finished',\n        'No communication',\n        'Error',\n        'Device blocked',\n        'Unknown'\n    ],\n\n    de: [\n        'Standby',\n        'Heizen',\n        'Heizen Sicherstellung',\n        'Heizen beendet',\n        'Keine Verbindung',\n        'Fehler',\n        'Sperrzeit aktiv',\n        'Unbekannt'\n    ],\n\n    es: [\n        'Standby',\n        'Calentamiento',\n        'Boost calentamiento',\n        'El calentamiento se acabó',\n        'No hay conexión',\n        'Error',\n        'Tiempo de parada activo',\n        'Desconocido'\n    ],\n\n    fr: [\n        'Standby',\n        'Chauffage',\n        'Sécurisation chauffage',\n        'Chauffage terminé',\n        'Pas de connexion',\n        'Erreur',\n        'Blocage activé',\n        'Inconnu'\n    ],\n\n    it: [\n        'Standby',\n        'Riscaldamento',\n        'Assicurazione del riscaldamento',\n        'Riscaldamento terminato',\n        'Nessuna connessione',\n        'Errore',\n        'Tempo di blocco attivo',\n        'Sconosciuto'\n    ],\n\n    nl: [\n        'Stand-by',\n        'Verwarmen',\n        'Verwarmen (zekerstelling)',\n        'Verwarmen beëindigd',\n        'Geen verbinding',\n        'Fout',\n        'Blokkeertijd actief',\n        'Onbekend'\n    ]\n}\n\nconst rawInfoState = numberOrNull(data.screen_mode_flag)\nconst infoState = rawInfoState === null ? 7 : rawInfoState\nconst operationState = infoStateLabels[LANGUAGE_CODE][infoState] || infoStateLabels[LANGUAGE_CODE][7]\n\n// My-PV reports temperatures in tenths of a degree Celsius.\nconst currentTemperatureRaw = numberOrNull(data.temp1)\nconst targetTemperatureRaw = numberOrNull(setup.ww1target)\n\n// Warm-water minimum-temperature assurance:\n// wws_bstmode = 0 means disabled.\n// wws_acthor_bsttemp is the minimum temperature in tenths of a degree.\nconst minimumTemperatureRaw = numberOrNull(setup.wws_acthor_bsttemp)\nconst minimumTemperatureEnabled =\n    numberOrNull(setup.wws_bstmode) !== null &&\n    Number(setup.wws_bstmode) !== 0 &&\n    minimumTemperatureRaw !== null\n\nconst minTemp = minimumTemperatureEnabled\n    ? minimumTemperatureRaw / 10\n    : 20\nconst maxTemp = targetTemperatureRaw === null\n    ? 90\n    : targetTemperatureRaw / 10\nconst currentTemp = currentTemperatureRaw === null\n    ? null\n    : currentTemperatureRaw / 10\n\nconst l1Power =\n    numberOrZero(data.power1_solar) +\n    numberOrZero(data.power1_grid)\nconst l2Power =\n    numberOrZero(data.power2_solar) +\n    numberOrZero(data.power2_grid)\nconst l3Power =\n    numberOrZero(data.power3_solar) +\n    numberOrZero(data.power3_grid)\nconst sumPower = l1Power + l2Power + l3Power\n\nnode.status({\n    shape: 'dot',\n    fill: 'green',\n    text: `${currentTemp} / ${maxTemp} °C | ${sumPower} W | ${operationState}`\n})\n\nreturn [\n    {\n        payload: {\n            '/SwitchableOutput/output_1/State':\n                setup.devmode !== undefined && setup.devmode !== null\n                    ? setup.devmode\n                    : 1\n        }\n    },\n    {\n        payload: {\n            '/GenericInput/0/Value': currentTemp,\n            '/GenericInput/0/Settings/RangeMin': minTemp,\n            '/GenericInput/0/Settings/RangeMax': maxTemp\n        }\n    },\n    {\n        payload: {\n            '/GenericInput/0/Value': sumPower\n        }\n    },\n    {\n        payload: {\n            '/GenericInput/0/Value': infoState,\n            '/GenericInput/0/Settings/Labels': infoStateLabels[LANGUAGE_CODE]\n        }\n    },\n    {\n        payload: {\n            '/Temperature': currentTemp\n        }\n    },\n]",
+        "outputs": 5,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 740,
+        "wires": [
+            [
+                "822291ad2d4e3708"
+            ],
+            [
+                "86cb4ff21d1c780d"
+            ],
+            [
+                "09af81b4c1e0ba52"
+            ],
+            [
+                "671ae3b3a2a00925"
+            ],
+            [
+                "1940c530a62adb57"
+            ]
+        ]
+    },
+    {
+        "id": "09af81b4c1e0ba52",
+        "type": "victron-virtual-indicator",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "",
+        "customname": "Power",
+        "group": "my-PV AC•THOR",
+        "indicator_type": 1,
+        "unit": "W",
+        "labels": "",
+        "primary_label": "Reported",
+        "range_min": "",
+        "range_max": "",
+        "decimals": "0",
+        "show_ui_input": 1,
+        "x": 800,
+        "y": 780,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "822291ad2d4e3708",
+        "type": "victron-virtual-switch",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "",
+        "outputs": 2,
+        "switch_1_type": 1,
+        "switch_1_initial": 0,
+        "switch_1_label": "",
+        "switch_1_customname": "Active",
+        "switch_1_group": "my-PV AC•THOR",
+        "switch_1_include_measurement": false,
+        "switch_1_rgb_color_wheel": false,
+        "switch_1_cct_wheel": false,
+        "switch_1_rgb_white_dimmer": false,
+        "switch_1_show_ui_input": 1,
+        "switch_1_passthrough_mode": "auto_only",
+        "x": 800,
+        "y": 660,
+        "wires": [
+            [],
+            [
+                "632652deae580352"
+            ]
+        ]
+    },
+    {
+        "id": "632652deae580352",
+        "type": "change",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "Set devmode",
+        "rules": [
+            {
+                "t": "set",
+                "p": "mypv_setup.devmode",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1060,
+        "y": 660,
+        "wires": [
+            [
+                "61b2e98816889953"
+            ]
+        ]
+    },
+    {
+        "id": "c37b937e2a5ca595",
+        "type": "function",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "Resend power setpoint every 3-5s",
+        "func": "const HEARTBEAT_INTERVAL_MS = 3000\nconst COMMUNICATION_TIMEOUT_MS = 30000\n\n// data.jsn and this function are triggered by the same 2-second inject. A due\n// heartbeat therefore must NOT be sent immediately, otherwise two HTTP requests\n// would reach the small My-PV CPU at almost exactly the same time.\n//\n// Wait for the current data.jsn request to finish and then leave a short quiet\n// period before sending control.html. If telemetry is unusually slow, skip this\n// heartbeat rather than stacking another request onto a busy device.\nconst DATA_CHECK_INTERVAL_MS = 40\nconst MAX_WAIT_FOR_DATA_MS = 500\nconst POST_DATA_GAP_MS = 180\nconst MAX_TOTAL_DELAY_MS = 750\n\nconst now = Date.now()\n\n// Record the start of this telemetry cycle for diagnostics.\nflow.set('mypv_last_data_poll_tick', now)\n\nconst setpoint = flow.get('mypv_setpoint')\nif (!setpoint || typeof setpoint !== 'object') {\n    return null\n}\n\nconst lastSent = Number(setpoint.lastSent) || 0\nif (now - lastSent < HEARTBEAT_INTERVAL_MS) {\n    return null\n}\n\n// Prevent more than one delayed heartbeat from being scheduled at a time.\n// The timestamp also makes the guard self-recover if Node-RED was interrupted\n// while a delayed heartbeat was pending.\nconst pendingSince = Number(context.get('heartbeatPendingSince')) || 0\nif (pendingSince > 0 && now - pendingSince < MAX_TOTAL_DELAY_MS + 1000) {\n    return null\n}\ncontext.set('heartbeatPendingSince', now)\n\nconst startingDataCycle = Number(flow.get('mypv_data_cycle')) || 0\nconst scheduledAt = now\nconst heartbeatMsg = { ...msg }\n\nfunction clearPending() {\n    context.set('heartbeatPendingSince', 0)\n}\n\nfunction communicationTimedOut(time) {\n    let reference = Number(flow.get('mypv_last_comm_success'))\n\n    if (!Number.isFinite(reference) || reference <= 0) {\n        reference = Number(flow.get('mypv_comm_watch_started'))\n\n        if (!Number.isFinite(reference) || reference <= 0) {\n            reference = time\n            flow.set('mypv_comm_watch_started', reference)\n        }\n    }\n\n    return time - reference >= COMMUNICATION_TIMEOUT_MS\n}\n\nfunction trySendHeartbeat() {\n    const currentTime = Date.now()\n    const elapsed = currentTime - scheduledAt\n    const currentDataCycle = Number(flow.get('mypv_data_cycle')) || 0\n\n    // The current data.jsn request has not completed yet. Give it a short time\n    // to finish, but never stack a SET request behind a slow telemetry request.\n    if (currentDataCycle <= startingDataCycle) {\n        if (elapsed >= MAX_WAIT_FOR_DATA_MS) {\n            clearPending()\n            return\n        }\n\n        setTimeout(trySendHeartbeat, DATA_CHECK_INTERVAL_MS)\n        return\n    }\n\n    const lastDataCompletion = Number(flow.get('mypv_last_data_completion')) || 0\n    const quietTime = currentTime - lastDataCompletion\n\n    // Give the embedded HTTP server a short breathing period after data.jsn.\n    if (quietTime < POST_DATA_GAP_MS) {\n        const remainingGap = POST_DATA_GAP_MS - quietTime\n\n        if (elapsed + remainingGap > MAX_TOTAL_DELAY_MS) {\n            clearPending()\n            return\n        }\n\n        setTimeout(trySendHeartbeat, remainingGap)\n        return\n    }\n\n    // Do not send a stale heartbeat if a new S2 instruction has already caused\n    // a more recent SET attempt while this heartbeat was waiting.\n    const latestSetpoint = flow.get('mypv_setpoint')\n    if (!latestSetpoint || typeof latestSetpoint !== 'object') {\n        clearPending()\n        return\n    }\n\n    const latestLastSent = Number(latestSetpoint.lastSent) || 0\n    if (latestLastSent > scheduledAt) {\n        clearPending()\n        return\n    }\n\n    const setup = flow.get('mypv_setup') || {}\n    const deviceOff = Number(setup.devmode ?? 1) === 0\n\n    // devmode = 0 is a hard pause for control traffic. Do not send any\n    // control.html request while the My-PV device is switched off. Keep the\n    // stored S2 setpoint unchanged so it can resume when devmode returns to 1.\n    if (deviceOff) {\n        clearPending()\n        return\n    }\n\n    const temperatureBlocked = flow.get('mypv_temperature_blocked') === true\n    const communicationDisabled = communicationTimedOut(currentTime)\n\n    // For communication timeout or an active temperature gate, send 0 W as a\n    // safe heartbeat/probe. devmode = 0 is handled above by sending nothing.\n    const desiredPower = Number(latestSetpoint.power) || 0\n    const heartbeatPower =\n        communicationDisabled || temperatureBlocked\n            ? 0\n            : desiredPower\n\n    // Store the attempt time before sending. With the 2-second trigger and the\n    // 3-second minimum interval, normal heartbeat spacing is about 4 seconds,\n    // comfortably inside the intended 3-5 second range.\n    latestSetpoint.lastSent = currentTime\n    flow.set('mypv_setpoint', latestSetpoint)\n\n    heartbeatMsg.payload = heartbeatPower\n    heartbeatMsg.mypvHeartbeat = true\n\n    // A heartbeat is not a new S2 instruction and must never generate a\n    // ModeConfirmation in the response handler.\n    delete heartbeatMsg.modeConfirmationPayload\n\n    clearPending()\n    node.send(heartbeatMsg)\n}\n\n// Start checking shortly after the simultaneous data.jsn request was launched.\nsetTimeout(trySendHeartbeat, DATA_CHECK_INTERVAL_MS)\nreturn null",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 260,
+        "y": 320,
+        "wires": [
+            [
+                "4d2f5069325e7f2f"
+            ]
+        ]
+    },
+    {
+        "id": "9f80e0ef45e7ad97",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link out 9",
+        "mode": "link",
+        "links": [
+            "ba69838dfe2de083"
+        ],
+        "x": 1135,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "1940c530a62adb57",
+        "type": "victron-virtual",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "my-PV AC•THOR",
+        "outputs": 1,
+        "device": "temperature",
+        "default_values": true,
+        "acload_position": 0,
+        "acload_nrofphases": 1,
+        "acload_phasesetting": 1,
+        "acload_auto_energy": true,
+        "enable_s2support": false,
+        "s2_measurement_type": "L1",
+        "heatpump_position": 0,
+        "heatpump_nrofphases": 1,
+        "heatpump_phasesetting": 1,
+        "heatpump_auto_energy": true,
+        "evcs_nrofphases": 1,
+        "battery_capacity": 25,
+        "include_battery_temperature": false,
+        "battery_voltage_preset": "24",
+        "battery_voltage_custom": 24,
+        "generator_type": "ac",
+        "generator_nrofphases": 1,
+        "include_engine_hours": false,
+        "include_starter_voltage": false,
+        "include_history_energy": false,
+        "generator_grid_meter_only": false,
+        "grid_nrofphases": 1,
+        "energymeter_role": "",
+        "energymeter_position": 0,
+        "energymeter_nrofphases": 1,
+        "energymeter_phasesetting": 1,
+        "include_motor_temp": false,
+        "include_controller_temp": false,
+        "include_coolant_temp": false,
+        "include_motor_rpm": true,
+        "include_motor_direction": true,
+        "position": 0,
+        "pvinverter_nrofphases": 1,
+        "pvinverter_auto_energy": true,
+        "switch_1_type": 1,
+        "switch_1_min": 0,
+        "switch_1_max": "",
+        "switch_1_initial": 0,
+        "switch_1_label": "",
+        "switch_1_unit": "",
+        "switch_1_step": 1,
+        "switch_1_customname": "",
+        "switch_1_group": "",
+        "switch_1_include_measurement": false,
+        "switch_1_rgb_color_wheel": false,
+        "switch_1_cct_wheel": false,
+        "switch_1_rgb_white_dimmer": false,
+        "switch_1_passthrough_mode": "auto_only",
+        "fluid_type": 0,
+        "include_tank_battery": false,
+        "include_tank_temperature": false,
+        "tank_battery_voltage": 3.3,
+        "tank_capacity": 0.2,
+        "auto_aggregate": false,
+        "pulsemeter_multiplier": 0.001,
+        "ev_vin": "",
+        "ev_battery_capacity": "",
+        "ev_evcs_device_instance": "",
+        "temperature_type": "5",
+        "include_humidity": false,
+        "include_pressure": false,
+        "include_temp_battery": false,
+        "temp_battery_voltage": 3.3,
+        "start_disconnected": false,
+        "x": 750,
+        "y": 900,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "61b2e98816889953",
+        "type": "link out",
+        "z": "9172564631900839",
+        "g": "5793ed93eb74c833",
+        "name": "link out 10",
+        "mode": "link",
+        "links": [
+            "5d73059fd87cad6f"
+        ],
+        "x": 1185,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "5d73059fd87cad6f",
+        "type": "link in",
+        "z": "9172564631900839",
+        "g": "198df8a158c9caff",
+        "name": "link in 7",
+        "links": [
+            "61b2e98816889953"
+        ],
+        "x": 285,
+        "y": 420,
+        "wires": [
+            [
+                "88768d8ed12abba4"
+            ]
+        ]
+    },
+    {
+        "id": "mypv-dbus-config",
+        "type": "s2-dbus-config",
+        "name": "My-PV AC-Thor D-Bus",
+        "connectionMode": "auto",
+        "tcpAddress": "",
+        "deviceType": "acload",
+        "measurementType": "L1_L2_L3",
+        "nrOfPhases": 3,
+        "position": 0,
+        "phaseSetting": 1,
+        "autoCalculateEnergy": true
+    },
+    {
+        "id": "602bc6f510d6f1b5",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-s2": "0.9.0",
+            "@victronenergy/node-red-contrib-victron": "1.7.27"
+        }
+    }
+]
