@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- `s2-resource`'s and `s2-rm-config`'s "Not Controllable" checkbox is relabeled "Include 'Not Controllable' in advertised control types", with a tooltip explaining that some CEMs select it as their initial/default state before switching to another control type - the old wording read like a toggle for whether the resource can be controlled at all, leading testers to uncheck it expecting the opposite effect.
+- `s2-resource`'s and `s2-rm-config`'s "Not Controllable" checkboxes are relabeled "Include 'Not Controllable' in advertised control types", with a tooltip explaining that some CEMs select it as their initial/default state before switching to another control type - the old wording read like a toggle for whether the resource can be controlled at all, leading testers to uncheck it expecting the opposite effect.
 
 ## [0.9.0]
 
