@@ -185,6 +185,27 @@ describe('PowerMeasurementCache - 3_PHASE_SYMMETRIC', () => {
     expect(update?.raw).toMatchObject({ 'Ac/Power': 90 })
   })
 
+  it('a scalar commodityPower (not the native array-of-objects shape) is rejected with a warning, not silently written', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ commodityPower: 1500 })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/commodityPower must be a non-empty array/)
+  })
+
+  it('an empty commodityPower array is rejected with a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ commodityPower: [] })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/commodityPower must be a non-empty array/)
+  })
+
+  it('a commodityPower array with a malformed entry is rejected with a warning', () => {
+    const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
+    const update = cache.update({ commodityPower: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC' }] })
+    expect(update?.raw).toEqual({})
+    expect(update?.warning).toMatch(/commodityPower must be a non-empty array/)
+  })
+
   it('defaults numeric zero to zero without a warning', () => {
     const cache = new PowerMeasurementCache('3_PHASE_SYMMETRIC', 3)
     const update = cache.update({ values: 0 })
