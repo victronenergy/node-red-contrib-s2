@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `s2-resource`: a `command: 'PowerMeasurement'` message whose native `values` isn't actually a non-empty array of `{ commodity_quantity, value }` entries (e.g. a bare number) is now rejected instead of being silently misinterpreted as the friendly `values` shape and written to D-Bus as a fabricated reading.
 - `s2-resource` (`Transport: D-Bus`): a `topic: 'PowerMeasurement'` message on a node with a built-in OMBC control type, and any `command: 'PowerMeasurement'` message (native S2 values), now update the D-Bus measurement cache and its BusItems - previously they were relayed to the CEM only, silently skipping D-Bus exposure.
 
+### Changed
+
+- `s2-resource`'s and `s2-rm-config`'s "Not Controllable" checkbox is relabeled "Include 'Not Controllable' in advertised control types", with a tooltip explaining that some CEMs select it as their initial/default state before switching to another control type - the old wording read like a toggle for whether the resource can be controlled at all, leading testers to uncheck it expecting the opposite effect.
+
 ## [0.9.0]
 
 ### Changed
