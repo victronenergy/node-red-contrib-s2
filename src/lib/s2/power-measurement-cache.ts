@@ -91,30 +91,38 @@ export class PowerMeasurementCache {
         } else if (this.measurementType === '3_PHASE_SYMMETRIC') {
           setValue('Ac/Power', 0)
         }
-      } else if (valuesKey === 'commodityPower' && Array.isArray(values) && values.length > 0 && values.every((value) => {
-        const item = value as Record<string, unknown>
-        return item !== null && typeof item === 'object' && typeof item.commodity_quantity === 'string' && typeof item.value === 'number'
-      })) {
-        const commodityValues = values as PowerMeasurementValue[]
-        const byCommodity = new Map(commodityValues.map(value => [value.commodity_quantity, value.value]))
-        if (this.measurementType === '3_PHASE_SYMMETRIC') {
-          const symmetric = byCommodity.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
-          if (symmetric !== undefined) {
-            setValue('Ac/Power', symmetric)
-          } else {
-            const phaseValues = ['L1', 'L2', 'L3'].map(phase => byCommodity.get(`ELECTRIC.POWER.${phase}`) || 0)
-            if (phaseValues.some((value, index) => byCommodity.has(`ELECTRIC.POWER.L${index + 1}`))) {
-              phaseValues.forEach((value, index) => setValue(`Ac/L${index + 1}/Power`, value))
-              setValue('Ac/Power', phaseValues.reduce((sum, value) => sum + value, 0))
+      } else if (valuesKey === 'commodityPower') {
+        // Native S2 shape (PowerMeasurementValue[]) - never falls through to the generic
+        // scalar/array-of-numbers branches below, which are for the friendly `values` shape only
+        // and would otherwise silently misinterpret a malformed commodityPower payload (e.g. a
+        // bare number) as a valid scalar reading.
+        if (Array.isArray(values) && values.length > 0 && values.every((value) => {
+          const item = value as Record<string, unknown>
+          return item !== null && typeof item === 'object' && typeof item.commodity_quantity === 'string' && typeof item.value === 'number'
+        })) {
+          const commodityValues = values as PowerMeasurementValue[]
+          const byCommodity = new Map(commodityValues.map(value => [value.commodity_quantity, value.value]))
+          if (this.measurementType === '3_PHASE_SYMMETRIC') {
+            const symmetric = byCommodity.get('ELECTRIC.POWER.3_PHASE_SYMMETRIC')
+            if (symmetric !== undefined) {
+              setValue('Ac/Power', symmetric)
+            } else {
+              const phaseValues = ['L1', 'L2', 'L3'].map(phase => byCommodity.get(`ELECTRIC.POWER.${phase}`) || 0)
+              if (phaseValues.some((value, index) => byCommodity.has(`ELECTRIC.POWER.L${index + 1}`))) {
+                phaseValues.forEach((value, index) => setValue(`Ac/L${index + 1}/Power`, value))
+                setValue('Ac/Power', phaseValues.reduce((sum, value) => sum + value, 0))
+              }
             }
+          } else if (this.measurementType === 'L1_L2_L3') {
+            const phaseKeys = Object.keys(this.props)
+            phaseKeys.forEach(key => {
+              const commodity = this.props[key]
+              const value = byCommodity.get(commodity)
+              if (value !== undefined) setValue(key, value)
+            })
           }
-        } else if (this.measurementType === 'L1_L2_L3') {
-          const phaseKeys = Object.keys(this.props)
-          phaseKeys.forEach(key => {
-            const commodity = this.props[key]
-            const value = byCommodity.get(commodity)
-            if (value !== undefined) setValue(key, value)
-          })
+        } else {
+          warning = 'commodityPower must be a non-empty array of { commodity_quantity, value } entries'
         }
       } else if (this.measurementType === 'L1_L2_L3') {
         const phaseKeys = Object.keys(this.props)

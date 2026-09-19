@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `s2-resource`: a `command: 'PowerMeasurement'` message whose native `values` isn't actually a non-empty array of `{ commodity_quantity, value }` entries (e.g. a bare number) is now rejected instead of being silently misinterpreted as the friendly `values` shape and written to D-Bus as a fabricated reading.
+
 ## [0.9.0]
 
 ### Changed
