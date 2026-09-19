@@ -384,7 +384,7 @@ export = function (RED: NodeRedApp): void {
           tcpAddress: dbusConfig.tcpAddress,
           deviceType: dbusConfig.deviceType,
           nodeId: node.id,
-          customName: config.rmName || config.name,
+          customName: config.name || config.rmName,
           measurementType: dbusConfig.measurementType,
           nrOfPhases: dbusConfig.nrOfPhases,
           position: dbusConfig.position,

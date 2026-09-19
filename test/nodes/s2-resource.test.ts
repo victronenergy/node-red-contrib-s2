@@ -422,6 +422,14 @@ describe('s2-resource - Transport: D-Bus', () => {
     expect(capturedDbusTransportOptions).toMatchObject({ deviceType: 'acload' })
   })
 
+  it('uses the node\'s own Name for D-Bus CustomName, falling back to rmName', () => {
+    setupNode({ transport: 'dbus', controlType: 'none', name: 'My Device', rmName: 'RM: My Device' })
+    expect(capturedDbusTransportOptions.customName).toBe('My Device')
+
+    setupNode({ transport: 'dbus', controlType: 'none', name: '', rmName: 'RM: My Device' })
+    expect(capturedDbusTransportOptions.customName).toBe('RM: My Device')
+  })
+
   it('shows an error status and does not connect when the D-Bus config is missing', () => {
     const { node } = setupNode({ transport: 'dbus', controlType: 'none' }, DEFAULT_CEM_CONFIG, null)
 
