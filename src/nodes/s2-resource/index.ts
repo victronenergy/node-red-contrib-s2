@@ -461,7 +461,11 @@ export = function (RED: NodeRedApp): void {
           : payloadObj
         const update = measurementCache.update(cacheInput)
         if (update) {
-          if (update.warning) node.warn(`[s2-resource] ${update.warning}`)
+          // When the message is also relayed below (rm/ombcController), that path runs its own
+          // native S2 validation and warns accordingly - surfacing the cache's warning too would
+          // be redundant at best (duplicate warning) and misleading at worst (worded for the
+          // cache's own `values`/`commodityPower` shapes, not the native command's).
+          if (update.warning && !relayedElsewhere) node.warn(`[s2-resource] ${update.warning}`)
           dbusTransport?.setMeasurementValues(update.raw)
           if (!relayedElsewhere) {
             if (update.s2Values) rm.handleInput({ payload: { command: 'PowerMeasurement', cemId: TRANSPORT_CEM_ID, values: update.s2Values } }, () => {})
