@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.2]
+
 ### Added
 
 - `s2-pebc-config` gains an Advanced (JSON) mode, alongside its existing Friendly `Grid Fuse`/`Custom` picker - for a default `PEBC.PowerConstraints` range Friendly mode can't express: an asymmetric import/export limit (e.g. `minPower: -3000, maxPower: 6000`), or a commodity other than 3-phase-symmetric. Like `s2-ombc-config`'s Advanced mode, the JSON is validated against the real `PEBC.PowerConstraints` S2 schema as you type - Update is disabled and the specific problem is shown until it's fixed.
