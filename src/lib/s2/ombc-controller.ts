@@ -71,6 +71,10 @@ export class OMBCController {
     this.opts.setContextValue(PERSISTED_STATUS_KEY_PREFIX + cemId, status)
   }
 
+  private clearPersistedStatus (cemId: string): void {
+    this.opts.setContextValue(PERSISTED_STATUS_KEY_PREFIX + cemId, undefined)
+  }
+
   private getDefaultStatus (): OMBCStatusConfig | null {
     return (this.opts.getContextValue(DEFAULT_STATUS_KEY) as OMBCStatusConfig | undefined) || null
   }
@@ -303,7 +307,10 @@ export class OMBCController {
     const payload = msg.payload as Record<string, unknown>
     const controlType = payload.control_type as string
     this.getOrCreateState(cemId).selectedControlType = controlType
-    if (controlType !== ControlType.OMBC) return
+    if (controlType !== ControlType.OMBC) {
+      this.clearPersistedStatus(cemId)
+      return
+    }
 
     this.opts.onSendCommand({ payload: { command: 'SystemDescription', cemId, controlType: ControlType.OMBC, ombc: this.systemDescription } })
 

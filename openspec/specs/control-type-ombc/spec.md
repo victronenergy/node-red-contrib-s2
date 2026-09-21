@@ -126,15 +126,30 @@ A confirm message SHALL identify the operation mode via `id` (or legacy `confirm
 - **THEN** its own persisted status is used, not the default
 
 ### Requirement: Status request when no status is available
-After sending the `SystemDescription` command for a CEM newly selecting OMBC, if that CEM has neither a persisted status nor a default available, `s2-ombc` SHALL emit a `StatusRequest` notification (`{ topic: 'StatusRequest', cemId }`) on its instruction output, without waiting for the CEM's acknowledgment of the system description.
+After sending the `SystemDescription` command for a CEM newly selecting OMBC, if that CEM has neither a persisted status nor a default available, `s2-ombc` SHALL emit a `ModeRequest` notification (`{ topic: 'ModeRequest', payload: null, cemId }`) on its instruction output, without waiting for the CEM's acknowledgment of the system description.
 
 #### Scenario: No persisted status and no default
 - **WHEN** a CEM selects OMBC, has no persisted status, and no default has been set
-- **THEN** `s2-ombc` sends the `SystemDescription` command and then emits `{ topic: 'StatusRequest', cemId }` on its instruction output
+- **THEN** `s2-ombc` sends the `SystemDescription` command and then emits `{ topic: 'ModeRequest', payload: null, cemId }` on its instruction output
 
 #### Scenario: Default available
 - **WHEN** a CEM selects OMBC and a default status is available (per "Pre-connection default status")
-- **THEN** no `StatusRequest` notification is emitted
+- **THEN** no `ModeRequest` notification is emitted
+
+### Requirement: Persisted status cleared when a CEM deselects OMBC
+When a CEM sends `SelectControlType` for anything other than `OPERATION_MODE_BASED_CONTROL` (including `NOT_CONTROLABLE`), `s2-ombc` SHALL clear that CEM's persisted status. A later reselection of OMBC by the same CEM SHALL then be treated exactly as if it had no persisted status at all - seeded from the default status if one is set (per "Pre-connection default status"), or otherwise triggering a `ModeRequest` notification (per "Status request when no status is available") - instead of resending the stale mode from before the CEM switched away. A CEM disconnecting and reconnecting without an intervening `SelectControlType` away from OMBC is unaffected - its persisted status survives that cycle unchanged.
+
+#### Scenario: Reselecting OMBC after switching away, no default configured
+- **WHEN** a CEM has a persisted OMBC status, selects a different control type (or `NOT_CONTROLABLE`), and later selects OMBC again, with no default status configured
+- **THEN** `s2-ombc` sends `SystemDescription` and emits `{ topic: 'ModeRequest', payload: null, cemId }`, instead of resending the status from before the CEM switched away
+
+#### Scenario: Reselecting OMBC after switching away, default configured
+- **WHEN** a CEM has a persisted OMBC status, selects a different control type, and later selects OMBC again, with a default status configured
+- **THEN** `s2-ombc` sends `UpdateStatus` using the default status, instead of the CEM's now-cleared prior status
+
+#### Scenario: Disconnect and reconnect without switching control type
+- **WHEN** a CEM with a persisted OMBC status disconnects and later reconnects and reselects OMBC, without ever selecting a different control type in between
+- **THEN** its persisted status is unaffected and is resent as before, unchanged from today's behavior
 
 ### Requirement: Default operation modes
 `s2-ombc-config`'s friendly editor SHALL pre-populate a "Standby/off" operation mode (zero power on all phases) for a configuration with no existing operation modes, and SHALL prevent it from being removed while in friendly mode.
