@@ -6,10 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `s2-pebc-config` gains an Advanced (JSON) mode, alongside its existing Friendly `Grid Fuse`/`Custom` picker - for a default `PEBC.PowerConstraints` range Friendly mode can't express: an asymmetric import/export limit (e.g. `minPower: -3000, maxPower: 6000`), or a commodity other than 3-phase-symmetric. Like `s2-ombc-config`'s Advanced mode, the JSON is validated against the real `PEBC.PowerConstraints` S2 schema as you type - Update is disabled and the specific problem is shown until it's fixed.
+
+### Fixed
+
+- `s2-ombc`/`s2-resource` (built-in OMBC): a CEM's persisted OMBC status is now cleared when that CEM selects a different control type (or `NOT_CONTROLABLE`) - reselecting OMBC afterward now seeds from the configured default status, or emits a `ModeRequest` if none is configured, instead of silently resending the stale mode from before the CEM switched away. A disconnect/reconnect with no intervening control-type switch is unaffected - the persisted status still survives that cycle as before.
+
+### Changed
+
+- **Breaking:** `s2-resource`'s "Auto-confirm mode-switch requests (OMBC.Instruction)" checkbox is now unchecked by default for newly created nodes (previously checked) - a flow that confirms based on real device state is more reliable than assuming an instructed mode switch succeeded, so that's now the recommended default. Existing deployed `s2-resource` nodes are unaffected (their configured value is already persisted explicitly); check the box yourself for a resource with no independent way to report its own hardware state back to the flow.
+
+## [0.9.1]
+
 ### Fixed
 
 - `s2-resource`: a `command: 'PowerMeasurement'` message whose native `values` isn't actually a non-empty array of `{ commodity_quantity, value }` entries (e.g. a bare number) is now rejected instead of being silently misinterpreted as the friendly `values` shape and written to D-Bus as a fabricated reading.
 - `s2-resource` (`Transport: D-Bus`): a `topic: 'PowerMeasurement'` message on a node with a built-in OMBC control type, and any `command: 'PowerMeasurement'` message (native S2 values), now update the D-Bus measurement cache and its BusItems - previously they were relayed to the CEM only, silently skipping D-Bus exposure.
+- `s2-resource` (`Transport: D-Bus`): the registered device's `CustomName` now reflects the node's own configured `Name` first, falling back to `RM Name` only when `Name` is blank - previously `RM Name` always took precedence, so a configured RM name showed up as the `CustomName` on D-Bus instead of the plain node name.
 
 ### Changed
 
