@@ -4,7 +4,7 @@
         "type": "tab",
         "label": "my-PV AC•THOR – Opportunity Loads",
         "disabled": false,
-        "info": "My-PV AC-Thor using s2-resource's built-in D-Bus transport.\n\n**Configuration:** open the `Controller & scheduler` function node and edit `DEVICE_IP` and `LANGUAGE_CODE` at the top of the function.\n\n**My-PV device setup (required):** in the My-PV web interface, go to Device Setup > Control settings and set the control type to **HTTP**. This flow drives the device through `/control.html?power=` and reads `/data.jsn` and `/setup.jsn`.\n\n**Assumed device:** My-PV AC-Thor 9s with three 3000 W heating elements (one per phase, 9 kW total), matching the s2-resource System Description and 3-phase D-Bus measurement.\n\n**Scheduling:** all HTTP traffic is serialized by one scheduler. Normal targets are data.jsn every 2 s, SET power every 4 s, setup.jsn every 45 s, with configurable backoff and three retries.\n\n**Startup safety:** OMBC remains unavailable until the actual device `devmode` has been learned. The flow never defaults an unknown device to either mode. The binary Mode virtual switch itself has `switch_1_initial=0`, but startup switch output is ignored. The controller first learns `devmode` from my-PV, publishes that state to the switch, and only then accepts subsequent switch output as a user command. Normal telemetry requests never contain a `devmode` query parameter.\n\n**Status safety:** Status starts at 7 (`Unknown`) and is set back to 7 after any failed HTTP request or invalid response. A successful `data.jsn` response restores the actual device state.\n\n**Status label language:** supported `LANGUAGE_CODE` values are `en`, `de`, `es`, `fr`, `it`, and `nl`.\n\n**Temperature service connectivity:** the Venus OS temperature service starts disconnected. Temperature values are preloaded first; repeated passthrough probes confirm that the virtual node has completed its `start_disconnected` D-Bus initialization before any `msg.connected` command is sent, avoiding a startup presence race. It is marked connected only after a real `temp1` value has been received and while the shared 30-second communication timeout (`commFault`) has not expired. Transient request failures therefore do not disconnect it immediately; it disconnects when the same communication timeout used by S2/control expires.\n\n**Dashboard language:** indicator names, primary labels, the status labels, and the Mode switch name follow `LANGUAGE_CODE` (`en`, `de`, `es`, `fr`, `it`, `nl`).\n\n**Dashboard updates:** switch, indicators, and temperature-service messages are emitted only when their effective value/settings change."
+        "info": "My-PV AC-Thor using s2-resource's built-in D-Bus transport.\n\n**My-PV device setup (required):** in the My-PV web interface, go to Device Setup > Control settings and set the control type to **HTTP**. This flow drives the device through `/control.html?power=` and reads `/data.jsn` and `/setup.jsn`.\n\n**Assumed device:** My-PV AC-Thor 9s with three 3000 W heating elements (one per phase, 9 kW total), matching the s2-resource System Description and 3-phase D-Bus measurement.\n\n**Configuration:** open the `Controller & scheduler` function node and edit `DEVICE_IP` and `LANGUAGE_CODE` at the top of the function.\n\n**Scheduling:** all HTTP traffic is serialized by one scheduler. Normal targets are data.jsn every 2 s, SET power every 4 s, setup.jsn every 45 s, with configurable backoff and three retries.\n\n**Startup safety:** OMBC remains unavailable until the actual device `devmode` has been learned. The flow never defaults an unknown device to either mode. The binary Mode virtual switch itself has `switch_1_initial=0`, but startup switch output is ignored. The controller first learns `devmode` from my-PV, publishes that state to the switch, and only then accepts subsequent switch output as a user command. Normal telemetry requests never contain a `devmode` query parameter.\n\n**Status safety:** Status starts at 7 (`Unknown`) and is set back to 7 after any failed HTTP request or invalid response. A successful `data.jsn` response restores the actual device state.\n\n**Status label language:** supported `LANGUAGE_CODE` values are `en`, `de`, `es`, `fr`, `it`, and `nl`.\n\n**Temperature service connectivity:** the Venus OS temperature service starts disconnected. Temperature values are preloaded first; repeated passthrough probes confirm that the virtual node has completed its `start_disconnected` D-Bus initialization before any `msg.connected` command is sent, avoiding a startup presence race. It is marked connected only after a real `temp1` value has been received and while the shared 30-second communication timeout (`commFault`) has not expired. Transient request failures therefore do not disconnect it immediately; it disconnects when the same communication timeout used by S2/control expires.\n\n**Dashboard language:** indicator names, primary labels, the status labels, and the Mode switch name follow `LANGUAGE_CODE` (`en`, `de`, `es`, `fr`, `it`, `nl`).\n\n**Dashboard updates:** switch, indicators, and temperature-service messages are emitted only when their effective value/settings change."
     },
     {
         "id": "d7672ec866a66ff8",
@@ -79,7 +79,7 @@
         "initialize": "flow.set('mypv_state', null)\ncontext.set('wakeDue', 0)",
         "finalize": "context.set('wakeDue', 0)",
         "libs": [],
-        "x": 500,
+        "x": 460,
         "y": 360,
         "wires": [
             [
@@ -138,7 +138,7 @@
         "authType": "",
         "senderr": false,
         "headers": [],
-        "x": 770,
+        "x": 730,
         "y": 120,
         "wires": [
             [
@@ -162,7 +162,7 @@
         "authType": "",
         "senderr": false,
         "headers": [],
-        "x": 770,
+        "x": 730,
         "y": 180,
         "wires": [
             [
@@ -186,7 +186,7 @@
         "authType": "",
         "senderr": false,
         "headers": [],
-        "x": 780,
+        "x": 740,
         "y": 240,
         "wires": [
             [
@@ -206,7 +206,7 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1070,
+        "x": 1030,
         "y": 180,
         "wires": [
             [
@@ -232,7 +232,7 @@
             "9df65a14ef3352e6"
         ],
         "uncaught": false,
-        "x": 810,
+        "x": 770,
         "y": 60,
         "wires": [
             [
@@ -257,7 +257,7 @@
         "switch_1_rgb_white_dimmer": false,
         "switch_1_show_ui_input": 1,
         "switch_1_passthrough_mode": "auto_only",
-        "x": 840,
+        "x": 800,
         "y": 300,
         "wires": [
             [],
@@ -281,7 +281,7 @@
         "range_max": "70",
         "decimals": "1",
         "show_ui_input": 1,
-        "x": 900,
+        "x": 860,
         "y": 360,
         "wires": [
             []
@@ -302,7 +302,7 @@
         "range_max": "",
         "decimals": "0",
         "show_ui_input": 1,
-        "x": 840,
+        "x": 800,
         "y": 420,
         "wires": [
             []
@@ -323,7 +323,7 @@
         "range_max": "55",
         "decimals": "1",
         "show_ui_input": 1,
-        "x": 840,
+        "x": 800,
         "y": 480,
         "wires": [
             []
@@ -397,7 +397,7 @@
         "include_temp_battery": false,
         "temp_battery_voltage": 3.3,
         "start_disconnected": true,
-        "x": 790,
+        "x": 750,
         "y": 540,
         "wires": [
             [
@@ -431,7 +431,7 @@
         "links": [
             "6791ffdd44a54fd2"
         ],
-        "x": 1225,
+        "x": 1185,
         "y": 160,
         "wires": []
     },
@@ -444,7 +444,7 @@
         "links": [
             "6791ffdd44a54fd2"
         ],
-        "x": 715,
+        "x": 675,
         "y": 600,
         "wires": []
     },
@@ -457,7 +457,7 @@
         "links": [
             "7c2b6d6feb6ab833"
         ],
-        "x": 1225,
+        "x": 1185,
         "y": 200,
         "wires": []
     },
@@ -470,7 +470,7 @@
         "links": [
             "7c2b6d6feb6ab833"
         ],
-        "x": 1025,
+        "x": 985,
         "y": 300,
         "wires": []
     },
@@ -478,9 +478,9 @@
         "id": "0ece41402f27419f",
         "type": "comment",
         "z": "d18d40b6d00d6710",
-        "name": "Note: Configure DEVICE_IP and LANGUAGE_CODE in \"Controller & scheduler\" node",
+        "name": "Setup instructions:",
         "info": "",
-        "x": 330,
+        "x": 130,
         "y": 60,
         "wires": []
     },
@@ -511,8 +511,38 @@
         "links": [
             "7c2b6d6feb6ab833"
         ],
-        "x": 925,
+        "x": 885,
         "y": 540,
+        "wires": []
+    },
+    {
+        "id": "eedc36ce1b4f18ef",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "1. Configure my-PV device to control type HTTP",
+        "info": "",
+        "x": 220,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "8902be96f2e7d290",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "2. Adjust DEVICE_IP and LANGUAGE_CODE in \"Controller & scheduler\" node",
+        "info": "",
+        "x": 310,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "1713dff113086356",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "For more details, double-click this flow tab.",
+        "info": "",
+        "x": 200,
+        "y": 180,
         "wires": []
     },
     {
@@ -529,7 +559,7 @@
         "autoCalculateEnergy": true
     },
     {
-        "id": "f01cc5b2180a7963",
+        "id": "358e0f203f3d63f8",
         "type": "global-config",
         "env": [],
         "modules": {
