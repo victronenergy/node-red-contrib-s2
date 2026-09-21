@@ -31,6 +31,10 @@ jobs:
         run: npm run check-package-files
 
       - name: Lint
+        # ESLint 10 requires Node >=20.19/22.13/24 (util.styleText) - run it once, on the
+        # newest matrix entry, rather than on every Node version. Build/check-package-files/
+        # Test above already ran on this matrix entry and are unaffected either way.
+        if: matrix.node-version == '24.x'
         run: npm run lint
 
       - name: Test with coverage
