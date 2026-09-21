@@ -15,7 +15,7 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 | Node | Description |
 |------|-------------|
 | **s2-resource** | Composite S2 Resource Manager - combines `s2-rm`, a built-in transport (`WebSocket`, `D-Bus`, or `External`), and a built-in control type (`OMBC` or `None`) behind one tabbed edit dialog. Recommended starting point: a minimal S2 flow needs just this one node instead of wiring the nodes below together. |
-| **s2-rm** | S2 Resource Manager - generic S2 protocol state machine (handshake, control-type selection, instruction ack/routing) for one or more CEMs, independent of any specific control type |
+| **s2-rm** | S2 Resource Manager - generic S2 protocol state machine (handshake, control-type selection, instruction ack/routing) for a connected CEM, independent of any specific control type |
 | **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
 | **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
 | **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers), with a friendly editor for the common case and a raw-JSON Advanced mode for everything else |
