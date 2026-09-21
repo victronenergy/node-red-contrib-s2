@@ -11,6 +11,7 @@
   "files": [
     "dist/",
     "resources/",
+    "examples/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -63,11 +64,13 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.2",
     "@types/ws": "^8.18.1",
+    "@eslint/js": "^10.0.1",
     "@typescript-eslint/eslint-plugin": "^8.58.1",
     "@typescript-eslint/parser": "^8.58.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "eslint": "^8.57.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.9",
     "typescript": "^5.9.3"
@@ -87,6 +90,11 @@
     },
     "collectCoverage": true,
     "coverageDirectory": "coverage",
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/src/lib/s2/schema-validators.generated.js",
+      "/src/lib/s2/ajv-runtime/"
+    ],
     "coverageReporters": [
       "text",
       "lcov",

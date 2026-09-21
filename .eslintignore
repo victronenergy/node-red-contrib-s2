@@ -1,5 +1,0 @@
-# Auto-generated/vendored by scripts/generate-schema-validators.js - not hand-written, not meant
-# to be lint-clean (minified ajv-generated validator code, and vendored ajv/ajv-formats runtime
-# helper files copied verbatim from their own packages).
-src/lib/s2/schema-validators.generated.js
-src/lib/s2/ajv-runtime/

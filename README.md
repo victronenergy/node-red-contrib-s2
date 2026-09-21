@@ -42,7 +42,7 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 - Multiple concurrent CEM sessions
 - Configurable RM roles (Consumer, Producer, Storage)
 - Context variable templates in serial number (e.g. `{{global.vrmId}}`)
-- S2 messages are validated against the real S2 JSON schema on both the message path (`s2-rm`) and at config-save time (`s2-ombc-config`'s Advanced/JSON mode) - a malformed message or system description is caught with a specific error instead of only failing downstream on the CEM side
+- S2 messages are validated against the real S2 JSON schema on both the message path (`s2-rm`) and at config-save time (`s2-ombc-config`'s and `s2-pebc-config`'s Advanced/JSON mode) - a malformed message, system description, or power constraints range is caught with a specific error instead of only failing downstream on the CEM side
 
 Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its "from CEM" output, as raw S2 messages, for you to handle in your own flow.
 
@@ -83,6 +83,7 @@ Import any of these from the Node-RED palette manager's "Import Examples" menu (
 | `boiler-ombc-demo` | The fully wired-together model: **s2-rm-config** + **s2-cem-config** + **s2-websocket** + **s2-rm** + **s2-ombc-config** + **s2-ombc**, simulating a single-phase electric boiler with two operation modes (Standby/off, Normal 2500W) - no real hardware required. |
 | `s2-dbus-quickstart` | The same boiler-OMBC scenario as `boiler-ombc-demo`, but over the **s2-dbus** transport (Venus OS D-Bus) instead of WebSocket - for a CEM running on the same GX device. |
 | `opportunity-loads-sg-ready-ombc` | Models an SG-Ready-style heat pump/load as an OMBC resource, driven by a real Venus OS relay state instead of a fake trigger. |
+| `opportunity-loads-mypv-ac-thor` | Drives a real My-PV AC-Thor 9s over its HTTP control API as an OMBC resource via **s2-resource**'s built-in D-Bus transport, reporting back its own instructed power as the measurement (see [Faking a measurement from an OMBC instruction](#faking-a-measurement-from-an-ombc-instruction)). |
 | `pebc-instruction-tester` | A standalone CEM-side tester (no S2 nodes involved) that POSTs `PEBC.Instruction` bodies at a resource manager's REST endpoint - useful for exercising **s2-pebc** without a real CEM. |
 
 ## Sending PowerMeasurements
@@ -174,7 +175,7 @@ Constraints are stored at the node level and automatically (re-)sent whenever a 
 
 ## Updating available control types at runtime
 
-`NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` is opt-out: `s2-rm-config`'s and `s2-resource`'s control-types checklist has a "Not Ctrl" checkbox, checked by default for newly created nodes, so a CEM can choose "don't control this resource" unless you explicitly uncheck it. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
+`NOT_CONTROLABLE` in `ResourceManagerDetails.available_control_types` is opt-out: `s2-rm-config`'s and `s2-resource`'s control-types checklist has an `Include "Not Controllable" in advertised control types` checkbox, checked by default for newly created nodes, so a CEM can choose "don't control this resource" unless you explicitly uncheck it. Beyond that, the advertised list normally comes from deploy-time config (`s2-rm-config`'s control-types list, or `s2-resource`'s `Control type` selection).
 
 To change what's currently controllable without redeploying - e.g. making an OMBC resource controllable only between 10:00 and 18:00 - set an inject node's payload (`msg.payload`, type JSON) to a `SetAvailableControlTypes` command and wire it into the s2-rm (or s2-resource) input. Like `PowerConstraints`, it applies globally and does not require a `cemId`. It takes either a full replacement list:
 
@@ -194,7 +195,7 @@ or an `isControllable` toggle for the common on/off case:
 }
 ```
 
-The list form replaces the full advertised list verbatim - `NOT_CONTROLABLE` is only included if you put it in the list yourself. `isControllable: false` replaces the list with exactly `["NOT_CONTROLABLE"]`; `isControllable: true` restores the list to whatever was configured at deploy time (the node's own control-types config, including whether its "Not Ctrl" checkbox was checked), discarding any narrowing currently in effect. A payload must specify exactly one of `availableControlTypes` or `isControllable` - both, or neither, is rejected. Either form immediately re-sends `ResourceManagerDetails` to every currently connected CEM, with a fresh `message_id`. Wire your own trigger (an inject/cron node, or a time-window check) to send this command - there's no built-in scheduler. If a CEM's currently-selected control type drops out of the new list, its session is left alone (no forced deselect or disconnect) - only the resend happens.
+The list form replaces the full advertised list verbatim - `NOT_CONTROLABLE` is only included if you put it in the list yourself. `isControllable: false` replaces the list with exactly `["NOT_CONTROLABLE"]`; `isControllable: true` restores the list to whatever was configured at deploy time (the node's own control-types config, including whether its `Include "Not Controllable" in advertised control types` checkbox was checked), discarding any narrowing currently in effect. A payload must specify exactly one of `availableControlTypes` or `isControllable` - both, or neither, is rejected. Either form immediately re-sends `ResourceManagerDetails` to every currently connected CEM, with a fresh `message_id`. Wire your own trigger (an inject/cron node, or a time-window check) to send this command - there's no built-in scheduler. If a CEM's currently-selected control type drops out of the new list, its session is left alone (no forced deselect or disconnect) - only the resend happens.
 
 `isControllable: false` is the recommended way to temporarily make a resource entirely uncontrollable (e.g. outside the 10:00-18:00 window above) without relying on list contents. Sending `"availableControlTypes": []` still works too - taken literally, it advertises no selectable control types at all (not even `NOT_CONTROLABLE` unless you include it).
 

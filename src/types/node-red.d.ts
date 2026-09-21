@@ -69,7 +69,6 @@ export interface NodeRedTypeOptions {
 }
 
 export interface NodeRedNodes {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createNode(node: NodeRedNode, config: NodeConfig): void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   registerType(type: string, constructor: any, options?: NodeRedTypeOptions): void
