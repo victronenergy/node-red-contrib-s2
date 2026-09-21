@@ -1,0 +1,570 @@
+[
+    {
+        "id": "d18d40b6d00d6710",
+        "type": "tab",
+        "label": "my-PV AC•THOR – Opportunity Loads",
+        "disabled": false,
+        "info": "My-PV AC-Thor using s2-resource's built-in D-Bus transport.\n\n**My-PV device setup (required):** in the My-PV web interface, go to Device Setup > Control settings and set the control type to **HTTP**. This flow drives the device through `/control.html?power=` and reads `/data.jsn` and `/setup.jsn`.\n\n**Assumed device:** My-PV AC-Thor 9s with three 3000 W heating elements (one per phase, 9 kW total), matching the s2-resource System Description and 3-phase D-Bus measurement.\n\n**Configuration:** open the `Controller & scheduler` function node and edit `DEVICE_IP` and `LANGUAGE_CODE` at the top of the function.\n\n**Scheduling:** all HTTP traffic is serialized by one scheduler. Normal targets are data.jsn every 2 s, SET power every 4 s, setup.jsn every 45 s, with configurable backoff and three retries.\n\n**Startup safety:** OMBC remains unavailable until the actual device `devmode` has been learned. The flow never defaults an unknown device to either mode. The binary Mode virtual switch itself has `switch_1_initial=0`, but startup switch output is ignored. The controller first learns `devmode` from my-PV, publishes that state to the switch, and only then accepts subsequent switch output as a user command. Normal telemetry requests never contain a `devmode` query parameter.\n\n**Status safety:** Status starts at 7 (`Unknown`) and is set back to 7 after any failed HTTP request or invalid response. A successful `data.jsn` response restores the actual device state.\n\n**Status label language:** supported `LANGUAGE_CODE` values are `en`, `de`, `es`, `fr`, `it`, and `nl`.\n\n**Temperature service connectivity:** the Venus OS temperature service starts disconnected. Temperature values are preloaded first; repeated passthrough probes confirm that the virtual node has completed its `start_disconnected` D-Bus initialization before any `msg.connected` command is sent, avoiding a startup presence race. It is marked connected only after a real `temp1` value has been received and while the shared 30-second communication timeout (`commFault`) has not expired. Transient request failures therefore do not disconnect it immediately; it disconnects when the same communication timeout used by S2/control expires.\n\n**Dashboard language:** indicator names, primary labels, the status labels, and the Mode switch name follow `LANGUAGE_CODE` (`en`, `de`, `es`, `fr`, `it`, `nl`).\n\n**Dashboard updates:** switch, indicators, and temperature-service messages are emitted only when their effective value/settings change."
+    },
+    {
+        "id": "d7672ec866a66ff8",
+        "type": "s2-resource",
+        "z": "d18d40b6d00d6710",
+        "name": "my-PV AC•THOR 9s",
+        "rmName": "RM: My-PV AC-Thor (9S)",
+        "resourceId": "7a89f85b-6c3a-4c68-8cc0-9683cbcbab29",
+        "roles": "ENERGY_CONSUMER",
+        "controlTypes": "NOT_CONTROLABLE,OPERATION_MODE_BASED_CONTROL",
+        "providesPowerMeasurement": "L1_L2_L3",
+        "providesForecast": false,
+        "manufacturer": "My-PV",
+        "model": "AC-Thor 9S",
+        "serialNumber": "",
+        "firmwareVersion": "1.0.0",
+        "instructionPollIntervalMs": 2000,
+        "skipInstructionStatus": false,
+        "transport": "dbus",
+        "cem": "",
+        "reconnectInterval": "",
+        "dbusConfig": "mypv-dbus-config",
+        "debug": false,
+        "controlType": "ombc",
+        "systemDescription": "{\"operationModes\":[{\"id\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"diagnostic_label\":\"Off\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"diagnostic_label\":\"On [1-3000, 0, 0]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":0,\"end_of_range\":0},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"diagnostic_label\":\"On [1-3000, 3000, 0]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":3000,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":0,\"end_of_range\":0}],\"abnormal_condition_only\":false},{\"id\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"diagnostic_label\":\"On [1-3000, 3000, 3000]\",\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.L1\",\"start_of_range\":1,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L2\",\"start_of_range\":3000,\"end_of_range\":3000},{\"commodity_quantity\":\"ELECTRIC.POWER.L3\",\"start_of_range\":3000,\"end_of_range\":3000}],\"abnormal_condition_only\":false}],\"transitions\":[{\"id\":\"385fb10e-f66f-4854-81ad-5169764550d5\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"80f57525-0cf9-4206-9bf8-4459570fe93c\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"2f02b226-febc-4883-b4db-8b40abbdbb68\",\"from\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"abnormal_condition_only\":false},{\"id\":\"f79726c8-9057-4204-af7a-86b3e046c82c\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"c75f74eb-a34d-4963-b3bb-2264abdeb7d5\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"6153e823-1627-4af7-82da-196f982bfc75\",\"from\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"abnormal_condition_only\":false},{\"id\":\"c3e8b8d9-5f03-415f-ada9-33d0a4ddb021\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"2ca17b7e-ff86-4e59-9fde-af13328662b8\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"211a66b6-44ec-42b9-9d4b-21f19ff3464a\",\"from\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"to\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"start_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"blocking_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"abnormal_condition_only\":false},{\"id\":\"5baff419-70bb-48bf-9421-70a2c4ae5f5c\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"5c5b5d80-d1d0-476a-9108-a648ad24b66f\",\"start_timers\":[\"8ed031a6-777c-4f95-b4aa-2da871e43ece\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false},{\"id\":\"30ae3c1b-196d-4c5a-abd0-33913a6a3805\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"f65ce0ee-405e-4c91-96d4-4110f5496d7e\",\"start_timers\":[\"cdcd33d8-aaab-459e-8b36-abf75dafab08\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false},{\"id\":\"328f295e-3308-42ee-893f-c421a60b05d6\",\"from\":\"e5ea5980-1156-42f1-9b3c-12a80eb13a55\",\"to\":\"7d82988d-839e-4a37-b74f-85082e772f99\",\"start_timers\":[\"2e37a395-988c-4b13-b1b5-dae358931a58\"],\"blocking_timers\":[\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\"],\"abnormal_condition_only\":false}],\"timers\":[{\"id\":\"8ed031a6-777c-4f95-b4aa-2da871e43ece\",\"duration\":30000},{\"id\":\"cdcd33d8-aaab-459e-8b36-abf75dafab08\",\"duration\":30000},{\"id\":\"2e37a395-988c-4b13-b1b5-dae358931a58\",\"duration\":30000},{\"id\":\"cd3a345d-067c-4a96-94c4-b5ab6f499ca4\",\"duration\":30000}]}",
+        "defaultOperationModeId": "5c5b5d80-d1d0-476a-9108-a648ad24b66f",
+        "autoConfirmInstructions": false,
+        "outputs": 1,
+        "x": 200,
+        "y": 300,
+        "wires": [
+            [
+                "08de145ec5cb9274"
+            ]
+        ]
+    },
+    {
+        "id": "87b5ea096add0141",
+        "type": "inject",
+        "z": "d18d40b6d00d6710",
+        "name": "Scheduler every 1 second",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "1",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.1",
+        "topic": "SchedulerTick",
+        "payload": "",
+        "payloadType": "str",
+        "x": 180,
+        "y": 360,
+        "wires": [
+            [
+                "08de145ec5cb9274"
+            ]
+        ]
+    },
+    {
+        "id": "08de145ec5cb9274",
+        "type": "function",
+        "z": "d18d40b6d00d6710",
+        "name": "Controller & scheduler",
+        "func": "// ============================================================================\n// my-PV AC•THOR controller & scheduler\n// ============================================================================\n// Configuration: these are the only values that normally need adjustment.\nconst DEVICE_IP = '192.168.1.100'\nconst LANGUAGE_CODE = 'en' // Supported: en, de, es, fr, it, nl\n\nconst BACKOFF_MS = 200\nconst SET_INTERVAL_MS = 4000\nconst SET_MAX_INTERVAL_MS = 5000\nconst DATA_INTERVAL_MS = 2000\nconst DATA_MAX_INTERVAL_MS = 2500\nconst SETUP_INTERVAL_MS = 45000\nconst STARTUP_SETUP_RETRY_INTERVAL_MS = 5000\nconst COMMUNICATION_TIMEOUT_MS = 30000\nconst HTTP_REQUEST_TIMEOUT_MS = 10000\nconst MAX_RETRIES = 3\n\nconst STATE_KEY = 'mypv_state'\nconst now = Date.now()\n\n// AC•THOR operation-state labels from the my-PV web application.\n// State 7 is a local fallback used when the device reports no known state.\nconst infoStateLabels = {\n    en: [\n        'Standby',\n        'Heating',\n        'Boost heating',\n        'Heating finished',\n        'No communication',\n        'Error',\n        'Device blocked',\n        'Unknown'\n    ],\n    de: [\n        'Standby',\n        'Heizen',\n        'Heizen Sicherstellung',\n        'Heizen beendet',\n        'Keine Verbindung',\n        'Fehler',\n        'Sperrzeit aktiv',\n        'Unbekannt'\n    ],\n    es: [\n        'Standby',\n        'Calentamiento',\n        'Boost calentamiento',\n        'El calentamiento se acabó',\n        'No hay conexión',\n        'Error',\n        'Tiempo de parada activo',\n        'Desconocido'\n    ],\n    fr: [\n        'Standby',\n        'Chauffage',\n        'Sécurisation chauffage',\n        'Chauffage terminé',\n        'Pas de connexion',\n        'Erreur',\n        'Blocage activé',\n        'Inconnu'\n    ],\n    it: [\n        'Standby',\n        'Riscaldamento',\n        'Assicurazione del riscaldamento',\n        'Riscaldamento terminato',\n        'Nessuna connessione',\n        'Errore',\n        'Tempo di blocco attivo',\n        'Sconosciuto'\n    ],\n    nl: [\n        'Stand-by',\n        'Verwarmen',\n        'Verwarmen (zekerstelling)',\n        'Verwarmen beëindigd',\n        'Geen verbinding',\n        'Fout',\n        'Blokkeertijd actief',\n        'Onbekend'\n    ]\n}\n\nconst labels = infoStateLabels[LANGUAGE_CODE] || infoStateLabels.en\n\n// Dashboard text translated with the same LANGUAGE_CODE setting.\nconst uiTextLabels = {\n    en: {\n        mode: 'Mode',\n        waterTemperature: 'Water temperature',\n        power: 'Power',\n        reported: 'Reported',\n        status: 'Status',\n        controller: 'Controller'\n    },\n    de: {\n        mode: 'Modus',\n        waterTemperature: 'Wassertemperatur',\n        power: 'Leistung',\n        reported: 'Gemeldet',\n        status: 'Status',\n        controller: 'Regler'\n    },\n    es: {\n        mode: 'Modo',\n        waterTemperature: 'Temperatura del agua',\n        power: 'Potencia',\n        reported: 'Informada',\n        status: 'Estado',\n        controller: 'Controlador'\n    },\n    fr: {\n        mode: 'Mode',\n        waterTemperature: \"Température de l'eau\",\n        power: 'Puissance',\n        reported: 'Rapportée',\n        status: 'État',\n        controller: 'Contrôleur'\n    },\n    it: {\n        mode: 'Modalità',\n        waterTemperature: 'Temperatura acqua',\n        power: 'Potenza',\n        reported: 'Riportata',\n        status: 'Stato',\n        controller: 'Controllore'\n    },\n    nl: {\n        mode: 'Modus',\n        waterTemperature: 'Watertemperatuur',\n        power: 'Vermogen',\n        reported: 'Gemeld',\n        status: 'Status',\n        controller: 'Regelaar'\n    }\n}\n\nconst uiText = uiTextLabels[LANGUAGE_CODE] || uiTextLabels.en\n\nfunction createState(time) {\n    return {\n        version: 1,\n        startedAt: time,\n        requestSeq: 0,\n        inFlight: null,\n        lastCompletedRequestId: 0,\n        nextRequestEarliest: 0,\n        retry: null,\n\n        // Communication/control state.\n        lastCommSuccess: 0,\n        commFault: false,\n        devmode: null,             // null until confirmed by the device\n        requestedDevmode: null,    // pending user UI command, if any\n        switchCommandEnabled: false, // armed only after device state is published to UI\n        tempBlocked: false,\n        controlAdvertisedOff: null,\n\n        // Setpoint state.\n        haveSetpoint: false,\n        desiredPower: 0,\n        setpointGeneration: 0,\n        pendingModeConfirmation: null,\n        forceSet: false,\n\n        // Scheduling timestamps are attempt times, not success times.\n        lastSetAttempt: 0,\n        lastDataAttempt: 0,\n        lastSetupAttempt: 0,\n\n        // Only the scalar values needed by S2 and the dashboard are cached.\n        setupKnown: false,\n        targetTemp: null,\n        hysteresis: 0,\n        minTemp: 20,\n\n        dataValid: false,\n        currentTemp: null,\n        l1Power: 0,\n        l2Power: 0,\n        l3Power: 0,\n        infoState: 7,\n\n        // Last messages sent to dashboard/virtual-device outputs. Each output is\n        // emitted only when its effective value/settings actually change.\n        dashboardCache: {},\n\n        // Presence commands must not be sent until the victron-virtual node has\n        // actually processed at least one value message. This avoids a startup\n        // race in node-red-contrib-victron where setPresence() can run before\n        // the virtual node has assigned its D-Bus serviceName.\n        temperatureServiceReady: false,\n        temperatureProbeFeedbacks: 0,\n        temperatureProbeSeq: 0,\n        lastTemperatureProbeAt: 0\n    }\n}\n\nfunction getState() {\n    const stored = flow.get(STATE_KEY)\n    if (!stored || stored.version !== 1) {\n        const fresh = createState(now)\n        flow.set(STATE_KEY, fresh)\n        return fresh\n    }\n    return stored\n}\n\nfunction saveState(state) {\n    flow.set(STATE_KEY, state)\n}\n\n// Build the Function node's nine dedicated outputs.\n// Outputs 1-3 are HTTP requests, 4-8 are dashboard/data outputs,\n// and output 9 is reserved exclusively for messages to s2-resource.\n// Messages may be accumulated on an output; Node-RED sends them in order.\nfunction newOutputs() {\n    return Array.from({ length: 9 }, () => [])\n}\n\nfunction addOutput(outputs, index, message) {\n    if (message) outputs[index].push(message)\n}\n\nfunction finishOutputs(outputs) {\n    return outputs.map(messages => {\n        if (messages.length === 0) return null\n        if (messages.length === 1) return messages[0]\n        return messages\n    })\n}\n\n// Dashboard and virtual-device nodes do not need the same value on every\n// scheduler tick. Cache the complete outgoing message and emit it only when\n// something that the receiving node sees has actually changed.\nfunction addChangedOutput(state, outputs, cacheKey, outputIndex, message) {\n    if (!state.dashboardCache || typeof state.dashboardCache !== 'object') {\n        state.dashboardCache = {}\n    }\n\n    const serialized = JSON.stringify(message)\n    if (state.dashboardCache[cacheKey] === serialized) return false\n\n    state.dashboardCache[cacheKey] = serialized\n    addOutput(outputs, outputIndex, message)\n    return true\n}\n\nfunction updateCommunicationFault(state, time) {\n    const reference = state.lastCommSuccess || state.startedAt\n    state.commFault = time - reference >= COMMUNICATION_TIMEOUT_MS\n}\n\n// OMBC is available only after devmode has actually been learned from the\n// device and confirmed as enabled. This prevents startup from accidentally\n// assuming devmode=1 and waking a device that was deliberately switched off.\nfunction setTrafficAllowed(state) {\n    return (\n        state.devmode === 1 &&\n        state.requestedDevmode !== 0\n    )\n}\n\nfunction isControllable(state) {\n    return (\n        setTrafficAllowed(state) &&\n        !state.tempBlocked &&\n        !state.commFault\n    )\n}\n\n// Output 9 is dedicated to messages sent directly to s2-resource.\nfunction updateAdvertisedControlState(state, outputs) {\n    const shouldBeOff = !isControllable(state)\n\n    if (state.controlAdvertisedOff === shouldBeOff) return\n\n    const wasOff = state.controlAdvertisedOff\n    state.controlAdvertisedOff = shouldBeOff\n\n    addOutput(outputs, 8, {\n        topic: 'ControlTypes',\n        payload: { isControllable: !shouldBeOff }\n    })\n\n    // When control resumes, send the stored setpoint at the next possible\n    // moment. Resetting the attempt timestamp fixes the old stale-timestamp\n    // delay that could postpone resumption by several seconds.\n    if (wasOff === true && shouldBeOff === false) {\n        state.forceSet = true\n        state.lastSetAttempt = 0\n    }\n\n    // Temperature/communication blocking should push a safe 0 W quickly, but\n    // devmode=0 (or unknown) is a hard pause: no SET requests are sent at all.\n    if (shouldBeOff && setTrafficAllowed(state)) {\n        state.forceSet = true\n        state.lastSetAttempt = 0\n    }\n}\n\nfunction updateDashboard(state, outputs) {\n    const displayDevmode =\n        state.requestedDevmode !== null\n            ? state.requestedDevmode\n            : state.devmode\n\n    // Output 4: Mode switch state and translated UI name. While devmode is\n    // unknown, only publish the translated name; publish State once it is known.\n    const switchPayload = {\n        '/SwitchableOutput/output_1/Settings/CustomName': uiText.mode\n    }\n\n    if (displayDevmode === 0 || displayDevmode === 1) {\n        switchPayload['/SwitchableOutput/output_1/State'] = displayDevmode\n    }\n\n    const switchWasPublished = addChangedOutput(\n        state,\n        outputs,\n        'modeSwitch',\n        3,\n        { payload: switchPayload }\n    )\n\n    // Do not accept the virtual switch's configured startup value as a command.\n    // Arm switch commands only after the actual my-PV devmode has been learned\n    // and that device-sourced value has been queued to the switch. From then on,\n    // subsequent scalar switch output represents user interaction.\n    if (\n        !state.switchCommandEnabled &&\n        switchWasPublished &&\n        state.requestedDevmode === null &&\n        (state.devmode === 0 || state.devmode === 1)\n    ) {\n        state.switchCommandEnabled = true\n    }\n\n    // Output 7: operation state. Publish this even before telemetry is valid so\n    // the dashboard explicitly starts at 7 = Unknown. Failed HTTP requests also\n    // set infoState back to 7 in the response handler.\n    addChangedOutput(\n        state,\n        outputs,\n        'statusIndicator',\n        6,\n        {\n            payload: {\n                '/GenericInput/0/Value': state.infoState,\n                '/GenericInput/0/Settings/Labels': labels,\n                '/GenericInput/0/Settings/CustomName': uiText.status,\n                '/GenericInput/0/Settings/PrimaryLabel': uiText.controller\n            }\n        }\n    )\n\n    // Output 8: Venus OS temperature service. The virtual device is configured\n    // with start_disconnected=true, so do not send an explicit connected=false\n    // during startup. node-red-contrib-victron 1.7.x can otherwise hit a short\n    // initialization race where presenceConnected is true before serviceName has\n    // been assigned, causing releaseName(undefined) on D-Bus.\n    //\n    // Instead, /Temperature probes are sent first (even while the service is\n    // offline). The virtual node returns its actual presence state on those\n    // passthrough messages. A later probe returning connected=false confirms the\n    // start-disconnected initialization has completed; only then may we issue\n    // connected=true/false.\n    const temperatureServiceConnected =\n        !state.commFault &&\n        state.currentTemp !== null\n\n    if (state.temperatureServiceReady) {\n        addChangedOutput(\n            state,\n            outputs,\n            'temperatureServicePresence',\n            7,\n            {\n                topic: 'TemperatureServicePresence',\n                connected: temperatureServiceConnected\n            }\n        )\n    }\n\n    if (!state.dataValid) return\n\n    const sumPower = state.l1Power + state.l2Power + state.l3Power\n\n    // Output 5: water-temperature indicator. Range/label changes also count as\n    // a meaningful change because they affect what the user sees.\n    addChangedOutput(\n        state,\n        outputs,\n        'waterTemperatureIndicator',\n        4,\n        {\n            payload: {\n                '/GenericInput/0/Value': state.currentTemp,\n                '/GenericInput/0/Settings/RangeMin': state.minTemp,\n                '/GenericInput/0/Settings/RangeMax':\n                    state.targetTemp !== null ? state.targetTemp : 90,\n                '/GenericInput/0/Settings/CustomName': uiText.waterTemperature\n            }\n        }\n    )\n\n    // Output 6: total reported power.\n    addChangedOutput(\n        state,\n        outputs,\n        'powerIndicator',\n        5,\n        {\n            payload: {\n                '/GenericInput/0/Value': sumPower,\n                '/GenericInput/0/Settings/CustomName': uiText.power,\n                '/GenericInput/0/Settings/PrimaryLabel': uiText.reported\n            }\n        }\n    )\n\n    // Before presence control is armed, periodically send an ordinary value\n    // message as a harmless readiness probe. The virtual node can process this\n    // while its D-Bus name is released. A sequence number makes each probe pass\n    // the change filter even when the measured temperature is unchanged.\n    if (state.currentTemp !== null && !state.temperatureServiceReady) {\n        if (now - state.lastTemperatureProbeAt >= 500) {\n            state.temperatureProbeSeq += 1\n            state.lastTemperatureProbeAt = now\n            addOutput(outputs, 7, {\n                topic: 'TemperatureServiceProbe',\n                temperatureProbeSeq: state.temperatureProbeSeq,\n                payload: {\n                    '/Temperature': state.currentTemp\n                }\n            })\n        }\n    } else if (state.currentTemp !== null) {\n        // Once presence control is known to be safe, normal temperature updates\n        // are change-filtered independently from connected=true/false messages.\n        addChangedOutput(\n            state,\n            outputs,\n            'temperatureServiceValue',\n            7,\n            {\n                topic: 'TemperatureServiceValue',\n                payload: {\n                    '/Temperature': state.currentTemp\n                }\n            }\n        )\n    }\n\n    const operationState = labels[state.infoState] || labels[7]\n    node.status({\n        shape: 'dot',\n        fill:\n            state.devmode === null\n                ? 'grey'\n                : state.devmode === 0\n                  ? 'grey'\n                  : state.commFault\n                    ? 'red'\n                    : state.tempBlocked\n                      ? 'yellow'\n                      : 'green',\n        text:\n            `${state.currentTemp ?? '-'} / ` +\n            `${state.targetTemp ?? '-'} °C | ` +\n            `${sumPower} W | ${operationState}`\n    })\n}\n\nfunction temperatureServiceFeedbackReceived(state, message) {\n    // victron-virtual adds its actual presence state to ordinary passthrough\n    // messages. During startup there is a brief internal sequence of\n    // disconnected -> connected -> disconnected when start_disconnected=true.\n    // Requiring a later probe (not the first queued one) to come back with\n    // connected=false proves that the initial releaseName() has completed and\n    // node.serviceName is available before we ever send a presence command.\n    if (message.topic === 'TemperatureServiceProbe') {\n        const previousFeedbacks = Number(state.temperatureProbeFeedbacks) || 0\n        state.temperatureProbeFeedbacks = previousFeedbacks + 1\n\n        if (previousFeedbacks >= 1 && message.connected === false) {\n            state.temperatureServiceReady = true\n        }\n\n        return true\n    }\n\n    if (\n        message.topic === 'TemperatureServiceValue' ||\n        message.topic === 'TemperatureServicePresence'\n    ) {\n        return true\n    }\n\n    return false\n}\n\nfunction modeInstructionReceived(state, message) {\n    // Important: only actual ModeInstruction messages may create a real-device\n    // setpoint. ModeRequest and unresolved-mode passthrough messages are ignored.\n    if (message.topic !== 'ModeInstruction') return false\n    if (!message.payload || message.payload.values === undefined) return false\n\n    const rawValues = message.payload.values\n    const phaseValues =\n        Array.isArray(rawValues)\n            ? rawValues\n            : [rawValues]\n\n    const power = phaseValues.reduce(\n        (sum, value) => sum + (Number(value) || 0),\n        0\n    )\n\n    state.haveSetpoint = true\n    state.desiredPower = power\n    state.setpointGeneration += 1\n    state.pendingModeConfirmation = { ...message.payload }\n    state.forceSet = true\n\n    return true\n}\n\nfunction devmodeCommandReceived(state, message) {\n    // The virtual switch emits a scalar 0/1 (or boolean) on its command output.\n    // S2/scheduler messages are excluded so they can never be mistaken for a\n    // dashboard devmode command.\n    if (\n        message.topic === 'SchedulerTick' ||\n        message.topic === 'HttpComplete' ||\n        message.topic === 'ModeInstruction' ||\n        (typeof message.topic === 'string' && message.topic.startsWith('Mode')) ||\n        (typeof message.topic === 'string' && message.topic.startsWith('TemperatureService'))\n    ) {\n        return false\n    }\n\n    let requested = null\n\n    if (message.payload === true || message.payload === 1 || message.payload === '1') {\n        requested = 1\n    } else if (\n        message.payload === false ||\n        message.payload === 0 ||\n        message.payload === '0'\n    ) {\n        requested = 0\n    }\n\n    if (requested === null) return false\n\n    // Critical startup guard: switch_1_initial=0 may produce switch output when\n    // the flow is deployed. It is not a user command. Ignore all switch output\n    // until we have learned the real my-PV devmode and published it to the UI.\n    // This guarantees that requestedDevmode (and therefore ?devmode=...) can be\n    // created only by interaction after the initial device-to-UI synchronization.\n    if (\n        !state.switchCommandEnabled ||\n        (state.devmode !== 0 && state.devmode !== 1)\n    ) {\n        return false\n    }\n\n    if (state.devmode === requested) {\n        state.requestedDevmode = null\n        return true\n    }\n\n    state.requestedDevmode = requested\n\n    // Switching off must remove OMBC immediately and pause all SET traffic.\n    // Switching on remains non-controllable until the HTTP command succeeds.\n    if (requested === 0) {\n        state.forceSet = false\n    }\n\n    return true\n}\n\nfunction makeRequest(state, type, time, retryDescriptor) {\n    state.requestSeq += 1\n\n    const request = {\n        requestType: type,\n        requestId: state.requestSeq,\n        retryAttempt: retryDescriptor?.retryAttempt || 0,\n        maxRetries: MAX_RETRIES,\n        backoffMs: BACKOFF_MS,\n        requestTimeout: HTTP_REQUEST_TIMEOUT_MS\n    }\n\n    if (type === 'SetPower') {\n        // devmode=0/unknown, or a pending request to switch off, is a hard\n        // pause for control.html.\n        if (!setTrafficAllowed(state) || !state.haveSetpoint) return null\n\n        const safePower =\n            state.tempBlocked || state.commFault\n                ? 0\n                : state.desiredPower\n\n        request.url =\n            `http://${DEVICE_IP}/control.html?power=` +\n            encodeURIComponent(safePower)\n        request.payload = safePower\n        request.power = safePower\n        request.setpointGeneration = state.setpointGeneration\n\n        // Only a real ModeInstruction receives a ModeConfirmation. Heartbeats\n        // and safety 0 W requests deliberately carry no confirmation payload.\n        if (\n            safePower === state.desiredPower &&\n            state.pendingModeConfirmation\n        ) {\n            request.modeConfirmationPayload = {\n                ...state.pendingModeConfirmation\n            }\n        }\n\n        state.lastSetAttempt = time\n        state.forceSet = false\n    } else if (type === 'GetData') {\n        request.url = `http://${DEVICE_IP}/data.jsn`\n\n        // Only write devmode when an armed, post-synchronization switch\n        // interaction requested an actual change. Normal telemetry requests\n        // contain no devmode query parameter at all.\n        if (\n            state.requestedDevmode !== null &&\n            state.requestedDevmode !== state.devmode\n        ) {\n            request.payload = state.requestedDevmode\n            request.requestedDevmode = state.requestedDevmode\n            request.url +=\n                '?devmode=' +\n                encodeURIComponent(state.requestedDevmode)\n        }\n\n        state.lastDataAttempt = time\n    } else if (type === 'GetSetup') {\n        request.url = `http://${DEVICE_IP}/setup.jsn`\n        state.lastSetupAttempt = time\n    } else {\n        return null\n    }\n\n    state.inFlight = {\n        id: request.requestId,\n        type\n    }\n\n    state.retry = null\n    return request\n}\n\nfunction chooseNextRequest(state, time) {\n    if (state.inFlight) return null\n\n    // A failed request gets up to three immediate retries before normal\n    // scheduling resumes.\n    if (state.retry) {\n        // Do not retry an old SET if the device was switched off meanwhile.\n        if (\n            state.retry.requestType === 'SetPower' &&\n            !setTrafficAllowed(state)\n        ) {\n            state.retry = null\n        } else {\n            return {\n                type: state.retry.requestType,\n                retry: state.retry\n            }\n        }\n    }\n\n    // Startup: learn the actual device configuration/devmode before any SET.\n    // After three failed retries, pause setup requests briefly instead of\n    // hammering the embedded web server. During that pause, read-only data.jsn\n    // polling may continue without a devmode query parameter.\n    if (\n        state.devmode === null &&\n        (\n            state.lastSetupAttempt === 0 ||\n            time - state.lastSetupAttempt >= STARTUP_SETUP_RETRY_INTERVAL_MS\n        )\n    ) {\n        return { type: 'GetSetup', retry: null }\n    }\n\n    // A user devmode command is urgent and uses data.jsn as the command endpoint.\n    // If all three immediate retries failed, wait until the normal data interval\n    // before starting another retry sequence.\n    if (\n        state.requestedDevmode !== null &&\n        state.requestedDevmode !== state.devmode &&\n        time - state.lastDataAttempt >= DATA_INTERVAL_MS\n    ) {\n        return { type: 'GetData', retry: null }\n    }\n\n    // A new S2 setpoint or a control-state transition should be applied as soon\n    // as possible. SET is still paused completely while devmode != 1.\n    if (state.forceSet && state.haveSetpoint && setTrafficAllowed(state)) {\n        return { type: 'SetPower', retry: null }\n    }\n\n    const candidates = []\n\n    if (time - state.lastDataAttempt >= DATA_INTERVAL_MS) {\n        candidates.push({\n            type: 'GetData',\n            deadline: state.lastDataAttempt + DATA_MAX_INTERVAL_MS\n        })\n    }\n\n    if (\n        state.haveSetpoint &&\n        setTrafficAllowed(state) &&\n        time - state.lastSetAttempt >= SET_INTERVAL_MS\n    ) {\n        candidates.push({\n            type: 'SetPower',\n            deadline: state.lastSetAttempt + SET_MAX_INTERVAL_MS\n        })\n    }\n\n    // Earliest deadline wins when telemetry and SET become due together.\n    // This keeps data.jsn near 2 s and SET near 4 s without concurrent requests.\n    if (candidates.length > 0) {\n        candidates.sort((a, b) => a.deadline - b.deadline)\n        return { type: candidates[0].type, retry: null }\n    }\n\n    // setup.jsn is deliberately lowest priority. Missing setup information is\n    // retried every few seconds during startup; once known, refresh every 45 s.\n    const setupInterval =\n        state.setupKnown\n            ? SETUP_INTERVAL_MS\n            : STARTUP_SETUP_RETRY_INTERVAL_MS\n\n    if (time - state.lastSetupAttempt >= setupInterval) {\n        return { type: 'GetSetup', retry: null }\n    }\n\n    return null\n}\n\nfunction nextScheduledWake(state, time) {\n    if (state.inFlight || state.retry) return null\n\n    const dueTimes = []\n\n    if (state.devmode === null) {\n        dueTimes.push(\n            state.lastSetupAttempt === 0\n                ? time\n                : state.lastSetupAttempt + STARTUP_SETUP_RETRY_INTERVAL_MS\n        )\n    }\n\n    if (\n        state.requestedDevmode !== null &&\n        state.requestedDevmode !== state.devmode\n    ) {\n        dueTimes.push(state.lastDataAttempt + DATA_INTERVAL_MS)\n    }\n\n    if (state.forceSet && state.haveSetpoint && setTrafficAllowed(state)) {\n        dueTimes.push(time)\n    }\n\n    dueTimes.push(state.lastDataAttempt + DATA_INTERVAL_MS)\n\n    if (state.haveSetpoint && setTrafficAllowed(state)) {\n        dueTimes.push(state.lastSetAttempt + SET_INTERVAL_MS)\n    }\n\n    dueTimes.push(\n        state.lastSetupAttempt +\n        (state.setupKnown\n            ? SETUP_INTERVAL_MS\n            : STARTUP_SETUP_RETRY_INTERVAL_MS)\n    )\n\n    const future = dueTimes\n        .filter(value => Number.isFinite(value) && value > time)\n        .sort((a, b) => a - b)\n\n    return future.length > 0 ? future[0] : null\n}\n\nfunction dispatchIfPossible(state, outputs, time) {\n    if (state.inFlight) return false\n\n    if (time < state.nextRequestEarliest) {\n        scheduleWake(state.nextRequestEarliest - time)\n        return false\n    }\n\n    const next = chooseNextRequest(state, time)\n\n    if (!next) {\n        const wakeAt = nextScheduledWake(state, time)\n        if (wakeAt !== null) scheduleWake(wakeAt - time)\n        return false\n    }\n\n    const request = makeRequest(\n        state,\n        next.type,\n        time,\n        next.retry\n    )\n\n    if (!request) return false\n\n    if (next.type === 'SetPower') {\n        // Output 1: SET power HTTP request.\n        addOutput(outputs, 0, request)\n    } else if (next.type === 'GetData') {\n        // Output 2: GET data.jsn HTTP request.\n        addOutput(outputs, 1, request)\n    } else if (next.type === 'GetSetup') {\n        // Output 3: GET setup.jsn HTTP request.\n        addOutput(outputs, 2, request)\n    }\n\n    return true\n}\n\n// Response feedback can arrive only a few milliseconds after an HTTP request.\n// A small timer allows the next retry/request to start exactly after BACKOFF_MS\n// instead of having to wait for the following 1-second inject tick.\nfunction scheduleWake(delayMs) {\n    const delay = Math.max(1, Math.ceil(delayMs))\n    const existing = Number(context.get('wakeDue')) || 0\n    const due = Date.now() + delay\n\n    if (existing > 0 && existing <= due) return\n\n    context.set('wakeDue', due)\n\n    setTimeout(() => {\n        const expectedDue = Number(context.get('wakeDue')) || 0\n        if (expectedDue !== due) return\n        context.set('wakeDue', 0)\n\n        const wakeNow = Date.now()\n        const state = flow.get(STATE_KEY)\n        if (!state || state.version !== 1) return\n\n        updateCommunicationFault(state, wakeNow)\n\n        const outputs = newOutputs()\n        updateAdvertisedControlState(state, outputs)\n        dispatchIfPossible(state, outputs, wakeNow)\n        saveState(state)\n\n        const ready = finishOutputs(outputs)\n        if (ready.some(Boolean)) node.send(ready)\n    }, delay)\n}\n\nconst state = getState()\nconst outputs = newOutputs()\n\n// Handle the three possible input sources:\n//   1. SchedulerTick from the single 1-second inject node.\n//   2. ModeInstruction (and other S2 messages) from s2-resource.\n//   3. devmode changes from the dashboard switch.\n// HttpComplete feedback from the HTTP-response function simply wakes us up.\ntemperatureServiceFeedbackReceived(state, msg)\nmodeInstructionReceived(state, msg)\ndevmodeCommandReceived(state, msg)\n\nupdateCommunicationFault(state, now)\nupdateAdvertisedControlState(state, outputs)\ndispatchIfPossible(state, outputs, now)\nupdateDashboard(state, outputs)\nsaveState(state)\n\nreturn finishOutputs(outputs)",
+        "outputs": 9,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "flow.set('mypv_state', null)\ncontext.set('wakeDue', 0)",
+        "finalize": "context.set('wakeDue', 0)",
+        "libs": [],
+        "x": 460,
+        "y": 360,
+        "wires": [
+            [
+                "42323f7e80838849"
+            ],
+            [
+                "8c871d0960cf1936"
+            ],
+            [
+                "9df65a14ef3352e6"
+            ],
+            [
+                "8c29ee4cd3d7dcd8"
+            ],
+            [
+                "f7dc5d7956d3afc9"
+            ],
+            [
+                "7b325310859f547e"
+            ],
+            [
+                "11583626deb4c803"
+            ],
+            [
+                "a505e55de5fb9cc8"
+            ],
+            [
+                "faafee3a05675549"
+            ]
+        ],
+        "outputLabels": [
+            "SET power",
+            "GET data.jsn",
+            "GET setup.jsn",
+            "Mode switch",
+            "Water temperature",
+            "Power",
+            "Status",
+            "Temperature service",
+            "S2 resource"
+        ]
+    },
+    {
+        "id": "42323f7e80838849",
+        "type": "http request",
+        "z": "d18d40b6d00d6710",
+        "name": "SET power",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 730,
+        "y": 120,
+        "wires": [
+            [
+                "9819a1304819730c"
+            ]
+        ]
+    },
+    {
+        "id": "8c871d0960cf1936",
+        "type": "http request",
+        "z": "d18d40b6d00d6710",
+        "name": "GET data.jsn",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 730,
+        "y": 180,
+        "wires": [
+            [
+                "9819a1304819730c"
+            ]
+        ]
+    },
+    {
+        "id": "9df65a14ef3352e6",
+        "type": "http request",
+        "z": "d18d40b6d00d6710",
+        "name": "GET setup.jsn",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 740,
+        "y": 240,
+        "wires": [
+            [
+                "9819a1304819730c"
+            ]
+        ]
+    },
+    {
+        "id": "9819a1304819730c",
+        "type": "function",
+        "z": "d18d40b6d00d6710",
+        "name": "Handle HTTP response",
+        "func": "// ============================================================================\n// my-PV HTTP response handler\n// ============================================================================\n// All three HTTP request nodes and their shared Catch node end here.\n// This function performs no scheduling. It only:\n//   - validates/parses the completed request,\n//   - updates the small shared scalar state,\n//   - prepares S2 PowerMeasurement / ModeConfirmation messages,\n//   - requests up to three retries after failures,\n//   - wakes the controller/scheduler.\n\nconst STATE_KEY = 'mypv_state'\nconst now = Date.now()\n\nfunction numberOrNull(value) {\n    if (value === undefined || value === null || value === '') return null\n    const number = Number(value)\n    return Number.isFinite(number) ? number : null\n}\n\nfunction numberOrZero(value) {\n    const number = Number(value)\n    return Number.isFinite(number) ? number : 0\n}\n\nfunction parseObject(payload) {\n    try {\n        const value =\n            typeof payload === 'string'\n                ? JSON.parse(payload)\n                : payload\n\n        return value && typeof value === 'object'\n            ? value\n            : null\n    } catch (error) {\n        return null\n    }\n}\n\nfunction evaluateTemperatureGate(state) {\n    if (\n        state.currentTemp === null ||\n        state.targetTemp === null\n    ) {\n        return\n    }\n\n    if (state.tempBlocked) {\n        if (state.currentTemp < state.targetTemp - state.hysteresis) {\n            state.tempBlocked = false\n        }\n    } else if (state.currentTemp >= state.targetTemp) {\n        state.tempBlocked = true\n    }\n}\n\nfunction scheduleRetry(state, message, requestType) {\n    const attempt = Number(message.retryAttempt) || 0\n    const maxRetries = Math.max(0, Number(message.maxRetries) || 3)\n\n    if (attempt >= maxRetries) {\n        state.retry = null\n        return\n    }\n\n    state.retry = {\n        requestType,\n        retryAttempt: attempt + 1\n    }\n}\n\nconst state = flow.get(STATE_KEY)\n\nif (!state || state.version !== 1) {\n    // The scheduler owns state initialization. Wake it so the next tick/request\n    // can rebuild state cleanly rather than creating a second state model here.\n    return [\n        null,\n        { topic: 'HttpComplete' }\n    ]\n}\n\n// Ignore stale or duplicate HTTP completions. Only one request is allowed in\n// flight, and every request carries a unique requestId.\nif (\n    msg.requestId !== undefined &&\n    Number(msg.requestId) === Number(state.lastCompletedRequestId)\n) {\n    return null\n}\n\nif (\n    state.inFlight &&\n    msg.requestId !== undefined &&\n    Number(msg.requestId) !== Number(state.inFlight.id)\n) {\n    return null\n}\n\nif (!state.inFlight && msg.requestId !== undefined) {\n    return null\n}\n\nconst requestType =\n    msg.requestType ||\n    state.inFlight?.type\n\nif (\n    requestType !== 'SetPower' &&\n    requestType !== 'GetData' &&\n    requestType !== 'GetSetup'\n) {\n    node.warn('Ignoring HTTP response without a valid requestType')\n    return null\n}\n\n// Mark the serialized request slot free before waking the scheduler.\nif (msg.requestId !== undefined) {\n    state.lastCompletedRequestId = Number(msg.requestId)\n}\nstate.inFlight = null\nstate.nextRequestEarliest =\n    now + Math.max(0, Number(msg.backoffMs) || 200)\n\nconst httpSucceeded =\n    !msg.error &&\n    Number(msg.statusCode) >= 200 &&\n    Number(msg.statusCode) < 300\n\nif (httpSucceeded) {\n    state.lastCommSuccess = now\n    state.commFault = false\n}\n\nlet requestSucceeded = httpSucceeded\nconst s2Messages = []\n\nif (requestType === 'SetPower') {\n    if (requestSucceeded) {\n        state.retry = null\n\n        // Confirm only real ModeInstructions. Periodic SET heartbeats never\n        // carry modeConfirmationPayload.\n        if (\n            msg.modeConfirmationPayload !== undefined &&\n            msg.modeConfirmationPayload !== null\n        ) {\n            s2Messages.push({\n                topic: 'ModeConfirmation',\n                payload: msg.modeConfirmationPayload\n            })\n\n            // Clear the pending confirmation only if no newer ModeInstruction\n            // arrived while this request was in flight.\n            if (\n                Number(msg.setpointGeneration) ===\n                Number(state.setpointGeneration)\n            ) {\n                state.pendingModeConfirmation = null\n            }\n        }\n\n        node.status({\n            shape: 'dot',\n            fill: 'green',\n            text: `SET ${Number(msg.power) || 0} W OK`\n        })\n    }\n} else if (requestType === 'GetData') {\n    const data = httpSucceeded ? parseObject(msg.payload) : null\n    requestSucceeded = httpSucceeded && data !== null\n\n    if (requestSucceeded) {\n        state.retry = null\n        state.dataValid = true\n\n        const currentTempRaw = numberOrNull(data.temp1)\n        state.currentTemp =\n            currentTempRaw === null ? null : currentTempRaw / 10\n\n        state.l1Power =\n            numberOrZero(data.power1_solar) +\n            numberOrZero(data.power1_grid)\n        state.l2Power =\n            numberOrZero(data.power2_solar) +\n            numberOrZero(data.power2_grid)\n        state.l3Power =\n            numberOrZero(data.power3_solar) +\n            numberOrZero(data.power3_grid)\n\n        const rawInfoState = numberOrNull(data.screen_mode_flag)\n        state.infoState =\n            rawInfoState !== null &&\n            rawInfoState >= 0 &&\n            rawInfoState <= 6\n                ? rawInfoState\n                : 7\n\n        // If the request carried a devmode change and the endpoint succeeded,\n        // that command is now considered confirmed. If the response itself also\n        // contains devmode, it remains authoritative.\n        const responseDevmode = numberOrNull(data.devmode)\n\n        if (responseDevmode === 0 || responseDevmode === 1) {\n            state.devmode = responseDevmode\n        } else if (\n            msg.requestedDevmode === 0 ||\n            msg.requestedDevmode === 1\n        ) {\n            state.devmode = Number(msg.requestedDevmode)\n        }\n\n        if (\n            state.requestedDevmode !== null &&\n            state.devmode === state.requestedDevmode\n        ) {\n            state.requestedDevmode = null\n        }\n\n        evaluateTemperatureGate(state)\n\n        s2Messages.push({\n            topic: 'PowerMeasurement',\n            payload: {\n                values: [\n                    state.l1Power,\n                    state.l2Power,\n                    state.l3Power\n                ]\n            }\n        })\n\n        node.status({\n            shape: 'dot',\n            fill: 'green',\n            text: 'data.jsn OK'\n        })\n    }\n} else if (requestType === 'GetSetup') {\n    const setup = httpSucceeded ? parseObject(msg.payload) : null\n    requestSucceeded = httpSucceeded && setup !== null\n\n    if (requestSucceeded) {\n        const devmode = numberOrNull(setup.devmode)\n\n        // On startup, setup.jsn must actually tell us devmode. We deliberately\n        // do not default to 1, because that could wake a heater that was off.\n        if (\n            state.devmode === null &&\n            devmode !== 0 &&\n            devmode !== 1\n        ) {\n            requestSucceeded = false\n        } else {\n            state.retry = null\n            state.setupKnown = true\n\n            if (devmode === 0 || devmode === 1) {\n                state.devmode = devmode\n\n                if (\n                    state.requestedDevmode !== null &&\n                    state.devmode === state.requestedDevmode\n                ) {\n                    state.requestedDevmode = null\n                }\n            }\n\n            const targetRaw = numberOrNull(setup.ww1target)\n            state.targetTemp =\n                targetRaw === null ? null : targetRaw / 10\n\n            const hysteresisRaw = numberOrNull(setup.ww_targ_h)\n            state.hysteresis =\n                hysteresisRaw === null\n                    ? 0\n                    : Math.max(0, hysteresisRaw / 10)\n\n            const minRaw = numberOrNull(setup.wws_acthor_bsttemp)\n            const boostMode = numberOrNull(setup.wws_bstmode)\n            state.minTemp =\n                boostMode !== null &&\n                boostMode !== 0 &&\n                minRaw !== null\n                    ? minRaw / 10\n                    : 20\n\n            evaluateTemperatureGate(state)\n\n            node.status({\n                shape: 'dot',\n                fill: 'green',\n                text: 'setup.jsn OK'\n            })\n        }\n    }\n}\n\nif (!requestSucceeded) {\n    // The actual operating state is no longer trustworthy after a failed HTTP\n    // request or invalid response. Expose 7 = Unknown immediately; the next\n    // successful data.jsn response will restore the real state.\n    state.infoState = 7\n\n    scheduleRetry(state, msg, requestType)\n\n    const maxRetries = Math.max(0, Number(msg.maxRetries) || 3)\n\n    node.status({\n        shape: 'ring',\n        fill: 'yellow',\n        text:\n            `${requestType} failed` +\n            (state.retry\n                ? `; retry ${state.retry.retryAttempt}/${maxRetries}`\n                : '; retries exhausted')\n    })\n}\n\nflow.set(STATE_KEY, state)\n\n// Output 1: messages that belong back at s2-resource.\n// Output 2: wake the central scheduler, which handles backoff, retries,\n//           controllability changes, dashboard updates and the next request.\nreturn [\n    s2Messages.length > 0 ? s2Messages : null,\n    { topic: 'HttpComplete' }\n]",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1030,
+        "y": 180,
+        "wires": [
+            [
+                "2b357966e69a1233"
+            ],
+            [
+                "496381a216742dfa"
+            ]
+        ],
+        "outputLabels": [
+            "S2 resource",
+            "Scheduler feedback"
+        ]
+    },
+    {
+        "id": "f3c37f1fdd7f49f8",
+        "type": "catch",
+        "z": "d18d40b6d00d6710",
+        "name": "Handle my-PV HTTP errors",
+        "scope": [
+            "42323f7e80838849",
+            "8c871d0960cf1936",
+            "9df65a14ef3352e6"
+        ],
+        "uncaught": false,
+        "x": 770,
+        "y": 60,
+        "wires": [
+            [
+                "9819a1304819730c"
+            ]
+        ]
+    },
+    {
+        "id": "8c29ee4cd3d7dcd8",
+        "type": "victron-virtual-switch",
+        "z": "d18d40b6d00d6710",
+        "name": "",
+        "outputs": 2,
+        "switch_1_type": "1",
+        "switch_1_initial": 0,
+        "switch_1_label": "",
+        "switch_1_customname": "Mode",
+        "switch_1_group": "my-PV AC•THOR",
+        "switch_1_include_measurement": false,
+        "switch_1_rgb_color_wheel": false,
+        "switch_1_cct_wheel": false,
+        "switch_1_rgb_white_dimmer": false,
+        "switch_1_show_ui_input": 1,
+        "switch_1_passthrough_mode": "auto_only",
+        "x": 800,
+        "y": 300,
+        "wires": [
+            [],
+            [
+                "eba14bc6b7c63c9e"
+            ]
+        ]
+    },
+    {
+        "id": "f7dc5d7956d3afc9",
+        "type": "victron-virtual-indicator",
+        "z": "d18d40b6d00d6710",
+        "name": "",
+        "customname": "Water temperature",
+        "group": "my-PV AC•THOR",
+        "indicator_type": "3",
+        "unit": "°C",
+        "labels": "",
+        "primary_label": "",
+        "range_min": "0",
+        "range_max": "70",
+        "decimals": "1",
+        "show_ui_input": 1,
+        "x": 860,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "7b325310859f547e",
+        "type": "victron-virtual-indicator",
+        "z": "d18d40b6d00d6710",
+        "name": "",
+        "customname": "Power",
+        "group": "my-PV AC•THOR",
+        "indicator_type": 1,
+        "unit": "W",
+        "labels": "",
+        "primary_label": "Reported",
+        "range_min": "",
+        "range_max": "",
+        "decimals": "0",
+        "show_ui_input": 1,
+        "x": 800,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "11583626deb4c803",
+        "type": "victron-virtual-indicator",
+        "z": "d18d40b6d00d6710",
+        "name": "",
+        "customname": "Status",
+        "group": "my-PV AC•THOR",
+        "indicator_type": "0",
+        "unit": "",
+        "labels": "Standby,Heating,Boost heating,Heating finished,No communication,Error,Device blocked,Unknown",
+        "primary_label": "Controller",
+        "range_min": "0",
+        "range_max": "55",
+        "decimals": "1",
+        "show_ui_input": 1,
+        "x": 800,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a505e55de5fb9cc8",
+        "type": "victron-virtual",
+        "z": "d18d40b6d00d6710",
+        "name": "my-PV AC•THOR",
+        "outputs": 1,
+        "device": "temperature",
+        "default_values": true,
+        "acload_position": 0,
+        "acload_nrofphases": 1,
+        "acload_phasesetting": 1,
+        "acload_auto_energy": true,
+        "enable_s2support": false,
+        "s2_measurement_type": "L1",
+        "heatpump_position": 0,
+        "heatpump_nrofphases": 1,
+        "heatpump_phasesetting": 1,
+        "heatpump_auto_energy": true,
+        "evcs_nrofphases": 1,
+        "battery_capacity": 25,
+        "include_battery_temperature": false,
+        "battery_voltage_preset": "24",
+        "battery_voltage_custom": 24,
+        "generator_type": "ac",
+        "generator_nrofphases": 1,
+        "include_engine_hours": false,
+        "include_starter_voltage": false,
+        "include_history_energy": false,
+        "generator_grid_meter_only": false,
+        "grid_nrofphases": 1,
+        "include_motor_temp": false,
+        "include_controller_temp": false,
+        "include_coolant_temp": false,
+        "include_motor_rpm": true,
+        "include_motor_direction": true,
+        "position": 0,
+        "pvinverter_nrofphases": 1,
+        "pvinverter_auto_energy": true,
+        "switch_1_type": 1,
+        "switch_1_min": 0,
+        "switch_1_max": "",
+        "switch_1_initial": 0,
+        "switch_1_label": "",
+        "switch_1_unit": "",
+        "switch_1_step": 1,
+        "switch_1_customname": "",
+        "switch_1_group": "",
+        "switch_1_include_measurement": false,
+        "switch_1_rgb_color_wheel": false,
+        "switch_1_cct_wheel": false,
+        "switch_1_rgb_white_dimmer": false,
+        "switch_1_passthrough_mode": "auto_only",
+        "fluid_type": 0,
+        "include_tank_battery": false,
+        "include_tank_temperature": false,
+        "tank_battery_voltage": 3.3,
+        "tank_capacity": 0.2,
+        "auto_aggregate": false,
+        "pulsemeter_multiplier": 0.001,
+        "ev_vin": "",
+        "ev_battery_capacity": "",
+        "ev_evcs_device_instance": "",
+        "temperature_type": "5",
+        "include_humidity": false,
+        "include_pressure": false,
+        "include_temp_battery": false,
+        "temp_battery_voltage": 3.3,
+        "start_disconnected": true,
+        "x": 750,
+        "y": 540,
+        "wires": [
+            [
+                "2cfe6d29f8f87da0"
+            ]
+        ]
+    },
+    {
+        "id": "6791ffdd44a54fd2",
+        "type": "link in",
+        "z": "d18d40b6d00d6710",
+        "name": "link in 18",
+        "links": [
+            "2b357966e69a1233",
+            "faafee3a05675549"
+        ],
+        "x": 55,
+        "y": 300,
+        "wires": [
+            [
+                "d7672ec866a66ff8"
+            ]
+        ]
+    },
+    {
+        "id": "2b357966e69a1233",
+        "type": "link out",
+        "z": "d18d40b6d00d6710",
+        "name": "link out 30",
+        "mode": "link",
+        "links": [
+            "6791ffdd44a54fd2"
+        ],
+        "x": 1185,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "faafee3a05675549",
+        "type": "link out",
+        "z": "d18d40b6d00d6710",
+        "name": "link out 31",
+        "mode": "link",
+        "links": [
+            "6791ffdd44a54fd2"
+        ],
+        "x": 675,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "496381a216742dfa",
+        "type": "link out",
+        "z": "d18d40b6d00d6710",
+        "name": "link out 32",
+        "mode": "link",
+        "links": [
+            "7c2b6d6feb6ab833"
+        ],
+        "x": 1185,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "eba14bc6b7c63c9e",
+        "type": "link out",
+        "z": "d18d40b6d00d6710",
+        "name": "link out 33",
+        "mode": "link",
+        "links": [
+            "7c2b6d6feb6ab833"
+        ],
+        "x": 985,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "0ece41402f27419f",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "Setup instructions:",
+        "info": "",
+        "x": 130,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "7c2b6d6feb6ab833",
+        "type": "link in",
+        "z": "d18d40b6d00d6710",
+        "name": "link in 19",
+        "links": [
+            "496381a216742dfa",
+            "eba14bc6b7c63c9e",
+            "2cfe6d29f8f87da0"
+        ],
+        "x": 285,
+        "y": 420,
+        "wires": [
+            [
+                "08de145ec5cb9274"
+            ]
+        ]
+    },
+    {
+        "id": "2cfe6d29f8f87da0",
+        "type": "link out",
+        "z": "d18d40b6d00d6710",
+        "name": "link out 3",
+        "mode": "link",
+        "links": [
+            "7c2b6d6feb6ab833"
+        ],
+        "x": 885,
+        "y": 540,
+        "wires": []
+    },
+    {
+        "id": "eedc36ce1b4f18ef",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "1. Configure my-PV device to control type HTTP",
+        "info": "",
+        "x": 220,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "8902be96f2e7d290",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "2. Adjust DEVICE_IP and LANGUAGE_CODE in \"Controller & scheduler\" node",
+        "info": "",
+        "x": 310,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "1713dff113086356",
+        "type": "comment",
+        "z": "d18d40b6d00d6710",
+        "name": "For more details, double-click this flow tab.",
+        "info": "",
+        "x": 200,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "mypv-dbus-config",
+        "type": "s2-dbus-config",
+        "name": "My-PV AC-Thor D-Bus",
+        "connectionMode": "auto",
+        "tcpAddress": "",
+        "deviceType": "acload",
+        "measurementType": "L1_L2_L3",
+        "nrOfPhases": 3,
+        "position": 0,
+        "phaseSetting": 1,
+        "autoCalculateEnergy": true
+    },
+    {
+        "id": "358e0f203f3d63f8",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-s2": "0.9.1",
+            "@victronenergy/node-red-contrib-victron": "1.7.27"
+        }
+    }
+]
