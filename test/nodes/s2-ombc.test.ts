@@ -708,6 +708,18 @@ describe('s2-ombc - status request notification', () => {
 
     expect(getInstructionOutputCalls(node).find(m => m.topic === 'ModeRequest')).toBeUndefined()
   })
+
+  it('resets the CEM status when another control type is selected', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), jest.fn())
+    handlers.input({ cemId: 'cem-1', payload: { message_type: 'SelectControlType', control_type: 'POWER_ENVELOPE_BASED_CONTROL' } }, jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(getInstructionOutputCalls(node).find(m => m.topic === 'ModeRequest')).toBeDefined()
+  })
 })
 
 describe('s2-ombc - reconnect resend', () => {
