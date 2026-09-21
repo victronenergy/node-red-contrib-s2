@@ -1,16 +1,50 @@
 <script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
+  // Standard grid connections' max wattage - must stay in sync with GRID_CONNECTIONS in
+  // src/lib/s2/messages.ts (the option labels below already show each value).
+  const S2_PEBC_GRID_CONNECTION_WATTS = {
+    '1x16A': 3680, '3x16A': 11040, '3x25A': 17250, '3x32A': 22080, '3x40A': 27600, '3x63A': 43470
+  }
+  const S2_PEBC_DEFAULT_COMMODITY = 'ELECTRIC.POWER.3_PHASE_SYMMETRIC'
+
+  function s2PebcIsFriendlyRepresentable (parsed) {
+    return !!parsed && typeof parsed === 'object' &&
+      parsed.commodityQuantity === S2_PEBC_DEFAULT_COMMODITY &&
+      typeof parsed.minPower === 'number' && typeof parsed.maxPower === 'number' &&
+      parsed.minPower === -parsed.maxPower && parsed.maxPower > 0
+  }
+
+  // Reverse lookup so switching Advanced back to Friendly restores the matching named Grid Fuse
+  // preset (e.g. '3x25A') instead of always falling back to Custom with the same wattage.
+  function s2PebcWattsToGridConnection (maxPowerW) {
+    for (const key in S2_PEBC_GRID_CONNECTION_WATTS) {
+      if (S2_PEBC_GRID_CONNECTION_WATTS[key] === maxPowerW) return key
+    }
+    return 'custom'
+  }
+
+  function s2PebcApplyFriendlyFromMaxPower (maxPowerW) {
+    const gridConnection = s2PebcWattsToGridConnection(maxPowerW)
+    $('#node-config-input-gridConnection').val(gridConnection).trigger('change')
+    if (gridConnection === 'custom') {
+      $('#node-config-input-customMaxPowerW').val(maxPowerW)
+    }
+  }
+
   RED.nodes.registerType('s2-pebc-config', {
     category: 'config',
     defaults: {
       name: { value: '' },
       gridConnection: { value: '' },
-      customMaxPowerW: { value: '' }
+      customMaxPowerW: { value: '' },
+      constraints: { value: '' }
     },
     label: function () {
       return this.name || 'pebc-config'
     },
     oneditprepare: function () {
+      let currentMode = 'friendly'
+
       function updateCustomPowerVisibility () {
         const val = $('#node-config-input-gridConnection').val()
         $('#s2-pebc-config-custom-power-row').toggle(val === 'custom')
@@ -18,7 +52,135 @@
       $('#node-config-input-gridConnection').on('change', updateCustomPowerVisibility)
       updateCustomPowerVisibility()
 
+      $('#node-config-input-constraints').typedInput({ types: ['json'] })
+
+      // Advanced-mode save-time schema validation (see s2-pebc-config/index.ts, which serves the
+      // endpoint) - disables the Update button and shows a specific error while the Advanced
+      // JSON violates the real PEBC.PowerConstraints schema. Friendly mode always produces valid
+      // constraints by construction, so the gate is only armed while Advanced mode is active.
+      let schemaValidateTimer = null
+      let schemaValidateSeq = 0
+
+      function setSchemaGate (valid, errorText) {
+        $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
+        const $err = $('#s2-pebc-schema-error')
+        if (errorText) {
+          $err.text(errorText).show()
+        } else {
+          $err.hide()
+        }
+      }
+
+      function scheduleSchemaValidation () {
+        if (currentMode !== 'advanced') {
+          setSchemaGate(true)
+          return
+        }
+        const seq = ++schemaValidateSeq
+        clearTimeout(schemaValidateTimer)
+        schemaValidateTimer = setTimeout(function () {
+          const rawJson = $('#node-config-input-constraints').typedInput('value')
+          $.ajax({
+            url: 's2/validate-pebc-constraints',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ constraints: rawJson })
+          }).done(function (result) {
+            if (seq !== schemaValidateSeq) return
+            setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
+          }).fail(function () {
+            if (seq !== schemaValidateSeq) return
+            setSchemaGate(false, 'Could not reach the validation endpoint')
+          })
+        }, 400)
+      }
+
+      $('#node-config-input-constraints').on('change input', scheduleSchemaValidation)
+
+      function showFriendlySection () {
+        currentMode = 'friendly'
+        $('#s2-pebc-friendly-section').show()
+        $('#s2-pebc-advanced-section').hide()
+        $('#s2-pebc-advanced-warning').hide()
+        $('#s2-pebc-tab-friendly').addClass('s2-tab-active')
+        $('#s2-pebc-tab-advanced').removeClass('s2-tab-active')
+        setSchemaGate(true)
+      }
+
+      function showAdvancedSection (warningText) {
+        currentMode = 'advanced'
+        $('#s2-pebc-friendly-section').hide()
+        $('#s2-pebc-advanced-section').show()
+        if (warningText) {
+          $('#s2-pebc-advanced-warning').text(warningText).show()
+        } else {
+          $('#s2-pebc-advanced-warning').hide()
+        }
+        $('#s2-pebc-tab-advanced').addClass('s2-tab-active')
+        $('#s2-pebc-tab-friendly').removeClass('s2-tab-active')
+        scheduleSchemaValidation()
+      }
+
+      $('#s2-pebc-tab-advanced').on('click', function (e) {
+        e.preventDefault()
+        if (currentMode === 'advanced') return
+        const gridConnection = $('#node-config-input-gridConnection').val()
+        const maxPowerW = gridConnection === 'custom'
+          ? Number($('#node-config-input-customMaxPowerW').val()) || null
+          : (S2_PEBC_GRID_CONNECTION_WATTS[gridConnection] || null)
+        const json = {
+          commodityQuantity: S2_PEBC_DEFAULT_COMMODITY,
+          minPower: maxPowerW != null ? -maxPowerW : -3000,
+          maxPower: maxPowerW != null ? maxPowerW : 3000
+        }
+        $('#node-config-input-constraints').typedInput('value', JSON.stringify(json, null, 2))
+        showAdvancedSection()
+      })
+
+      $('#s2-pebc-tab-friendly').on('click', function (e) {
+        e.preventDefault()
+        if (currentMode === 'friendly') return
+        const raw = $('#node-config-input-constraints').typedInput('value')
+        let parsed
+        try {
+          parsed = JSON.parse(raw)
+        } catch (err) {
+          showAdvancedSection('Invalid JSON - fix it before switching to the friendly editor.')
+          return
+        }
+        if (!s2PebcIsFriendlyRepresentable(parsed)) {
+          showAdvancedSection('This uses an asymmetric range or a commodity other than 3-phase-symmetric - only supported in Advanced mode.')
+          return
+        }
+        s2PebcApplyFriendlyFromMaxPower(parsed.maxPower)
+        $('#node-config-input-constraints').typedInput('value', '')
+        showFriendlySection()
+      })
+
+      const raw = this.constraints
+      let parsed = null
+      if (raw) {
+        try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
+      }
+
+      if (!raw) {
+        showFriendlySection()
+      } else if (parsed && s2PebcIsFriendlyRepresentable(parsed)) {
+        s2PebcApplyFriendlyFromMaxPower(parsed.maxPower)
+        showFriendlySection()
+      } else {
+        $('#node-config-input-constraints').typedInput('value', raw)
+        showAdvancedSection()
+      }
+
       window.__s2Common.initializeTooltips()
+    },
+    oneditsave: function () {
+      // Friendly mode: clear constraints so the node falls back to gridConnection/
+      // customMaxPowerW. Advanced mode's typedInput already holds the value to save.
+      if ($('#s2-pebc-tab-friendly').hasClass('s2-tab-active')) {
+        $('#node-config-input-constraints').typedInput('value', '')
+      }
     }
   })
 </script>
@@ -31,23 +193,40 @@
       <input type="text" id="node-config-input-name" placeholder="Name (optional)">
     </div>
 
-    <div class="form-row">
-      <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the default outer PEBC power limits sent to the CEM as [-max, +max] watts, until a runtime override is supplied."></i></label>
-      <select id="node-config-input-gridConnection">
-        <option value="">-- Not set --</option>
-        <option value="1x16A">1x16A (3.7 kW)</option>
-        <option value="3x16A">3x16A (11 kW)</option>
-        <option value="3x25A">3x25A (17.3 kW)</option>
-        <option value="3x32A">3x32A (22 kW)</option>
-        <option value="3x40A">3x40A (27.6 kW)</option>
-        <option value="3x63A">3x63A (43.5 kW)</option>
-        <option value="custom">Custom</option>
-      </select>
+    <div class="form-row s2-full-row">
+      <div class="s2-tabs">
+        <a href="#" id="s2-pebc-tab-friendly" class="s2-tab s2-tab-active">Friendly</a>
+        <a href="#" id="s2-pebc-tab-advanced" class="s2-tab">Advanced (JSON)</a>
+      </div>
     </div>
 
-    <div class="form-row" id="s2-pebc-config-custom-power-row" style="display:none">
-      <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
-      <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
+    <div id="s2-pebc-friendly-section">
+
+      <div class="form-row">
+        <label for="node-config-input-gridConnection"><i class="fa fa-plug"></i> Grid Fuse<i class="fa fa-info-circle tooltip-icon" data-tooltip="Fuse/breaker capacity at the grid connection point. Sets the default outer PEBC power limits sent to the CEM as [-max, +max] watts, until a runtime override is supplied."></i></label>
+        <select id="node-config-input-gridConnection">
+          <option value="">-- Not set --</option>
+          <option value="1x16A">1x16A (3.7 kW)</option>
+          <option value="3x16A">3x16A (11 kW)</option>
+          <option value="3x25A">3x25A (17.3 kW)</option>
+          <option value="3x32A">3x32A (22 kW)</option>
+          <option value="3x40A">3x40A (27.6 kW)</option>
+          <option value="3x63A">3x63A (43.5 kW)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+
+      <div class="form-row" id="s2-pebc-config-custom-power-row" style="display:none">
+        <label for="node-config-input-customMaxPowerW"><i class="fa fa-bolt"></i> Max Power (W)<i class="fa fa-info-circle tooltip-icon" data-tooltip="Maximum power in watts for a custom grid connection. Used as both import and export limit."></i></label>
+        <input type="number" id="node-config-input-customMaxPowerW" placeholder="e.g. 15000" min="1">
+      </div>
+
+    </div>
+
+    <div id="s2-pebc-advanced-section" class="form-row s2-full-row" style="display:none;">
+      <div id="s2-pebc-advanced-warning" class="s2-pebc-advanced-warning" style="display:none;"></div>
+      <input type="text" id="node-config-input-constraints">
+      <div id="s2-pebc-schema-error" class="s2-pebc-advanced-warning" style="display:none;"></div>
     </div>
 
   </div>
@@ -56,9 +235,15 @@
 <script type="text/html" data-help-name="s2-pebc-config">
   <p>Configuration for <b>s2-pebc</b>: the default <code>PEBC.PowerConstraints</code> range it pushes on deploy, used until a runtime override is supplied or a CEM sends its own.</p>
 
-  <p><b>Grid Fuse</b> picks a standard fuse/breaker size; <b>s2-pebc</b> converts it to a symmetric <code>[-max, +max]</code> watt range (the same limit for import and export). Choose <b>Custom</b> to set an exact wattage instead - useful when the site's actual limit doesn't match a standard fuse size, or is asymmetric in practice.</p>
+  <h3>Friendly mode</h3>
+  <p><b>Grid Fuse</b> picks a standard fuse/breaker size; <b>s2-pebc</b> converts it to a symmetric <code>[-max, +max]</code> watt range (the same limit for import and export). Choose <b>Custom</b> to set an exact wattage instead - useful when the site's actual limit doesn't match a standard fuse size. Both always produce a symmetric range on <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code> - use Advanced mode for an asymmetric import/export limit or a different commodity.</p>
 
   <p>Leaving this unset is valid: <b>s2-pebc</b> simply won't push a default, and relies entirely on whatever the CEM sends. The configured value is also published to flow context as <code>pebcDefaultMaxPowerW</code>, so your own flow logic can fall back to it - for example when a PEBC instruction's bound is released (<code>null</code>) and you need to know what limit to apply instead of leaving your hardware silently unconstrained. For a named Grid Fuse (not Custom), its fixed per-phase amp rating is also published as <code>pebcDefaultMaxAmpsPerPhase</code> - use this instead of dividing <code>pebcDefaultMaxPowerW</code> by a live voltage reading, which drifts below the configured rating whenever actual voltage exceeds the 230V nominal used to derive that wattage.</p>
+
+  <h3>Advanced (JSON) mode</h3>
+  <p>The raw default constraints as JSON - <code>{ "commodityQuantity": "...", "minPower": ..., "maxPower": ... }</code> - for anything Friendly mode can't express: an asymmetric import/export limit (e.g. <code>minPower: -3000, maxPower: 6000</code>), or a commodity other than 3-phase-symmetric. <code>pebcDefaultMaxPowerW</code> is still published as <code>maxPower</code>, but <code>pebcDefaultMaxAmpsPerPhase</code> is always <code>null</code> here, since Advanced mode isn't tied to a named Grid Fuse rating.</p>
+  <p>Switching from Friendly to Advanced converts the current Grid Fuse/Max Power into JSON. Switching back only works if the JSON is still a symmetric 3-phase-symmetric range - otherwise the editor stays in Advanced mode and explains why, rather than discarding anything.</p>
+  <p>While in Advanced mode, the JSON is validated against the real <code>PEBC.PowerConstraints</code> S2 schema as you type - <b>Update</b> is disabled and the specific problem is shown until it's fixed.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

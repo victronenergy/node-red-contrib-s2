@@ -188,6 +188,40 @@ describe('s2-pebc - default power constraints push on deploy', () => {
 
     expect(flowContext.pebcDefaultMaxAmpsPerPhase).toBeNull()
   })
+
+  it('uses Advanced-mode constraints over gridConnection when both are set', () => {
+    const { node } = setupNode({}, {
+      gridConnection: '3x25A',
+      constraints: JSON.stringify({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -3000, maxPower: 6000 })
+    })
+
+    jest.advanceTimersByTime(200)
+
+    const call = commandCalls(node)[0]
+    const cmd = ((call[0] as unknown[])[2] as { payload: Record<string, unknown> }).payload
+    const constraints = cmd.constraints as { commodityQuantity: string, minPower: number, maxPower: number }
+    expect(constraints).toEqual({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -3000, maxPower: 6000 })
+  })
+
+  it('publishes Advanced-mode maxPower to pebcDefaultMaxPowerW, and null to pebcDefaultMaxAmpsPerPhase', () => {
+    const { flowContext } = setupNode({}, {
+      gridConnection: '3x25A',
+      constraints: JSON.stringify({ commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', minPower: -3000, maxPower: 6000 })
+    })
+
+    expect(flowContext.pebcDefaultMaxPowerW).toBe(6000)
+    expect(flowContext.pebcDefaultMaxAmpsPerPhase).toBeNull()
+  })
+
+  it('falls back to gridConnection when constraints is invalid JSON', () => {
+    const { node } = setupNode({}, { gridConnection: '3x25A', constraints: '{not json' })
+
+    jest.advanceTimersByTime(200)
+
+    const call = commandCalls(node)[0]
+    const cmd = ((call[0] as unknown[])[2] as { payload: Record<string, unknown> }).payload
+    expect((cmd.constraints as { maxPower: number }).maxPower).toBe(17250)
+  })
 })
 
 describe('s2-pebc - instruction accumulation', () => {

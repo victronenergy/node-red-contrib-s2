@@ -319,6 +319,16 @@
   font-size: 0.9em;
 }
 
+.s2-form .s2-pebc-advanced-warning {
+  color: #a06400;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  border-radius: 3px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
 .s2-form .s2-resource-hint {
   color: #666;
   background: #f6f6f2;

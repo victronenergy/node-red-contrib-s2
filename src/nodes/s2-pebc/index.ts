@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2PebcConfigNode } from '../../types/config-nodes'
-import { InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToAmpsPerPhase, gridConnectionToWatts } from '../../lib/s2/messages'
+import { InstructionStatus, MessageType, PEBCPowerConstraintsInput, PowerForecastInput, PowerMeasurementValue, gridConnectionToAmpsPerPhase, gridConnectionToWatts, parsePEBCPowerConstraintsInput } from '../../lib/s2/messages'
 import { parsePebcInstruction, getActiveElement, getNextElementStart, capForecastToSchedule, PebcSchedule, ScheduleElement } from '../../lib/s2/schedule'
 
 interface S2PebcNodeConfig extends NodeConfig {
@@ -494,15 +494,24 @@ export = function (RED: NodeRedApp): void {
 
     // Push the configured default power constraints on deploy, used until a runtime
     // override is supplied. Deferred so s2-rm's input listener is guaranteed attached first.
-    const defaultMaxPowerW = gridConnectionToWatts(pebcConfigNode.gridConnection, pebcConfigNode.customMaxPowerW)
+    // Advanced mode (pebcConfigNode.constraints) takes priority when set - it's the only way to
+    // express an asymmetric range or a non-default commodity; Friendly mode's gridConnection/
+    // customMaxPowerW only ever produce a symmetric 3-phase-symmetric range.
+    const advancedConstraints = parsePEBCPowerConstraintsInput(pebcConfigNode.constraints)
+    const defaultMaxPowerW = advancedConstraints ? advancedConstraints.maxPower : gridConnectionToWatts(pebcConfigNode.gridConnection, pebcConfigNode.customMaxPowerW)
     // Published so downstream flow logic can derive a released-state limit (e.g. amps)
     // the same way it derives any other numeric bound, instead of hardcoding one.
     node.context().flow.set('pebcDefaultMaxPowerW', defaultMaxPowerW)
     // The fixed breaker rating, when known - independent of any live voltage reading, unlike
     // dividing pebcDefaultMaxPowerW by voltage (which drifts below the configured rating
-    // whenever actual voltage exceeds the 230V nominal used to derive that wattage).
-    node.context().flow.set('pebcDefaultMaxAmpsPerPhase', gridConnectionToAmpsPerPhase(pebcConfigNode.gridConnection))
-    if (defaultMaxPowerW != null) {
+    // whenever actual voltage exceeds the 230V nominal used to derive that wattage). Advanced
+    // mode has no such fixed rating to report, since it isn't tied to a named grid connection.
+    node.context().flow.set('pebcDefaultMaxAmpsPerPhase', advancedConstraints ? null : gridConnectionToAmpsPerPhase(pebcConfigNode.gridConnection))
+    if (advancedConstraints) {
+      setTimeout(() => {
+        node.send([null, null, { payload: { command: 'PowerConstraints', constraints: advancedConstraints } }])
+      }, 100)
+    } else if (defaultMaxPowerW != null) {
       const constraints: PEBCPowerConstraintsInput = {
         commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
         minPower: -defaultMaxPowerW,

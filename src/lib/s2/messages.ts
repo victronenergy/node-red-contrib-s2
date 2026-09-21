@@ -300,6 +300,26 @@ export interface PEBCPowerConstraintsInput {
   validFrom?: string
 }
 
+/**
+ * Parses s2-pebc-config's Advanced-mode `constraints` field (a JSON-encoded
+ * PEBCPowerConstraintsInput, minus validFrom) into a PEBCPowerConstraintsInput.
+ * Returns null for empty input, invalid JSON, or a value missing/mistyping any required field -
+ * callers fall back to the Friendly-mode gridConnection/customMaxPowerW derivation in that case.
+ */
+export function parsePEBCPowerConstraintsInput (raw: string | undefined): PEBCPowerConstraintsInput | null {
+  if (!raw) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+  const { commodityQuantity, minPower, maxPower } = parsed as Record<string, unknown>
+  if (typeof commodityQuantity !== 'string' || typeof minPower !== 'number' || typeof maxPower !== 'number') return null
+  return { commodityQuantity, minPower, maxPower }
+}
+
 export interface PowerForecastValue {
   commodity_quantity: string
   value_expected: number

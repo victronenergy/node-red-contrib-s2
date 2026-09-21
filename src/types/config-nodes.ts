@@ -43,6 +43,9 @@ export interface S2OmbcConfigNode extends NodeRedNode {
 export interface S2PebcConfigNode extends NodeRedNode {
   gridConnection: string // e.g. '3x25A' or 'custom'
   customMaxPowerW: number | undefined // only used when gridConnection === 'custom'
+  /** Advanced-mode override: JSON-encoded PEBCPowerConstraintsInput (minus validFrom). Empty
+   * string when Friendly mode (gridConnection/customMaxPowerW) is in use instead. */
+  constraints: string
 }
 
 /**
