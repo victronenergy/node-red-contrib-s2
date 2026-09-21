@@ -202,13 +202,13 @@ When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL of
 - **THEN** no status is reported until something explicitly confirms one, unchanged from today's behavior
 
 ### Requirement: Auto-confirm OMBC mode instructions
-When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL offer an "Auto-confirm mode-switch requests (OMBC.Instruction)" setting, checked by default. When checked, `s2-resource` SHALL confirm an instructed mode change back to the CEM as active immediately after resolving the instruction, without waiting for a separate `ModeConfirmation`. When unchecked, confirmation SHALL only happen as a result of an explicit `ModeConfirmation` (from the CEM's own protocol messages via the flow, or sent directly to this node's input), unchanged from today's behavior.
+When `Control type: OMBC` is selected, `s2-resource`'s Control Type tab SHALL offer an "Auto-confirm mode-switch requests (OMBC.Instruction)" setting, unchecked by default. When checked, `s2-resource` SHALL confirm an instructed mode change back to the CEM as active immediately after resolving the instruction, without waiting for a separate `ModeConfirmation`. When unchecked, confirmation SHALL only happen as a result of an explicit `ModeConfirmation` (from the CEM's own protocol messages via the flow, or sent directly to this node's input) - a flow confirming based on real device state is more reliable than assuming the switch happened, so this is the recommended default; checking it suits only a resource with no independent way to report its own hardware state back to the flow.
 
-#### Scenario: Default (checked) - CEM instructs a mode change
+#### Scenario: Checked - CEM instructs a mode change
 - **WHEN** `s2-resource` is configured with `Control type: OMBC` and "Auto-confirm mode-switch requests (OMBC.Instruction)" checked, and a CEM sends an `OMBC.Instruction` for a configured mode
 - **THEN** it emits the resolved `ModeInstruction` downstream (unchanged) and also sends `OMBC.Status` confirming that mode as active, without any `ModeConfirmation` message
 
-#### Scenario: Unchecked - CEM instructs a mode change
+#### Scenario: Default (unchecked) - CEM instructs a mode change
 - **WHEN** `s2-resource` is configured with `Control type: OMBC` and "Auto-confirm mode-switch requests (OMBC.Instruction)" unchecked, and a CEM sends an `OMBC.Instruction` for a configured mode
 - **THEN** it emits the resolved `ModeInstruction` downstream but sends no `OMBC.Status`, until a `ModeConfirmation` is sent to this node's input
 

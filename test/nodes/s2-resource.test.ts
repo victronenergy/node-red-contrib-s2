@@ -880,8 +880,8 @@ describe('s2-resource - Control type: OMBC', () => {
     }, jest.fn(), jest.fn())
   }
 
-  it('auto-confirms an instructed mode by default, sending an updated OMBC.Status without a separate confirm', () => {
-    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+  it('auto-confirms an instructed mode when autoConfirmInstructions is enabled, sending an updated OMBC.Status without a separate confirm', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, autoConfirmInstructions: true })
     connectAndSelectOmbc(handlers)
     ;(node.send as jest.Mock).mockClear()
 
@@ -897,8 +897,8 @@ describe('s2-resource - Control type: OMBC', () => {
     expect(status!.payload.message.active_operation_mode_id).toBe('mode-standby')
   })
 
-  it('does not auto-confirm an instructed mode when autoConfirmInstructions is disabled', () => {
-    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, autoConfirmInstructions: false })
+  it('does not auto-confirm an instructed mode by default', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
     connectAndSelectOmbc(handlers)
     ;(node.send as jest.Mock).mockClear()
 

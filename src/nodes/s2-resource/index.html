@@ -43,7 +43,7 @@
         controlType: { value: 'ombc' },
         systemDescription: { value: '' },
         defaultOperationModeId: { value: '' },
-        autoConfirmInstructions: { value: true },
+        autoConfirmInstructions: { value: false },
 
         outputs: { value: 1 }
       },
@@ -660,7 +660,7 @@
           </select>
         </div>
         <div class="form-row s2-full-row">
-          <label class="s2-checkbox-label"><input type="checkbox" id="node-input-autoConfirmInstructions"> Auto-confirm mode-switch requests (OMBC.Instruction)<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.Instruction is the message a CEM sends to ask this resource to switch to a specific operation mode. When checked, this node immediately reports that mode as active (OMBC.Status) as if it had switched right away, instead of waiting for your flow to confirm it separately. Suits a resource with no independent way to check its own hardware state. Uncheck if your flow verifies the switch actually happened (e.g. after actuating a relay) before confirming it."></i></label>
+          <label class="s2-checkbox-label"><input type="checkbox" id="node-input-autoConfirmInstructions"> Auto-confirm mode-switch requests (OMBC.Instruction)<i class="fa fa-info-circle tooltip-icon" data-tooltip="OMBC.Instruction is the message a CEM sends to ask this resource to switch to a specific operation mode. Unchecked by default: your flow should confirm the switch (e.g. a ModeConfirmation sent back to this node's input) once it knows the hardware actually did it - that's more reliable than assuming success. Check this only if your device genuinely has no way to report its own state back to the flow, so this node reports the mode active (OMBC.Status) immediately instead of waiting for a confirmation that would never come."></i></label>
         </div>
       </div>
 
@@ -687,7 +687,7 @@
   <p><b>Include "Not Controllable" in advertised control types</b> (checked by default, applies regardless of Control type) adds <code>NOT_CONTROLABLE</code> to the advertised list, so the CEM can choose not to control this resource - some CEMs select it as their initial/default state before switching to OMBC, so unchecking this may prevent them from ever taking control. Uncheck it only if that choice should never be offered.</p>
   <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is). While its Advanced (JSON) mode is active, the JSON is validated against the real <code>OMBC.SystemDescription</code> S2 schema as you type - <b>Done</b> is disabled and the specific problem is shown until it's fixed.</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
-  <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (on by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. With this checked, the requested mode is immediately reported back as active (<code>OMBC.Status</code>), instead of waiting for a <code>ModeConfirmation</code> from the flow - suited to a resource with no independent way to check its own hardware state. Uncheck it if your flow confirms based on real device state (e.g. after actually switching a relay), so the CEM only sees a mode reported active once it truly is.</p>
+  <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (off by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. Left unchecked, this node waits for a <code>ModeConfirmation</code> from the flow before reporting the mode active (<code>OMBC.Status</code>) - your flow confirming based on real device state (e.g. after actually switching a relay) is more reliable than assuming the switch happened, so that's the recommended default. Check it only for a resource with no independent way to report its own hardware state back to the flow, so this node reports the requested mode active immediately instead of waiting for a confirmation that would never come.</p>
   <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>
 
   <h3>Ports</h3>

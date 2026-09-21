@@ -293,10 +293,12 @@ export = function (RED: NodeRedApp): void {
         onWarn: (message) => node.warn(`[s2-resource] ${message}`),
         getContextValue: (key) => node.context().get(key),
         setContextValue: (key, value) => node.context().set(key, value),
-        // Defaults to on: without independent hardware-state feedback wired into this node's
-        // input, a resource that never confirms its own instructions leaves the CEM waiting
-        // indefinitely for an OMBC.Status that never comes - see design.md.
-        autoConfirmInstructions: config.autoConfirmInstructions !== false
+        // Defaults to off: a flow confirming based on real device state (e.g. after actually
+        // switching a relay) is more reliable than assuming the switch happened, so that's the
+        // recommended default. Opt in only for a resource with no independent way to report its
+        // own hardware state back to the flow, which would otherwise leave the CEM waiting
+        // indefinitely for an OMBC.Status that never comes.
+        autoConfirmInstructions: config.autoConfirmInstructions === true
       })
 
       // Seeds the "Pre-connection default status" (see control-type-ombc spec) at deploy
