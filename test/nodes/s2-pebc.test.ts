@@ -610,6 +610,41 @@ describe('s2-pebc - RevokeObject handling', () => {
 
     expect(activeCalls(node).length).toBe(0)
   })
+
+  it('revoking one accumulated instruction only removes that instruction\'s own slots, leaving others intact', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'instr-a' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'instr-b' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(revokeMsg('cem-1', 'instr-a', 'PEBC.Instruction'), jest.fn(), jest.fn())
+
+    // Exactly one REVOKED, and only for the instruction actually revoked - not the other one.
+    const revokedCalls = commandCalls(node).filter(c => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: { command: string } }).payload
+      return cmd.command === 'InstructionStatus' && (cmd as unknown as { status: string }).status === 'REVOKED'
+    })
+    expect(revokedCalls.length).toBe(1)
+    const revokedCmd = ((revokedCalls[0][0] as unknown[])[2] as { payload: { instructionId: string } }).payload
+    expect(revokedCmd.instructionId).toBe('instr-a')
+
+    // instr-b's slot is still accumulated - the schedule dump now holds only its element.
+    const lastSchedule = (scheduleCalls(node)[scheduleCalls(node).length - 1][0] as unknown[])[1] as { payload: { elements: { instructionId: string }[] } }
+    expect(lastSchedule.payload.elements).toHaveLength(1)
+    expect(lastSchedule.payload.elements[0].instructionId).toBe('instr-b')
+
+    // instr-b still dispatches normally once its own slot starts - it was never revoked.
+    ;(node.send as jest.Mock).mockClear()
+    jest.advanceTimersByTime(SLOT)
+    const startedCall = commandCalls(node).find(c => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: { command: string } }).payload
+      return cmd.command === 'InstructionStatus'
+    })
+    const startedCmd = ((startedCall![0] as unknown[])[2] as { payload: { instructionId: string, status: string } }).payload
+    expect(startedCmd.instructionId).toBe('instr-b')
+    expect(startedCmd.status).toBe('STARTED')
+  })
 })
 
 describe('s2-pebc - InstructionStatus(STARTED) on dispatch', () => {
