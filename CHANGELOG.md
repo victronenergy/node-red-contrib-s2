@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.5]
+
+### Fixed
+
+- `dbus-native-victron` is now pinned to `^0.4.12` on the official npm registry, superseding the `[0.9.3]` stop-gap pin to a patched fork - the fork's fix (dropping the `abstract-socket` optional native addon) has landed in an official upstream release.
+
 ## [0.9.4]
 
 ### Fixed
