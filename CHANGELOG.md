@@ -6,9 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.4]
+
 ### Fixed
 
 - `s2-pebc`: the accumulated schedule's persisted file, flow-context snapshot, and output port 2's schedule dump now tag each element with the `instructionId` of the PEBC instruction that produced it, alongside the schedule's existing top-level `instructionId`. Previously, once elements from more than one instruction were accumulated together (they're cleared only when `power_constraints_id` changes, not per-instruction), that single top-level ID no longer reflected which instruction some of those elements actually came from. `InstructionStatus` dispatch itself already tracked this correctly internally and required no change.
+- `s2-rm`'s session layer now strips `null`-valued fields from an incoming CEM message before schema validation, recursively, and treats them as absent instead of rejecting the message. Some CEM implementations serialize an absent optional field as explicit `null` (e.g. `diagnostic_label: null` on `ReceptionStatus`) rather than omitting the key, which no S2 schema actually accepts - this previously failed validation with a confusing type error. A `null` on a field that's genuinely required still fails validation, now via the `required` check instead of `type`. A warning is logged at most once per session per distinct (message type, field), instead of on every occurrence from a repeatedly non-compliant CEM.
 
 ## [0.9.3]
 
