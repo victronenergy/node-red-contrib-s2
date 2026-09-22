@@ -17,7 +17,8 @@ import {
   makeOMBCStatus,
   makePEBCPowerConstraints,
   makeInstructionStatusUpdate,
-  parse
+  parse,
+  stripNulls
 } from './messages'
 import { validateS2Message } from './schema-validation'
 
@@ -51,6 +52,7 @@ export interface S2SessionOptions {
   onMessage?: (msg: S2IncomingMessage) => void
   onInstruction?: (msg: S2IncomingMessage) => void
   onError?: (err: Error) => void
+  onWarn?: (msg: string) => void
   retryDelayMs?: number
 }
 
@@ -84,15 +86,17 @@ export class S2Session {
   private readonly _onMessage: (msg: S2IncomingMessage) => void
   private readonly _onInstruction: (msg: S2IncomingMessage) => void
   private readonly _onError: (err: Error) => void
+  private readonly _onWarn: (msg: string) => void
   private readonly _retryDelayMs: number
   private readonly _sentMessages: Map<string, { msg: object, retryCount: number }>
   private readonly _retryTimers: Map<string, ReturnType<typeof setTimeout>>
+  private readonly _warnedNullFields: Set<string>
   private _state: StateValue
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
   private _pebcPowerConstraints: PEBCPowerConstraintsInput | null
 
-  constructor ({ cemId, rmDetails, onSend, onStateChange, onMessage, onInstruction, onError, retryDelayMs }: S2SessionOptions) {
+  constructor ({ cemId, rmDetails, onSend, onStateChange, onMessage, onInstruction, onError, onWarn, retryDelayMs }: S2SessionOptions) {
     this._cemId = cemId
     this._rmDetails = rmDetails
     this._onSend = onSend || (() => {})
@@ -100,9 +104,11 @@ export class S2Session {
     this._onMessage = onMessage || (() => {})
     this._onInstruction = onInstruction || this._onMessage
     this._onError = onError || ((err) => console.error(err))
+    this._onWarn = onWarn || ((msg) => console.warn(msg))
     this._retryDelayMs = retryDelayMs ?? 5000
     this._sentMessages = new Map()
     this._retryTimers = new Map()
+    this._warnedNullFields = new Set()
 
     this._state = State.HANDSHAKING
     this._selectedControlType = ControlType.NO_SELECTION
@@ -157,6 +163,26 @@ export class S2Session {
       msg = parse(raw as string, this._onError)
     }
     if (!msg) return
+
+    // Some CEM implementations send explicit `null` for an absent optional field instead of
+    // omitting the key (e.g. diagnostic_label: null), which no S2 schema accepts - see
+    // stripNulls() for why dropping those before validation is safe. Warn once per distinct
+    // (message_type, field) combination per session rather than on every occurrence, since a
+    // non-compliant CEM will otherwise repeat the same null on every message of that type.
+    const nullPaths: string[] = []
+    msg = stripNulls(msg, (path) => nullPaths.push(path))
+    if (nullPaths.length > 0) {
+      const messageType = msg.message_type
+      const newPaths = nullPaths.filter((path) => {
+        const key = `${messageType}${path}`
+        if (this._warnedNullFields.has(key)) return false
+        this._warnedNullFields.add(key)
+        return true
+      })
+      if (newPaths.length > 0) {
+        this._onWarn(`CEM ${this._cemId} sent explicit null for optional field(s) ${newPaths.join(', ')} on ${messageType} - treating as absent (further occurrences won't be logged again this session)`)
+      }
+    }
 
     const validation = validateS2Message(msg)
     if (!validation.valid) {

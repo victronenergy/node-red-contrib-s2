@@ -16,6 +16,7 @@ function makeSession (overrides: Partial<S2SessionOptions> = {}) {
   const onStateChange = jest.fn()
   const onMessage = jest.fn()
   const onError = jest.fn()
+  const onWarn = jest.fn()
   const session = new S2Session({
     cemId: 'cem-1',
     rmDetails: defaultRmDetails,
@@ -23,9 +24,10 @@ function makeSession (overrides: Partial<S2SessionOptions> = {}) {
     onStateChange,
     onMessage,
     onError,
+    onWarn,
     ...overrides
   })
-  return { session, onSend, onStateChange, onMessage, onError }
+  return { session, onSend, onStateChange, onMessage, onError, onWarn }
 }
 
 function raw (obj: object): string {
@@ -429,6 +431,33 @@ describe('S2Session ReceptionStatus', () => {
     session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm1', status: 'OK' }))
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ message_type: MessageType.RECEPTION_STATUS }))
     expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('accepts a ReceptionStatus whose optional diagnostic_label is explicit null instead of omitted', () => {
+    // Some CEM implementations serialize an absent optional field as `null` rather than omitting
+    // the key - no S2 schema accepts null for any field, so this must not fail schema validation.
+    const { session, onMessage, onError } = makeSession()
+    session.start()
+    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
+    onMessage.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm1', status: 'OK', diagnostic_label: null }))
+    expect(onError).not.toHaveBeenCalled()
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ message_type: MessageType.RECEPTION_STATUS }))
+  })
+
+  it('warns once per session about a stripped null field, then stays quiet for repeats', () => {
+    const { session, onWarn } = makeSession()
+    session.start()
+    session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
+    onWarn.mockClear()
+
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm1', status: 'OK', diagnostic_label: null }))
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm2', status: 'OK', diagnostic_label: null }))
+    session.handleMessage(raw({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'pm3', status: 'OK', diagnostic_label: null }))
+
+    expect(onWarn).toHaveBeenCalledTimes(1)
+    expect(onWarn).toHaveBeenCalledWith(expect.stringContaining('diagnostic_label'))
   })
 })
 

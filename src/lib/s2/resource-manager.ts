@@ -258,6 +258,10 @@ export class S2ResourceManager {
 
       onError: (err) => {
         this.opts.onError(`S2 session error for CEM ${cemId}: ${err.message}`)
+      },
+
+      onWarn: (msg) => {
+        this.opts.onWarn(`S2 session for CEM ${cemId}: ${msg}`)
       }
     })
     this.sessions.set(cemId, session)

@@ -359,6 +359,40 @@ export function parse(raw: string, onError: (err: Error) => void): S2IncomingMes
 }
 
 /**
+ * Recursively drops object properties whose value is `null`.
+ *
+ * No schema in the vendored S2 JSON schema set (src/lib/s2/s2-json-schema/) ever accepts `null`
+ * for any field - optional fields are simply absent, not null (see
+ * json-schema-org/json-schema-spec#1586 for the general ambiguity this repo's schemas don't opt
+ * into). Some CEM implementations nonetheless serialize an absent optional field as explicit
+ * `null` rather than omitting the key, which then fails schema validation with a confusing "must
+ * be string" instead of just being treated the same as absent. Stripping `null` values from an
+ * incoming message before validation is safe here precisely because no S2 field is ever
+ * legitimately `null` - a `null` on a field that's actually required still fails validation, just
+ * against `required` instead of `type`.
+ *
+ * @param onNullPath - optional, called with the JSON-pointer-style path (e.g. "/diagnostic_label")
+ *   of each property dropped, so callers can report what was stripped (e.g. to warn once per CEM).
+ */
+export function stripNulls<T>(value: T, onNullPath?: (path: string) => void, path = ''): T {
+  if (Array.isArray(value)) {
+    return value.map((v, i) => stripNulls(v, onNullPath, `${path}/${i}`)) as unknown as T
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === null) {
+        onNullPath?.(`${path}/${key}`)
+        continue
+      }
+      result[key] = stripNulls(v, onNullPath, `${path}/${key}`)
+    }
+    return result as T
+  }
+  return value
+}
+
+/**
  * Serialize an S2 message object to a string for sending over the wire.
  */
 export function serialize(msg: object): string {
