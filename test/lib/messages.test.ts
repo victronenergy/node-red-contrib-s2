@@ -5,6 +5,7 @@ import {
   InstructionStatus,
   parse,
   serialize,
+  stripNulls,
   makeReceptionStatus,
   makeHandshake,
   makeResourceManagerDetails,
@@ -27,6 +28,28 @@ describe('generateId', () => {
 
   it('returns unique values', () => {
     expect(generateId()).not.toBe(generateId())
+  })
+})
+
+describe('stripNulls', () => {
+  it('drops null-valued properties, recursively', () => {
+    expect(stripNulls({ a: 1, b: null, c: { d: null, e: 2 } })).toEqual({ a: 1, c: { e: 2 } })
+  })
+
+  it('reports the JSON-pointer path of each dropped property', () => {
+    const paths: string[] = []
+    stripNulls({ a: null, b: { c: null } }, (path) => paths.push(path))
+    expect(paths).toEqual(['/a', '/b/c'])
+  })
+
+  it('does not let an own "__proto__" key pollute the result object prototype', () => {
+    const malicious = JSON.parse('{"message_type":"ReceptionStatus","__proto__":{"polluted":"yes"}}')
+    const result = stripNulls(malicious) as Record<string, unknown>
+
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true)
+    expect(result.__proto__).toEqual({ polluted: 'yes' })
   })
 })
 

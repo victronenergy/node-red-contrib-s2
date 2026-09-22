@@ -385,7 +385,17 @@ export function stripNulls<T>(value: T, onNullPath?: (path: string) => void, pat
         onNullPath?.(`${path}/${key}`)
         continue
       }
-      result[key] = stripNulls(v, onNullPath, `${path}/${key}`)
+      // Use defineProperty rather than `result[key] = ...`: an incoming message with an own
+      // "__proto__" key (e.g. from JSON.parse('{"__proto__":{...}}')) would otherwise hit the
+      // legacy Object.prototype.__proto__ setter and repoint result's prototype instead of
+      // adding an own property, letting attacker-controlled fields leak into the prototype chain
+      // and potentially bypass schema validation.
+      Object.defineProperty(result, key, {
+        value: stripNulls(v, onNullPath, `${path}/${key}`),
+        writable: true,
+        enumerable: true,
+        configurable: true
+      })
     }
     return result as T
   }

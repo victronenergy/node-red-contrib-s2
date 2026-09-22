@@ -180,7 +180,7 @@ export class S2Session {
         return true
       })
       if (newPaths.length > 0) {
-        this._onWarn(`CEM ${this._cemId} sent explicit null for optional field(s) ${newPaths.join(', ')} on ${messageType} - treating as absent (further occurrences won't be logged again this session)`)
+        this._onWarn(`CEM ${this._cemId} sent explicit null for field(s) ${newPaths.join(', ')} on ${messageType} - normalizing to absent before validation (further occurrences won't be logged again this session)`)
       }
     }
 

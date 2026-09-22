@@ -261,7 +261,8 @@ export class S2ResourceManager {
       },
 
       onWarn: (msg) => {
-        this.opts.onWarn(`S2 session for CEM ${cemId}: ${msg}`)
+        // session's warning already starts with "CEM ${cemId}", so pass it through as-is
+        this.opts.onWarn(msg)
       }
     })
     this.sessions.set(cemId, session)
