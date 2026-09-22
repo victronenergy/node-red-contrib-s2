@@ -8,6 +8,11 @@ export interface ScheduleElement {
   duration: number
   lowerBound: number | null
   upperBound: number | null
+  // Set only on elements returned from a flattened, possibly multi-instruction schedule
+  // (see s2-pebc's handleInstruction/handleRevoke/buildCurrentSchedule) - identifies which
+  // PEBC instruction this element came from. Absent on elements fresh from parsePebcInstruction,
+  // where the schedule's top-level instructionId already covers all of them.
+  instructionId?: string
 }
 
 export interface PebcSchedule {
