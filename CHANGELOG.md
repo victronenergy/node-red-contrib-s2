@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.3]
+
+### Fixed
+
+- `dbus-native-victron` (a runtime dependency behind `s2-dbus`/`s2-resource`'s D-Bus transport) pulled in `abstract-socket`, an optional native addon that npm compiles via `node-gyp` on every Linux install regardless of whether it's ever used - on memory-constrained GX devices this could exhaust available RAM during a palette-manager install and crash the device. `dbus-native-victron` is now pinned to a patched fork that drops `abstract-socket` (it's only needed for `unix:abstract=...` D-Bus addresses, which this package never uses) as a stop-gap until the fix lands in an official `dbus-native-victron` release.
+
 ## [0.9.2]
 
 ### Added
