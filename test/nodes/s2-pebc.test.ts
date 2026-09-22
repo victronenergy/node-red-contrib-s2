@@ -334,6 +334,32 @@ describe('s2-pebc - instruction accumulation', () => {
     expect(node.send as jest.Mock).not.toHaveBeenCalled()
     expect(done).toHaveBeenCalled()
   })
+
+  it('attributes each element in the output-2 schedule to the instruction that produced it', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'instr-a' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'instr-b' }), jest.fn(), jest.fn())
+
+    const calls = scheduleCalls(node)
+    const last = (calls[calls.length - 1][0] as unknown[])[1] as { payload: { elements: { instructionId: string }[] } }
+    expect(last.payload.elements).toHaveLength(2)
+    expect(last.payload.elements[0].instructionId).toBe('instr-a')
+    expect(last.payload.elements[1].instructionId).toBe('instr-b')
+  })
+
+  it('gives every element the schedule-level instructionId when all came from one instruction', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'instr-solo' }), jest.fn(), jest.fn())
+
+    const calls = scheduleCalls(node)
+    const last = (calls[calls.length - 1][0] as unknown[])[1] as { payload: { elements: { instructionId: string }[] } }
+    expect(last.payload.elements).toHaveLength(1)
+    expect(last.payload.elements[0].instructionId).toBe('instr-solo')
+  })
 })
 
 describe('s2-pebc - duplicate active element deduplication', () => {
@@ -446,6 +472,53 @@ describe('s2-pebc - schedule persistence', () => {
     expect(node.warn as jest.Mock).not.toHaveBeenCalled()
     expect(node.error as jest.Mock).not.toHaveBeenCalled()
   })
+
+  it('persists each element tagged with the instruction that produced it', () => {
+    const { handlers } = setupNode({ id: 'persist-node' }, DEFAULT_PEBC_CONFIG, { userDir: tmpDir })
+    const now = Date.now()
+
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'instr-a' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'instr-b' }), jest.fn(), jest.fn())
+
+    const scheduleFile = path.join(tmpDir, '.s2', 'persist-node-schedule.json')
+    const saved = JSON.parse(fs.readFileSync(scheduleFile, 'utf8'))
+    expect(saved.elements).toHaveLength(2)
+    expect(saved.elements[0].instructionId).toBe('instr-a')
+    expect(saved.elements[1].instructionId).toBe('instr-b')
+  })
+
+  it('falls back to the schedule-level instructionId when restoring a file with no per-element instructionId', () => {
+    const now = Date.now()
+    const legacySchedule = {
+      receivedAt: now,
+      cemId: 'cem-legacy',
+      instructionId: 'instr-legacy',
+      commodityQuantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC',
+      elements: [{ startMs: now + SLOT, endMs: now + 2 * SLOT, duration: SLOT, upperBound: 11040, lowerBound: -11040 }]
+    }
+    const scheduleDir = path.join(tmpDir, '.s2')
+    fs.mkdirSync(scheduleDir, { recursive: true })
+    fs.writeFileSync(path.join(scheduleDir, 'persist-node-schedule.json'), JSON.stringify(legacySchedule))
+
+    const { node } = setupNode({ id: 'persist-node' }, DEFAULT_PEBC_CONFIG, { userDir: tmpDir })
+
+    const calls = scheduleCalls(node)
+    const restored = (calls[calls.length - 1][0] as unknown[])[1] as { payload: { elements: { instructionId: string }[] } }
+    expect(restored.payload.elements).toHaveLength(1)
+    expect(restored.payload.elements[0].instructionId).toBe('instr-legacy')
+
+    // The dispatch path (InstructionStatus) already read the correct id from pebcSlots'
+    // own instructionId field even before this change - confirm it still does, using the
+    // same fallback value, once the restored slot's element becomes active.
+    ;(node.send as jest.Mock).mockClear()
+    jest.advanceTimersByTime(SLOT)
+    const call = commandCalls(node).find(c => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: { command: string } }).payload
+      return cmd.command === 'InstructionStatus'
+    })
+    const cmd = ((call![0] as unknown[])[2] as { payload: { instructionId: string } }).payload
+    expect(cmd.instructionId).toBe('instr-legacy')
+  })
 })
 
 describe('s2-pebc - RevokeObject handling', () => {
@@ -536,6 +609,41 @@ describe('s2-pebc - RevokeObject handling', () => {
     handlers.input(revokeMsg('cem-1', 'pebc-instr-future', 'PEBC.Instruction'), jest.fn(), jest.fn())
 
     expect(activeCalls(node).length).toBe(0)
+  })
+
+  it('revoking one accumulated instruction only removes that instruction\'s own slots, leaving others intact', () => {
+    const { node, handlers } = setupNode()
+    const now = Date.now()
+    handlers.input(pebcInstructionMsg('cem-1', now, { instructionId: 'instr-a' }), jest.fn(), jest.fn())
+    handlers.input(pebcInstructionMsg('cem-1', now + SLOT, { instructionId: 'instr-b' }), jest.fn(), jest.fn())
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input(revokeMsg('cem-1', 'instr-a', 'PEBC.Instruction'), jest.fn(), jest.fn())
+
+    // Exactly one REVOKED, and only for the instruction actually revoked - not the other one.
+    const revokedCalls = commandCalls(node).filter(c => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: { command: string } }).payload
+      return cmd.command === 'InstructionStatus' && (cmd as unknown as { status: string }).status === 'REVOKED'
+    })
+    expect(revokedCalls.length).toBe(1)
+    const revokedCmd = ((revokedCalls[0][0] as unknown[])[2] as { payload: { instructionId: string } }).payload
+    expect(revokedCmd.instructionId).toBe('instr-a')
+
+    // instr-b's slot is still accumulated - the schedule dump now holds only its element.
+    const lastSchedule = (scheduleCalls(node)[scheduleCalls(node).length - 1][0] as unknown[])[1] as { payload: { elements: { instructionId: string }[] } }
+    expect(lastSchedule.payload.elements).toHaveLength(1)
+    expect(lastSchedule.payload.elements[0].instructionId).toBe('instr-b')
+
+    // instr-b still dispatches normally once its own slot starts - it was never revoked.
+    ;(node.send as jest.Mock).mockClear()
+    jest.advanceTimersByTime(SLOT)
+    const startedCall = commandCalls(node).find(c => {
+      const cmd = ((c[0] as unknown[])[2] as { payload: { command: string } }).payload
+      return cmd.command === 'InstructionStatus'
+    })
+    const startedCmd = ((startedCall![0] as unknown[])[2] as { payload: { instructionId: string, status: string } }).payload
+    expect(startedCmd.instructionId).toBe('instr-b')
+    expect(startedCmd.status).toBe('STARTED')
   })
 })
 

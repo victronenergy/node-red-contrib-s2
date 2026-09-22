@@ -89,14 +89,18 @@ export = function (RED: NodeRedApp): void {
         const raw = fs.readFileSync(scheduleFile, 'utf8')
         const schedule = JSON.parse(raw) as PebcSchedule
         const now = Date.now()
-        const validElements = schedule.elements.filter(el => el.endMs > now)
+        // Elements persisted before per-element instructionId was introduced fall back to the
+        // schedule's top-level instructionId, matching how they were attributed at the time.
+        const validElements = schedule.elements
+          .filter(el => el.endMs > now)
+          .map(el => ({ ...el, instructionId: el.instructionId ?? schedule.instructionId }))
         if (validElements.length === 0) return
         // Repopulate pebcSlots (not just the schedule passed to applySchedule) so
         // updateNodeStatus - which reads pebcSlots, not the schedule variable - reflects
         // the restored schedule immediately instead of showing "no schedule" until the
         // next instruction arrives.
         for (const el of validElements) {
-          pebcSlots.set(el.startMs, { element: el, commodityQuantity: schedule.commodityQuantity, cemId: schedule.cemId, instructionId: schedule.instructionId })
+          pebcSlots.set(el.startMs, { element: el, commodityQuantity: schedule.commodityQuantity, cemId: schedule.cemId, instructionId: el.instructionId })
         }
         applySchedule({ ...schedule, elements: validElements })
         node.log(`Restored S2 schedule for CEM ${schedule.cemId} with ${validElements.length} future element(s)`)
@@ -296,7 +300,8 @@ export = function (RED: NodeRedApp): void {
             endTime: new Date(el.endMs).toISOString(),
             durationSec: Math.round(el.duration / 1000),
             lowerBound: el.lowerBound,
-            upperBound: el.upperBound
+            upperBound: el.upperBound,
+            instructionId: el.instructionId
           }))
         }
       }, null])
@@ -328,7 +333,7 @@ export = function (RED: NodeRedApp): void {
         cemId: sorted[0].cemId,
         instructionId: parsed.instructionId,
         commodityQuantity: sorted[0].commodityQuantity,
-        elements: sorted.map(s => s.element)
+        elements: sorted.map(s => ({ ...s.element, instructionId: s.instructionId }))
       }
       applySchedule(combined)
     }
@@ -363,7 +368,7 @@ export = function (RED: NodeRedApp): void {
           cemId: sorted[0].cemId,
           instructionId: sorted[0].instructionId,
           commodityQuantity: sorted[0].commodityQuantity,
-          elements: sorted.map(s => s.element)
+          elements: sorted.map(s => ({ ...s.element, instructionId: s.instructionId }))
         }
         applySchedule(rebuilt)
         // The revoked slot may have been the currently-active one, leaving a gap before the
@@ -386,7 +391,7 @@ export = function (RED: NodeRedApp): void {
         cemId: sorted[0].cemId,
         instructionId: sorted[0].instructionId,
         commodityQuantity: sorted[0].commodityQuantity,
-        elements: sorted.map(s => s.element)
+        elements: sorted.map(s => ({ ...s.element, instructionId: s.instructionId }))
       }
     }
 

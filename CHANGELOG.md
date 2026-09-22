@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `s2-pebc`: the accumulated schedule's persisted file, flow-context snapshot, and output port 2's schedule dump now tag each element with the `instructionId` of the PEBC instruction that produced it, alongside the schedule's existing top-level `instructionId`. Previously, once elements from more than one instruction were accumulated together (they're cleared only when `power_constraints_id` changes, not per-instruction), that single top-level ID no longer reflected which instruction some of those elements actually came from. `InstructionStatus` dispatch itself already tracked this correctly internally and required no change.
+
 ## [0.9.3]
 
 ### Fixed
