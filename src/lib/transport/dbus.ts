@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events'
 import * as dbus from 'dbus-native-victron'
-import { addVictronInterfaces, addSettings, VictronInterfaceHandle } from 'dbus-victron-virtual'
+import { addVictronInterfaces, addSettings, removeSettings, getValue, VictronInterfaceHandle } from 'dbus-victron-virtual'
 import { resolveMeasurementProps } from '../s2/power-measurement-cache'
 import { EnergyAccumulator } from '../s2/energy-accumulator'
 import { buildMinimalMeterShape, MinimalMeterPosition } from './minimal-meter-properties'
@@ -110,15 +110,49 @@ function getDeviceInstance (result: unknown): number | null {
 }
 
 /**
+ * Moves a ClassAndVrmInstance claimed under the earlier settings path
+ * (/Settings/Devices/virtual_s2_<nodeId>) out of the way, returning its "<class>:<instance>"
+ * value so the caller can re-claim the same instance under the new path - or null when there is
+ * nothing to migrate. The old entry has to be removed *before* the new one is added: localsettings
+ * bumps a ClassAndVrmInstance default that another entry already holds to the next free instance.
+ * node-red-contrib-victron's virtual-device cleanup removes any virtual_* ClassAndVrmInstance
+ * whose service isn't on the bus, which is why the path moved in the first place.
+ */
+async function takeLegacyClassAndVrmInstance (bus: unknown, legacyPath: string): Promise<string | null> {
+  let legacyValue: unknown
+  try {
+    const result = await getValue(bus, {
+      path: legacyPath,
+      interface_: 'com.victronenergy.BusItem',
+      destination: 'com.victronenergy.settings'
+    })
+    // dbus-native returns the variant as [signature, [value]].
+    legacyValue = (result as { [k: number]: unknown } | undefined)?.[1]
+    legacyValue = (legacyValue as { [k: number]: unknown } | undefined)?.[0]
+  } catch {
+    return null // no such setting - nothing to migrate
+  }
+  if (typeof legacyValue !== 'string' || !legacyValue.includes(':')) return null
+
+  try {
+    await removeSettings(bus, [{ path: legacyPath }])
+  } catch (err) {
+    console.warn(`S2DbusTransport: failed to remove legacy setting ${legacyPath}:`, err)
+  }
+  return legacyValue
+}
+
+/**
  * S2DbusTransport registers a com.victronenergy.<deviceType>.virtual_s2_<nodeId>
  * D-Bus service exposing /S2/0/Rm (the S2-over-D-Bus session protocol), via
  * dbus-victron-virtual's built-in S2 support. Unlike S2WebSocketTransport, the RM does not
  * dial out - it registers the service and waits for a CEM to call in.
  *
  * DeviceInstance is claimed via com.victronenergy.settings (AddSettings on
- * /Settings/Devices/virtual_<nodeId>/ClassAndVrmInstance, default "<deviceType>:100"), the same
+ * /Settings/Devices/s2_<nodeId>/ClassAndVrmInstance, default "<deviceType>:100"), the same
  * mechanism and default node-red-contrib-victron's virtual devices use - so the instance number
  * is stable across redeploys/restarts rather than a value the user has to pick and keep unique.
+ * A setting left under the older virtual_s2_<nodeId> path is migrated, keeping its instance.
  *
  * When constructed with a measurementType, the corresponding power properties (e.g. Ac/Power)
  * are declared as real, readable D-Bus BusItem properties - so the latest value is visible to
@@ -189,10 +223,17 @@ export class S2DbusTransport extends EventEmitter {
     const serviceName = `com.victronenergy.${deviceType}.virtual_s2_${sanitizedNodeId}`
     this.serviceName = serviceName
 
+    // Deliberately not virtual_*: node-red-contrib-victron's virtual-device cleanup removes any
+    // /Settings/Devices/virtual_*/ClassAndVrmInstance whose service isn't on the bus (e.g. while
+    // this node's flow is disabled), after which the device can come back with another instance.
+    const settingsPath = `/Settings/Devices/s2_${sanitizedNodeId}/ClassAndVrmInstance`
+    const legacyValue = await takeLegacyClassAndVrmInstance(
+      bus, `/Settings/Devices/virtual_s2_${sanitizedNodeId}/ClassAndVrmInstance`)
+
     const settingsResult = await callAddSettingsWithRetry(bus, [
       {
-        path: `/Settings/Devices/virtual_s2_${sanitizedNodeId}/ClassAndVrmInstance`,
-        default: `${deviceType}:${DEFAULT_DEVICE_INSTANCE}`,
+        path: settingsPath,
+        default: legacyValue ?? `${deviceType}:${DEFAULT_DEVICE_INSTANCE}`,
         type: 's'
       }
     ])

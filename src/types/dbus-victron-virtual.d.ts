@@ -26,4 +26,11 @@ declare module 'dbus-victron-virtual' {
   }
 
   export function addSettings (bus: unknown, settings: AddSettingsInput[]): Promise<unknown>
+
+  export function removeSettings (bus: unknown, settings: Array<{ path: string }>): Promise<unknown>
+
+  export function getValue (
+    bus: unknown,
+    options: { path: string, interface_: string, destination: string }
+  ): Promise<unknown>
 }

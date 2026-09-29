@@ -10,6 +10,8 @@ const mockSystemBus = dbusNative.systemBus as jest.Mock
 const mockSessionBus = dbusNative.sessionBus as jest.Mock
 const mockAddVictronInterfaces = dbusVirtual.addVictronInterfaces as jest.Mock
 const mockAddSettings = dbusVirtual.addSettings as jest.Mock
+const mockRemoveSettings = dbusVirtual.removeSettings as jest.Mock
+const mockGetValue = dbusVirtual.getValue as jest.Mock
 
 interface FakeBus {
   connection: { on: jest.Mock }
@@ -53,6 +55,9 @@ beforeEach(() => {
   mockSessionBus.mockReturnValue(fakeBus)
   mockAddVictronInterfaces.mockReturnValue(fakeHandle)
   mockAddSettings.mockResolvedValue(settingsResultFor(100))
+  // No setting under the legacy virtual_s2_<nodeId> path: localsettings rejects GetValue on it.
+  mockGetValue.mockRejectedValue(new Error('org.freedesktop.DBus.Error.UnknownObject'))
+  mockRemoveSettings.mockResolvedValue([0])
 })
 
 function makeTransport (overrides: Partial<ConstructorParameters<typeof S2DbusTransport>[0]> = {}) {
@@ -107,11 +112,50 @@ describe('S2DbusTransport - DeviceInstance claiming', () => {
 
     expect(mockAddSettings).toHaveBeenCalledWith(fakeBus, [
       expect.objectContaining({
-        path: '/Settings/Devices/virtual_s2_abc123/ClassAndVrmInstance',
+        path: '/Settings/Devices/s2_abc123/ClassAndVrmInstance',
         default: 'heatpump:100',
         type: 's'
       })
     ])
+    expect(mockRemoveSettings).not.toHaveBeenCalled()
+  })
+
+  it('migrates a legacy virtual_s2_<nodeId> setting, keeping its instance', async () => {
+    mockGetValue.mockResolvedValue([[{ type: 's' }], ['acload:101']])
+    makeTransport({ nodeId: 'abc123' }).connect()
+    await flush()
+
+    expect(mockGetValue).toHaveBeenCalledWith(fakeBus, expect.objectContaining({
+      path: '/Settings/Devices/virtual_s2_abc123/ClassAndVrmInstance',
+      destination: 'com.victronenergy.settings'
+    }))
+    expect(mockRemoveSettings).toHaveBeenCalledWith(fakeBus, [{ path: '/Settings/Devices/virtual_s2_abc123/ClassAndVrmInstance' }])
+    expect(mockAddSettings).toHaveBeenCalledWith(fakeBus, [
+      expect.objectContaining({ path: '/Settings/Devices/s2_abc123/ClassAndVrmInstance', default: 'acload:101' })
+    ])
+    // Removed first: localsettings would otherwise bump the new entry past the instance the old one still holds.
+    expect(mockRemoveSettings.mock.invocationCallOrder[0]).toBeLessThan(mockAddSettings.mock.invocationCallOrder[0])
+  })
+
+  it('still claims the legacy instance when removing the legacy setting fails', async () => {
+    mockGetValue.mockResolvedValue([[{ type: 's' }], ['acload:101']])
+    mockRemoveSettings.mockRejectedValue(new Error('remove failed'))
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    makeTransport({ nodeId: 'abc123' }).connect()
+    await flush()
+
+    expect(mockAddSettings).toHaveBeenCalledWith(fakeBus, [expect.objectContaining({ default: 'acload:101' })])
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('ignores an unparseable legacy value and uses the default', async () => {
+    mockGetValue.mockResolvedValue([[{ type: 's' }], ['']])
+    makeTransport({ nodeId: 'abc123' }).connect()
+    await flush()
+
+    expect(mockRemoveSettings).not.toHaveBeenCalled()
+    expect(mockAddSettings).toHaveBeenCalledWith(fakeBus, [expect.objectContaining({ default: 'acload:100' })])
   })
 
   it('uses the claimed instance number as the registered DeviceInstance', async () => {

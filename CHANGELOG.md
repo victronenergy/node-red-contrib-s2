@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.6]
+
+### Fixed
+
+- `s2-dbus`/`s2-resource`'s D-Bus transport now claims its DeviceInstance under `/Settings/Devices/s2_<nodeId>/ClassAndVrmInstance` instead of `/Settings/Devices/virtual_s2_<nodeId>/ClassAndVrmInstance`. `node-red-contrib-victron`'s virtual-device cleanup removes every `virtual_*` `ClassAndVrmInstance` setting whose service isn't on D-Bus, so disabling the flow holding the node (or stopping the Node-RED instance running it) let that cleanup delete the setting - after which the device could come back with a different DeviceInstance, breaking anything in the flow that referenced it. An existing `virtual_s2_<nodeId>` setting is migrated on startup, keeping its instance. The D-Bus service name (`com.victronenergy.<deviceType>.virtual_s2_<nodeId>`) is unchanged.
+
 ## [0.9.5]
 
 ### Fixed
