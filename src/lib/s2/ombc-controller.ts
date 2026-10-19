@@ -12,6 +12,9 @@ type ModeIdResolution = { id: string } | { error: string }
 type PowerMeasurementConfig = { measurementType: string, nrOfPhases: number, phaseSetting: number }
 
 const PERSISTED_STATUS_KEY_PREFIX = 's2OmbcStatus:'
+
+/** Release from which a node's ModeRequest carries { message, modes } (see behaviour-version.ts). */
+export const DESCRIBED_MODE_REQUEST_SINCE = '0.9.7'
 const DEFAULT_STATUS_KEY = 's2OmbcDefaultStatus'
 
 export interface OMBCControllerOptions {
@@ -32,6 +35,9 @@ export interface OMBCControllerOptions {
    * hardware-state feedback (e.g. a virtual/test device); a flow that confirms based on real
    * hardware state should leave this off. Defaults to false. */
   autoConfirmInstructions?: boolean
+  /** Node behaviour version DESCRIBED_MODE_REQUEST_SINCE or later: a ModeRequest says what it expects
+   * and lists the modes a ModeConfirmation can name, instead of payload null (kept for older nodes). */
+  describeModeRequest?: boolean
 }
 
 /**
@@ -325,6 +331,17 @@ export class OMBCController {
 
     if (status) {
       this.opts.onSendCommand({ payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } })
+    } else if (this.opts.describeModeRequest) {
+      const modes = (this.systemDescription.operationModes as Array<Record<string, unknown>> | undefined) || []
+      this.opts.onEmitInstruction({
+        topic: 'ModeRequest',
+        payload: {
+          message: 'No operation mode is known yet - send a ModeConfirmation with the mode the device is in now',
+          modes: modes.map((m, index) => ({ id: m.id, index, label: (m.diagnostic_label as string | undefined) || m.id }))
+        },
+        cemId
+      })
+      this.opts.onStatus({ fill: 'yellow', shape: 'ring', text: 'waiting for ModeConfirmation' })
     } else {
       this.opts.onEmitInstruction({ topic: 'ModeRequest', payload: null, cemId })
     }

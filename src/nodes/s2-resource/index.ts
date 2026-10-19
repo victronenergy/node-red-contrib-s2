@@ -1,7 +1,8 @@
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2CemConfigNode, S2DbusConfigNode } from '../../types/config-nodes'
 import { S2ResourceManager } from '../../lib/s2/resource-manager'
-import { OMBCController } from '../../lib/s2/ombc-controller'
+import { OMBCController, DESCRIBED_MODE_REQUEST_SINCE } from '../../lib/s2/ombc-controller'
+import { versionAtLeast } from '../../lib/s2/behaviour-version'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
 import { S2DbusTransport } from '../../lib/transport/dbus'
 import { PowerMeasurementCache } from '../../lib/s2/power-measurement-cache'
@@ -38,6 +39,8 @@ interface S2ResourceConfig extends NodeConfig {
   systemDescription?: string
   defaultOperationModeId?: string
   autoConfirmInstructions?: boolean
+  /** Release whose behaviour this node has - see behaviour-version.ts. Absent on nodes deployed before. */
+  version?: string
 }
 
 /**
@@ -332,7 +335,8 @@ export = function (RED: NodeRedApp): void {
         // recommended default. Opt in only for a resource with no independent way to report its
         // own hardware state back to the flow, which would otherwise leave the CEM waiting
         // indefinitely for an OMBC.Status that never comes.
-        autoConfirmInstructions: config.autoConfirmInstructions === true
+        autoConfirmInstructions: config.autoConfirmInstructions === true,
+        describeModeRequest: versionAtLeast(config.version, DESCRIBED_MODE_REQUEST_SINCE)
       })
 
       // Seeds the "Pre-connection default status" (see control-type-ombc spec) at deploy

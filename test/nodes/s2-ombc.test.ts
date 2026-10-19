@@ -722,6 +722,81 @@ describe('s2-ombc - status request notification', () => {
   })
 })
 
+describe('s2-ombc - ModeRequest from behaviour version 0.9.7', () => {
+  function modeRequestOf (node: Record<string, unknown>): Record<string, unknown> | undefined {
+    return (node.send as jest.Mock).mock.calls
+      .filter((c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null)
+      .map((c) => (c[0] as unknown[])[0] as Record<string, unknown>)
+      .find(m => m.topic === 'ModeRequest')
+  }
+
+  it('says what is expected and lists the modes a ModeConfirmation can name', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    const payload = modeRequestOf(node)!.payload as { message: string, modes: unknown[] }
+    expect(payload.message).toEqual(expect.stringContaining('ModeConfirmation'))
+    expect(payload.modes).toEqual([
+      { id: 'mode-standby', index: 0, label: 'Standby' },
+      { id: 'mode-on', index: 1, label: 'Normal operation' }
+    ])
+  })
+
+  it('labels a mode without diagnostic_label by its id', () => {
+    const ombcConfig = {
+      systemDescription: JSON.stringify({
+        operationModes: [{ id: 'mode-unlabelled', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }], abnormal_condition_only: false }],
+        transitions: [],
+        timers: []
+      })
+    }
+    const { node, handlers } = setupNode({ version: '0.9.7' }, ombcConfig)
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect((modeRequestOf(node)!.payload as { modes: unknown[] }).modes).toEqual([{ id: 'mode-unlabelled', index: 0, label: 'mode-unlabelled' }])
+  })
+
+  it('shows that it is waiting for a ModeConfirmation', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'yellow', shape: 'ring', text: 'waiting for ModeConfirmation' })
+  })
+
+  it('accepts a mode taken from the request as ModeConfirmation', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    const [, onMode] = (modeRequestOf(node)!.payload as { modes: Array<Record<string, unknown>> }).modes
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: onMode }, jest.fn(), jest.fn())
+
+    const update = getCommandCalls(node).find(c => c.command === 'UpdateStatus') as { ombc: { activeOperationModeId: string } } | undefined
+    expect(update!.ombc.activeOperationModeId).toBe('mode-on')
+  })
+
+  it('also applies to nodes of a later release', () => {
+    const { node, handlers } = setupNode({ version: '1.0.0' })
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(modeRequestOf(node)!.payload).toEqual(expect.objectContaining({ modes: expect.any(Array) }))
+  })
+
+  it('keeps payload null and the status unchanged for a node without a version', () => {
+    const { node, handlers } = setupNode()
+    ;(node.status as jest.Mock).mockClear()
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    expect(modeRequestOf(node)!.payload).toBeNull()
+    expect(node.status).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'waiting for ModeConfirmation' }))
+  })
+})
+
 describe('s2-ombc - reconnect resend', () => {
   it('resends SystemDescription and the last confirmed UpdateStatus when SelectControlType(OMBC) is observed again', () => {
     const { node, handlers } = setupNode()

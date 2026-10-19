@@ -1,10 +1,13 @@
 import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2OmbcConfigNode } from '../../types/config-nodes'
-import { OMBCController } from '../../lib/s2/ombc-controller'
+import { OMBCController, DESCRIBED_MODE_REQUEST_SINCE } from '../../lib/s2/ombc-controller'
+import { versionAtLeast } from '../../lib/s2/behaviour-version'
 import { OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
 
 interface S2OmbcNodeConfig extends NodeConfig {
   ombcConfig: string
+  /** Release whose behaviour this node has - see behaviour-version.ts. Absent on nodes deployed before. */
+  version?: string
 }
 
 /**
@@ -85,7 +88,8 @@ export = function (RED: NodeRedApp): void {
       onStatus: (status) => node.status(status),
       onWarn: (message) => node.warn(message),
       getContextValue: (key) => node.context().get(key),
-      setContextValue: (key, value) => node.context().set(key, value)
+      setContextValue: (key, value) => node.context().set(key, value),
+      describeModeRequest: versionAtLeast(config.version, DESCRIBED_MODE_REQUEST_SINCE)
     })
 
     node.on('input', (msg, _send, done) => {

@@ -9,6 +9,7 @@
     {
         "id": "d7672ec866a66ff8",
         "type": "s2-resource",
+        "version": "0.9.7",
         "z": "d18d40b6d00d6710",
         "name": "my-PV AC•THOR 9s",
         "rmName": "RM: My-PV AC-Thor (9S)",

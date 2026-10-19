@@ -79,6 +79,7 @@
     {
         "id": "d3c4e5f6a7b80007",
         "type": "s2-ombc",
+        "version": "0.9.7",
         "z": "d3c4e5f6a7b80001",
         "name": "",
         "ombcConfig": "d3c4e5f6a7b80008",

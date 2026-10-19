@@ -52,6 +52,9 @@
         systemDescription: { value: '', required: false },
         defaultOperationModeId: { value: '' },
         autoConfirmInstructions: { value: false },
+        // Release whose behaviour a node has; only newly added nodes get it (flows Node-RED loads or
+        // imports don't get defaults). 0.9.7: built-in OMBC's ModeRequest carries { message, modes }.
+        version: { value: '0.9.7' },
 
         outputs: { value: 1 }
       },
@@ -248,6 +251,13 @@
         $('#node-input-controlType').on('change', showControlTypeSection)
         showControlTypeSection()
 
+        // Inside the OMBC section, so it only shows where the versions behave differently.
+        $('#s2-resource-version-notice').toggle(!window.__s2Common.versionAtLeast(node.version, node._def.defaults.version.value))
+        $('#s2-resource-version-update').on('click', function () {
+          $(this).data('requested', true).hide()
+          $('#s2-resource-version-notice-text').text('This node will use the latest behaviour when you click Done.')
+        })
+
         // -- OMBC Friendly/Advanced toggle (same structure as s2-ombc-config's own) --
 
         currentOmbcMode = 'friendly'
@@ -433,6 +443,11 @@
         }, 280)
       },
       oneditsave: function () {
+        // Set here rather than through an input, so nodes saved without pressing "Update to latest"
+        // keep having no version at all.
+        if ($('#s2-resource-version-update').data('requested')) {
+          this.version = this._def.defaults.version.value
+        }
         if (!$('#node-input-resourceId').val().trim()) {
           $('#node-input-resourceId').val(window.__s2Common.generateUuid())
         }
@@ -665,6 +680,10 @@
       </div>
 
       <div id="s2-resource-ct-ombc">
+        <div class="form-row form-tips" id="s2-resource-version-notice">
+          <span id="s2-resource-version-notice-text">This node sends <code>ModeRequest</code> with an empty payload. Newer nodes say what they expect and list the operation modes a <code>ModeConfirmation</code> can name.</span>
+          <button type="button" id="s2-resource-version-update" class="red-ui-button red-ui-button-small">Update to latest</button>
+        </div>
         <div class="form-row s2-full-row">
           <div class="s2-tabs">
             <a href="#" id="s2-resource-ombc-tab-friendly" class="s2-tab s2-tab-active">Friendly</a>
@@ -718,6 +737,7 @@
   <h3>Control Type tab</h3>
   <p><b>Include "Not Controllable" in advertised control types</b> (checked by default, applies regardless of Control type) adds <code>NOT_CONTROLABLE</code> to the advertised list, so the CEM can choose not to control this resource - some CEMs select it as their initial/default state before switching to OMBC, so unchecking this may prevent them from ever taking control. Uncheck it only if that choice should never be offered.</p>
   <p><b>OMBC</b> embeds the same friendly operation-mode editor <b>s2-ombc-config</b> has, and this node then behaves exactly like <b>s2-rm</b> + <b>s2-ombc</b> wired together - declaring the system description, resolving instructions, and confirming status - with resolved instructions on this node's downstream output (<code>ModeInstruction</code>/<code>ModeRequest</code>), and mode confirmations accepted on this node's input (<code>{ topic: 'ModeConfirmation', payload: { id, index, label, factor }, cemId? }</code>, resolved via <code>id</code> if present, otherwise <code>index</code>, otherwise <code>label</code> - so a <code>ModeInstruction</code> payload can be wired straight back in as-is). While its Advanced (JSON) mode is active, the JSON is validated against the real <code>OMBC.SystemDescription</code> S2 schema as you type - <b>Done</b> is disabled and the specific problem is shown until it's fixed.</p>
+  <p>A <code>ModeRequest</code> means no operation mode is known yet: its payload is <code>{ message, modes }</code>, listing the configured modes as <code>{ id, index, label }</code>, and the node waits for a <code>ModeConfirmation</code> with the current one (see the <b>s2-ombc</b> help). Nodes added before this behaviour existed send <code>null</code> instead; the Control tab offers <b>Update to latest</b>.</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
   <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (off by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. Left unchecked, this node waits for a <code>ModeConfirmation</code> from the flow before reporting the mode active (<code>OMBC.Status</code>) - your flow confirming based on real device state (e.g. after actually switching a relay) is more reliable than assuming the switch happened, so that's the recommended default. Check it only for a resource with no independent way to report its own hardware state back to the flow, so this node reports the requested mode active immediately instead of waiting for a confirmation that would never come.</p>
   <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>
