@@ -86,6 +86,14 @@ Import any of these from the Node-RED palette manager's "Import Examples" menu (
 | `opportunity-loads-mypv-ac-thor` | Drives a real My-PV AC-Thor 9s over its HTTP control API as an OMBC resource via **s2-resource**'s built-in D-Bus transport, reporting back its own instructed power as the measurement (see [Faking a measurement from an OMBC instruction](#faking-a-measurement-from-an-ombc-instruction)). |
 | `pebc-instruction-tester` | A standalone CEM-side tester (no S2 nodes involved) that POSTs `PEBC.Instruction` bodies at a resource manager's REST endpoint - useful for exercising **s2-pebc** without a real CEM. |
 
+## One resource ID per resource
+
+A CEM tells resources apart by their resource ID alone, so every `s2-resource` (and every `s2-rm-config`) needs its own. The editor takes care of this: a node from the palette gets an ID straight away, and a copy-pasted node or a flow or example imported again with "Import copy" gets a new one, while a cut-and-paste keeps its ID so the CEM keeps its settings for that resource (for GX Opportunity Loads: its priority).
+
+With `Transport: WebSocket`, `s2-resource` shows its Resource ID on the Connection tab, so you can register it with your CEM or replace it with the ID your CEM expects (2-64 letters, digits, `-`, `_` or `:`; a warning shows when it isn't a UUID, which CEMs built on s2python require). For D-Bus it stays hidden: GX Opportunity Loads never needs it.
+
+If two running nodes still end up with the same ID (e.g. a flow copy-pasted with a version before this check, or two `s2-rm` nodes sharing one `s2-rm-config`), the one that starts second refuses to start with a red `duplicate resource ID` status and an error naming the other node. Copy and paste the refused `s2-resource` (the copy gets a new ID) and delete the original, or give the `s2-rm` its own `s2-rm-config`, then deploy.
+
 ## Sending PowerMeasurements
 
 To send power measurements to the CEM, set an inject node's payload to type JSON with the following value, and wire it into the s2-rm input (this is `msg.payload`, not the whole `msg` - don't wrap it in another `{ "payload": ... }`):

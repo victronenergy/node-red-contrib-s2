@@ -15,6 +15,70 @@ window.__s2Common.takePendingConfigName = function (configType) {
   return name
 }
 
+window.__s2Common.generateUuid = function () {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
+// A CEM tells resources apart by resource ID only, and copy-paste or a repeated import copies the
+// ID along with the rest of the node - so an ID another S2 node already holds must be replaced.
+window.__s2Common.resourceIdNeedsReplacing = function (RED, node) {
+  if (!node.resourceId) return true
+  let taken = false
+  const check = function (other) {
+    if (other.id !== node.id &&
+        (other.type === 's2-resource' || other.type === 's2-rm-config') &&
+        other.resourceId === node.resourceId) {
+      taken = true
+      return false
+    }
+  }
+  RED.nodes.eachNode(check)
+  if (!taken) RED.nodes.eachConfig(check)
+  return taken
+}
+
+// Any UUID version: s2python types resource_id as Python's uuid.UUID, which accepts them all.
+window.__s2Common.isUuid = function (value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+// The S2 ID schema's pattern, anchored - the schema's own is unanchored, so taken literally it
+// accepts any string containing two valid characters. Empty is allowed: oneditsave fills it in.
+window.__s2Common.validateResourceId = function (RED, node, value) {
+  if (!value) return true
+  if (!/^[a-zA-Z0-9\-_:]{2,64}$/.test(value)) {
+    return 'Resource ID must be 2-64 characters: letters, digits, "-", "_" or ":"'
+  }
+  if (window.__s2Common.resourceIdNeedsReplacing(RED, { id: node.id, resourceId: value })) {
+    return 'Resource ID is already used by another S2 resource'
+  }
+  return true
+}
+
+// nodes:add rather than a node definition's onadd: onadd only runs for nodes landing on the
+// active tab, so an import that brings its own tab (every shipped example, any exported flow)
+// would keep duplicate IDs. nodes:add also fires during the initial flow load, which must be left
+// alone - a deployed duplicate is reported by the runtime instead of being changed silently here.
+window.__s2Common.watchResourceIds = function (RED) {
+  if (window.__s2Common._watchingResourceIds) return
+  window.__s2Common._watchingResourceIds = true
+
+  // A script loaded later (e.g. palette install) misses flows:loaded, but then tabs already exist.
+  let flowsLoaded = RED.workspaces.count() > 0
+  RED.events.on('flows:loaded', function () { flowsLoaded = true })
+  RED.events.on('nodes:add', function (node) {
+    if (!flowsLoaded) return
+    if (node.type !== 's2-resource' && node.type !== 's2-rm-config') return
+    if (window.__s2Common.resourceIdNeedsReplacing(RED, node)) {
+      node.resourceId = window.__s2Common.generateUuid()
+      node.changed = true
+    }
+  })
+}
+
 window.__s2Common.initializeTooltips = function () {
   $('.s2-tooltip-container').remove()
   $('.s2-form .tooltip-icon').off('mouseenter.s2 mouseleave.s2')

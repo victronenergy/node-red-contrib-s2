@@ -21,7 +21,7 @@
         "id": "d3c4e5f6a7b80003",
         "type": "s2-rm-config",
         "name": "S2 RM boiler",
-        "resourceId": "4d0d1065-c082-4073-aeef-fe20821cc13d",
+        "resourceId": "3b6a9392-74b6-462f-b9c9-900c2d9151b0",
         "rmName": "RM: Boiler",
         "roles": "ENERGY_CONSUMER",
         "controlTypes": "OPERATION_MODE_BASED_CONTROL",

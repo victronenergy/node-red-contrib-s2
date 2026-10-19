@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `s2-resource` (`Transport: WebSocket`): the Resource ID is shown on the Connection tab, under the CEM picker, and can be replaced with the ID a CEM expects - for CEMs that only accept pre-registered resources. It must be 2-64 letters, digits, `-`, `_` or `:` and not used by another S2 node (otherwise the node is marked invalid); a non-UUID is accepted with a warning, since CEMs built on s2python only accept UUIDs. Emptying the field generates a new ID. It stays hidden for D-Bus and External.
+
+### Fixed
+
+- `s2-resource` and `s2-rm-config` get a new resource ID when a copy is added in the editor - a copy-paste, or a flow or example imported again with "Import copy" (including imports that bring their own flow tab) - instead of keeping the original's. A CEM tells resources apart by resource ID alone, so two resources sharing one were merged on the CEM side: GX Opportunity Loads showed one load twice and lost the other, with control behaving randomly. A cut-and-paste, a first-time import and a fresh node from the palette keep or get a single ID as before; deployed flows are not changed when the editor loads them. A node dropped from the palette now gets its resource ID straight away, instead of only once its edit dialog is opened.
+- The `s2-dbus-quickstart` example no longer shares its resource ID with `boiler-ombc-demo`.
+
+### Changed
+
+- **Behaviour change:** `s2-resource` and `s2-rm` now refuse to start when another running `s2-resource`/`s2-rm` already uses the same resource ID. The refused node logs an error naming the other node, shows a red `duplicate resource ID` status, and registers no D-Bus service, opens no WebSocket and handles no input. **If you have a flow with duplicates** (e.g. a copy-pasted `s2-resource` from an earlier version, or two `s2-rm` nodes sharing one `s2-rm-config`), one of them stops after upgrading: copy and paste that `s2-resource` (the copy gets a new ID) and delete the original, or give the `s2-rm` its own `s2-rm-config`, then deploy.
+
 ## [0.9.6]
 
 ### Fixed

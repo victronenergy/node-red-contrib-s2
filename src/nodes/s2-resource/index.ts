@@ -5,6 +5,7 @@ import { OMBCController } from '../../lib/s2/ombc-controller'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
 import { S2DbusTransport } from '../../lib/transport/dbus'
 import { PowerMeasurementCache } from '../../lib/s2/power-measurement-cache'
+import { claimResourceId, releaseResourceId } from '../../lib/s2/resource-id-registry'
 import { RmDetails, generateId, OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
 import { publishToDebugSidebar, parseForDebugSidebar } from '../../lib/node-red-debug-sidebar'
 
@@ -114,6 +115,15 @@ export = function (RED: NodeRedApp): void {
       model: config.model || '',
       serialNumber: config.serialNumber || node.id,
       firmwareVersion: config.firmwareVersion || ''
+    }
+
+    // A CEM tells resources apart by resource_id only, so a second node with the same ID (e.g. a
+    // copy-pasted one) would be merged with this one on the CEM side - refuse it before it starts.
+    const claim = claimResourceId(rmDetails.resourceId, node.id)
+    if (!claim.claimed) {
+      node.error(`s2-resource: resource ID ${rmDetails.resourceId} is already used by node ${claim.holder}. Copy and paste this node (the copy gets a new resource ID), then delete this one.`)
+      node.status({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+      return
     }
 
     // Output layout: "to transport" (only when Transport: External) followed by
@@ -488,6 +498,7 @@ export = function (RED: NodeRedApp): void {
       rm.close()
       if (wsTransport) wsTransport.disconnect()
       if (dbusTransport) dbusTransport.disconnect()
+      releaseResourceId(rmDetails.resourceId, node.id)
       node.status({})
       done()
     })

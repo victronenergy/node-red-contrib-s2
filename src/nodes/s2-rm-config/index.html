@@ -1,5 +1,6 @@
 <script src="resources/node-red-contrib-s2/s2-common.js"></script>
 <script type="text/javascript">
+  window.__s2Common.watchResourceIds(RED)
   RED.nodes.registerType('s2-rm-config', {
     category: 'config',
     defaults: {
@@ -235,7 +236,7 @@
   <p>Configuration for <b>s2-rm</b>: the Resource Manager's identity, advertised capabilities, and protocol-level behavior. Sent to the CEM in <code>ResourceManagerDetails</code> during the S2 handshake.</p>
 
   <h3>Identity</h3>
-  <p><b>Resource ID</b> is a stable UUID identifying this RM to the CEM - it's also used to build the CEM connection URL on <b>s2-cem-config</b>. Auto-generated the first time the node is added; avoid changing it after deployment, since the CEM associates state with this id.</p>
+  <p><b>Resource ID</b> is a stable UUID identifying this RM to the CEM - it's also used to build the CEM connection URL on <b>s2-cem-config</b>. Auto-generated the first time the node is added, and replaced automatically when an import adds a copy whose ID another S2 node already uses; avoid changing it after deployment, since the CEM associates state with this id. Each <b>s2-rm</b> needs its own <b>s2-rm-config</b> - a second <b>s2-rm</b> using the same Resource ID refuses to start.</p>
   <p><b>Roles</b> and <b>Control Types</b> are advertised capabilities - at least one of each must be selected. Control types beyond OMBC and PEBC (FRBC, DDBC, PPBC) have no dedicated node yet; their instructions are still forwarded on <b>s2-rm</b>'s "from CEM" output for you to handle yourself. <b>Include "Not Controllable" in advertised control types</b> (checked by default) adds <code>NOT_CONTROLABLE</code> to the advertised list, so the CEM can choose not to control this resource - some CEMs select it as their initial/default state before switching to another control type, so unchecking this may prevent them from ever taking control. Uncheck it only if that choice should never be offered.</p>
 
   <h3>Power Meas. / Forecast</h3>

@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events'
 import { MessageType, serialize } from '../../src/lib/s2/messages'
 import registerNode from '../../src/nodes/s2-resource/index'
+import { S2WebSocketTransport } from '../../src/lib/transport/websocket'
+import { S2DbusTransport } from '../../src/lib/transport/dbus'
 
 // --- Transport mock (same pattern as test/nodes/s2-websocket.test.ts) ---
 
@@ -982,5 +984,49 @@ describe('s2-resource - port contract parity with s2-rm (Transport: External, Co
     }
     const connected = outputAt(node, 1).find((m) => (m as { topic?: string }).topic === 'Connected')
     expect(connected).toBeDefined()
+  })
+})
+
+// --- Duplicate resource ID ---
+
+describe('s2-resource - duplicate resource ID', () => {
+  it('refuses to start when another running node holds the same resourceId', () => {
+    setupNode({ id: 'first-node', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: 'rid-dup-dbus' })
+    ;(S2DbusTransport as unknown as jest.Mock).mockClear()
+
+    const { node, handlers } = setupNode({ id: 'second-node', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: 'rid-dup-dbus' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('first-node'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+    expect(S2DbusTransport).not.toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('opens no WebSocket connection when refused', () => {
+    setupNode({ id: 'first-node', transport: 'websocket', controlType: 'none', resourceId: 'rid-dup-ws' })
+    ;(S2WebSocketTransport as unknown as jest.Mock).mockClear()
+
+    setupNode({ id: 'second-node', transport: 'websocket', controlType: 'none', resourceId: 'rid-dup-ws' })
+
+    expect(S2WebSocketTransport).not.toHaveBeenCalled()
+  })
+
+  it('starts normally once the node holding the resourceId has closed', () => {
+    const first = setupNode({ id: 'first-node', transport: 'external', controlType: 'none', resourceId: 'rid-dup-release' })
+    first.handlers.close(jest.fn())
+
+    const { node, handlers } = setupNode({ id: 'second-node', transport: 'external', controlType: 'none', resourceId: 'rid-dup-release' })
+
+    expect(node.error).not.toHaveBeenCalled()
+    expect(handlers.input).toBeDefined()
+  })
+
+  it('starts normally when redeployed with the same node id', () => {
+    setupNode({ id: 'same-node', transport: 'external', controlType: 'none', resourceId: 'rid-dup-redeploy' })
+
+    const { node, handlers } = setupNode({ id: 'same-node', transport: 'external', controlType: 'none', resourceId: 'rid-dup-redeploy' })
+
+    expect(node.error).not.toHaveBeenCalled()
+    expect(handlers.input).toBeDefined()
   })
 })

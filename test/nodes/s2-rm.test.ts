@@ -1,5 +1,6 @@
 import { MessageType, serialize } from '../../src/lib/s2/messages'
 import registerNode from '../../src/nodes/s2-rm/index'
+import { claimResourceId } from '../../src/lib/s2/resource-id-registry'
 
 const DEFAULT_RM_CONFIG = {
   resourceId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
@@ -13,8 +14,9 @@ const DEFAULT_RM_CONFIG = {
 function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEFAULT_RM_CONFIG, settings: Record<string, unknown> = {}, cemConfigNode: unknown = null) {
   const handlers: Record<string, (...args: unknown[]) => void> = {}
   const flowContext: Record<string, unknown> = {}
+  const nodeId = (config.id as string | undefined) ?? 'node-test-id'
   const node: Record<string, unknown> = {
-    id: 'node-test-id',
+    id: nodeId,
     name: '',
     send: jest.fn(),
     error: jest.fn(),
@@ -49,7 +51,7 @@ function setupNode (config: Record<string, unknown>, rmConfigNode: unknown = DEF
   })
 
   registerNode(RED as never)
-  Constructor!.call(node, { rmConfig: 'rm-cfg-id', ...config, id: 'node-test-id' } as never)
+  Constructor!.call(node, { rmConfig: 'rm-cfg-id', ...config, id: nodeId } as never)
 
   return { node, RED, handlers, flowContext }
 }
@@ -1119,5 +1121,47 @@ describe('s2-rm - S2/0/Active transport flag', () => {
     const activeMsg = port1.find((m) => m.payload['S2/0/Active'] !== undefined)
     expect(activeMsg).toBeDefined()
     expect(activeMsg!.payload['S2/0/Active']).toBe(1)
+  })
+})
+
+describe('s2-rm - duplicate resource ID', () => {
+  it('refuses to start when another s2-rm uses the same s2-rm-config', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-shared-config' }
+    setupNode({ id: 'first-rm' }, rmConfig)
+
+    const { node, handlers } = setupNode({ id: 'second-rm' }, rmConfig)
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('first-rm'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('refuses to start when an s2-resource already holds the resource ID', () => {
+    claimResourceId('rid-rm-held-by-resource', 'some-s2-resource')
+
+    const { node, handlers } = setupNode({ id: 'late-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-held-by-resource' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('some-s2-resource'))
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('starts normally with an empty resource ID', () => {
+    setupNode({ id: 'first-empty-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '' })
+
+    const { node, handlers } = setupNode({ id: 'second-empty-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '' })
+
+    expect(node.error).not.toHaveBeenCalled()
+    expect(handlers.input).toBeDefined()
+  })
+
+  it('releases the resource ID on close', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-release' }
+    const first = setupNode({ id: 'first-rm' }, rmConfig)
+    first.handlers.close(jest.fn())
+
+    const { node, handlers } = setupNode({ id: 'second-rm' }, rmConfig)
+
+    expect(node.error).not.toHaveBeenCalled()
+    expect(handlers.input).toBeDefined()
   })
 })
