@@ -88,13 +88,15 @@ Import any of these from the Node-RED palette manager's "Import Examples" menu (
 
 ## One resource ID per resource
 
-A CEM tells resources apart by their resource ID alone, so every `s2-resource` (and every `s2-rm-config`) needs its own. The editor takes care of this: a node from the palette gets an ID straight away, and a copy-pasted node or a flow or example imported again with "Import copy" gets a new one, while a cut-and-paste keeps its ID so the CEM keeps its settings for that resource (for GX Opportunity Loads: its priority).
+A CEM tells resources apart by their resource ID alone, so every `s2-resource` (and every `s2-rm-config`) needs its own. The editor takes care of this: a node from the palette gets an ID straight away, and a copy-pasted `s2-resource` or a flow or example imported again with "Import copy" gets a new one, while a cut-and-paste keeps its ID so the CEM keeps its settings for that resource (for GX Opportunity Loads: its priority).
 
 With `Transport: WebSocket`, `s2-resource` shows its Resource ID on the Connection tab, so you can register it with your CEM or replace it with the ID your CEM expects (2-64 letters, digits, `-`, `_` or `:`; a warning shows when it isn't a UUID, which CEMs built on s2python require). For D-Bus it stays hidden: GX Opportunity Loads never needs it.
 
+A copy-pasted `s2-rm` keeps using the original's `s2-rm-config`, so the editor marks the copy invalid until it gets its own `s2-rm-config`.
+
 If two running nodes still end up with the same ID (e.g. a flow copy-pasted with a version before this check, or two `s2-rm` nodes sharing one `s2-rm-config`), the one that starts second refuses to start with a red `duplicate resource ID` status and an error naming the other node. Copy and paste the refused `s2-resource` (the copy gets a new ID) and delete the original, or give the `s2-rm` its own `s2-rm-config`, then deploy. A refused node is only retried when it is deployed again. The same applies to transports: only one `s2-websocket`, or `s2-resource` with a built-in transport, connects per resource ID. An `s2-dbus` doesn't know the resource ID, so one wired to a refused `s2-rm` still registers its D-Bus service, which never completes a handshake.
 
-Inside a subflow, every instance needs its own resource ID. Set the Resource ID (shown inside subflows for every transport) to `${NAME}` and give each instance its own `NAME` subflow property; Node-RED substitutes it per instance. An instance without the variable refuses to start with a red `resource ID variable not set` status.
+Inside a subflow, every instance needs its own resource ID. Set the Resource ID (shown inside subflows for every transport) to `${NAME}` (or the older `$(NAME)`) and give each instance its own `NAME` subflow property; Node-RED substitutes it per instance. An instance without the variable refuses to start with a red `resource ID variable not set` status; one where it is blank refuses with `resource ID missing`, and one where it isn't a valid S2 ID with `invalid resource ID`.
 
 ## Sending PowerMeasurements
 

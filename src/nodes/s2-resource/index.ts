@@ -5,8 +5,8 @@ import { OMBCController } from '../../lib/s2/ombc-controller'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
 import { S2DbusTransport } from '../../lib/transport/dbus'
 import { PowerMeasurementCache } from '../../lib/s2/power-measurement-cache'
-import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../lib/s2/resource-id-registry'
-import { RmDetails, generateId, OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
+import { claimResourceId, releaseAllResourceIds, releaseResourceId, resourceIdProblem } from '../../lib/s2/resource-id-registry'
+import { RmDetails, OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
 import { publishToDebugSidebar, parseForDebugSidebar } from '../../lib/node-red-debug-sidebar'
 
 const KNOWN_DBUS_DEVICE_TYPES = ['acload', 'heatpump']
@@ -73,8 +73,19 @@ interface S2ResourceConfig extends NodeConfig {
  * replacement for s2-rm (1 input, 2 outputs, identical message shapes).
  */
 export = function (RED: NodeRedApp): void {
+  // Node-RED drops a node whose constructor throws without ever closing it, so its resource ID
+  // claims are released here instead of staying held until Node-RED restarts.
   function S2ResourceNode (this: NodeRedNode, config: S2ResourceConfig): void {
     RED.nodes.createNode(this, config)
+    try {
+      setUpS2ResourceNode.call(this, config)
+    } catch (err) {
+      releaseAllResourceIds(this.id)
+      throw err
+    }
+  }
+
+  function setUpS2ResourceNode (this: NodeRedNode, config: S2ResourceConfig): void {
     const node = this
 
     function parsePowerMeasurementTypes (value: unknown, nrOfPhases = 1, phaseSetting = 1): string[] {
@@ -99,7 +110,7 @@ export = function (RED: NodeRedApp): void {
     const dbusConfig = isDbusTransport ? (RED.nodes.getNode(config.dbusConfig || '') as S2DbusConfigNode | null) : null
 
     const rmDetails: RmDetails = {
-      resourceId: config.resourceId || generateId(),
+      resourceId: config.resourceId == null ? '' : String(config.resourceId),
       name: config.rmName || 'RM: Virtual',
       roles: (config.roles || 'ENERGY_CONSUMER')
         .split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -117,10 +128,10 @@ export = function (RED: NodeRedApp): void {
       firmwareVersion: config.firmwareVersion || ''
     }
 
-    const envVar = unresolvedEnvVar(rmDetails.resourceId)
-    if (envVar) {
-      node.error(`s2-resource: resource ID is \${${envVar}}, but environment variable ${envVar} is not set. Set it in the subflow instance's properties (or the flow or global environment), then deploy this node again.`)
-      node.status({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+    const problem = resourceIdProblem(rmDetails.resourceId)
+    if (problem) {
+      node.error(`s2-resource: ${problem.message}`)
+      node.status({ fill: 'red', shape: 'dot', text: problem.status })
       return
     }
 
@@ -508,8 +519,7 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
-      releaseResourceId(rmDetails.resourceId, node.id)
-      if (claimsTransport) releaseResourceId(rmDetails.resourceId, node.id, 'transport')
+      releaseAllResourceIds(node.id)
       rm.close()
       if (wsTransport) wsTransport.disconnect()
       if (dbusTransport) dbusTransport.disconnect()

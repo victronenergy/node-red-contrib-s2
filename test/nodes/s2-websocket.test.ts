@@ -421,12 +421,27 @@ describe('s2-websocket - resource ID claim', () => {
     expect(S2WebSocketTransport).not.toHaveBeenCalled()
   })
 
-  it('does not claim an empty resource ID', () => {
-    setupNode({ id: 'ws-empty-1' }, DEFAULT_CEM_CONFIG, { resourceId: '' })
+  it('refuses to connect with an empty resource ID', () => {
+    ;(S2WebSocketTransport as unknown as jest.Mock).mockClear()
 
-    const { node } = setupNode({ id: 'ws-empty-2' }, DEFAULT_CEM_CONFIG, { resourceId: '' })
+    const { node } = setupNode({ id: 'ws-empty' }, DEFAULT_CEM_CONFIG, { resourceId: '' })
 
-    expect(node.error).not.toHaveBeenCalled()
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID missing' })
+    expect(S2WebSocketTransport).not.toHaveBeenCalled()
+  })
+
+  it('refuses to connect with a resource ID outside the S2 ID format', () => {
+    const { node } = setupNode({ id: 'ws-invalid' }, DEFAULT_CEM_CONFIG, { resourceId: 'my heatpump' })
+
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'invalid resource ID' })
+  })
+
+  it('releases its claim when its setup throws after claiming', () => {
+    mockTransport.connect.mockImplementation(() => { throw new SyntaxError('Invalid URL') })
+
+    expect(() => setupNode({ id: 'ws-setup-throws' }, DEFAULT_CEM_CONFIG, { resourceId: 'rid-ws-setup-throws' })).toThrow('Invalid URL')
+
+    expect(claimResourceId('rid-ws-setup-throws', 'next-transport', 'transport')).toEqual({ claimed: true })
   })
 
   it('releases its claim even when disconnecting throws', () => {

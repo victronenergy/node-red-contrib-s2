@@ -1,8 +1,8 @@
 import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
 import { S2RmConfigNode, S2CemConfigNode } from '../../types/config-nodes'
 import { S2ResourceManager } from '../../lib/s2/resource-manager'
-import { RmDetails, generateId } from '../../lib/s2/messages'
-import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../lib/s2/resource-id-registry'
+import { RmDetails } from '../../lib/s2/messages'
+import { claimResourceId, releaseAllResourceIds, resourceIdProblem } from '../../lib/s2/resource-id-registry'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
@@ -59,8 +59,19 @@ interface S2RmConfig extends NodeConfig {
  *   { topic: 'Disconnected', cemId: <string>, reason: 'cem_initiated' | 'keepalive_timeout' }
  */
 export = function (RED: NodeRedApp): void {
+  // Node-RED drops a node whose constructor throws (e.g. new URL() on a malformed CEM URL below)
+  // without ever closing it, so its resource ID claim is released here instead.
   function S2RmNode (this: NodeRedNode, config: S2RmConfig): void {
     RED.nodes.createNode(this, config)
+    try {
+      setUpS2RmNode.call(this, config)
+    } catch (err) {
+      releaseAllResourceIds(this.id)
+      throw err
+    }
+  }
+
+  function setUpS2RmNode (this: NodeRedNode, config: S2RmConfig): void {
     const node = this
 
     const rmConfigNode = RED.nodes.getNode(config.rmConfig) as S2RmConfigNode | null
@@ -79,7 +90,7 @@ export = function (RED: NodeRedApp): void {
     }
 
     const rmDetails: RmDetails = {
-      resourceId: rmConfigNode.resourceId || generateId(),
+      resourceId: rmConfigNode.resourceId == null ? '' : String(rmConfigNode.resourceId),
       name: rmConfigNode.rmName || 'RM: Virtual',
       roles: (rmConfigNode.roles || 'ENERGY_CONSUMER')
         .split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -95,10 +106,10 @@ export = function (RED: NodeRedApp): void {
       firmwareVersion: rmConfigNode.firmwareVersion || '1.0.0'
     }
 
-    const envVar = unresolvedEnvVar(rmDetails.resourceId)
-    if (envVar) {
-      node.error(`s2-rm: resource ID is \${${envVar}}, but environment variable ${envVar} is not set. Set it in the subflow instance's properties (or the flow or global environment), then deploy this node again.`)
-      node.status({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+    const problem = resourceIdProblem(rmDetails.resourceId)
+    if (problem) {
+      node.error(`s2-rm: ${problem.message}`)
+      node.status({ fill: 'red', shape: 'dot', text: problem.status })
       return
     }
 
@@ -154,7 +165,7 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
-      releaseResourceId(rmDetails.resourceId, node.id)
+      releaseAllResourceIds(node.id)
       rm.close()
       node.status({})
       done()

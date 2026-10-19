@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { runInNewContext } from 'vm'
 
-interface EditorNode { id: string, type: string, resourceId?: string }
+interface EditorNode { id: string, type: string, resourceId?: string, rmConfig?: string }
 
 interface S2Common {
   generateUuid: () => string
@@ -10,6 +10,7 @@ interface S2Common {
   watchResourceIds: (RED: unknown) => void
   isUuid: (value: string) => boolean
   isEnvRef: (value: string) => boolean
+  rmConfigSharedBy: (RED: unknown, node: EditorNode, rmConfigId: string) => string | null
   validateResourceId: (RED: unknown, node: EditorNode, value: string) => true | string
 }
 
@@ -174,6 +175,10 @@ describe('s2-common - isEnvRef', () => {
     expect(isEnvRef('${S2_RESOURCE_ID}')).toBe(true)
   })
 
+  it('recognises the older $(NAME) form Node-RED also substitutes', () => {
+    expect(isEnvRef('$(S2_RESOURCE_ID)')).toBe(true)
+  })
+
   it('rejects anything Node-RED would not substitute', () => {
     expect(isEnvRef('prefix-${S2_RESOURCE_ID}')).toBe(false)
     expect(isEnvRef('${}')).toBe(false)
@@ -252,5 +257,37 @@ describe('s2-common - environment variable references', () => {
   it('rejects a malformed reference', () => {
     expect(validateResourceId(fakeRED([self]), self, '${}')).toEqual(expect.any(String))
     expect(validateResourceId(fakeRED([self]), self, '${A B}')).toEqual(expect.any(String))
+  })
+})
+
+describe('s2-common - older environment variable form', () => {
+  const { validateResourceId } = loadS2Common()
+  const self = { id: 'n1', type: 's2-resource' }
+
+  it('accepts $(NAME) as a resource ID', () => {
+    expect(validateResourceId(fakeRED([self]), self, '$(S2_RESOURCE_ID)')).toBe(true)
+  })
+})
+
+describe('s2-common - rmConfigSharedBy', () => {
+  const { rmConfigSharedBy } = loadS2Common()
+
+  it('returns the other s2-rm that uses the same s2-rm-config', () => {
+    const original = { id: 'rm1', type: 's2-rm', rmConfig: 'cfg1' }
+    const pasted = { id: 'rm2', type: 's2-rm', rmConfig: 'cfg1' }
+    expect(rmConfigSharedBy(fakeRED([original, pasted]), pasted, 'cfg1')).toBe('rm1')
+  })
+
+  it('returns null when no other s2-rm uses the config', () => {
+    const node = { id: 'rm1', type: 's2-rm', rmConfig: 'cfg1' }
+    const other = { id: 'rm2', type: 's2-rm', rmConfig: 'cfg2' }
+    const websocket = { id: 'ws1', type: 's2-websocket', rmConfig: 'cfg1' }
+    expect(rmConfigSharedBy(fakeRED([node, other, websocket]), node, 'cfg1')).toBeNull()
+  })
+
+  it('returns null without a config', () => {
+    const node = { id: 'rm1', type: 's2-rm', rmConfig: '' }
+    const other = { id: 'rm2', type: 's2-rm', rmConfig: '' }
+    expect(rmConfigSharedBy(fakeRED([node, other]), node, '')).toBeNull()
   })
 })

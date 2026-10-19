@@ -5,7 +5,15 @@
     color: '#ffffff',
     defaults: {
       name: { value: '' },
-      rmConfig: { value: '', type: 's2-rm-config', required: true },
+      rmConfig: {
+        value: '',
+        type: 's2-rm-config',
+        required: true,
+        validate: function (value, opt) {
+          const other = window.__s2Common.rmConfigSharedBy(RED, this, value)
+          return other ? 'Another s2-rm uses the same s2-rm-config (and so the same Resource ID) - give each s2-rm its own' : true
+        }
+      },
       cem: { value: '', type: 's2-cem-config', required: false }
     },
     inputs: 1,
@@ -54,7 +62,7 @@
 <script type="text/html" data-help-name="s2-rm">
   <p>Generic S2 protocol state machine for a connected CEM. Handles the S2 handshake, sends ResourceManagerDetails, and acknowledges/routes instructions - independent of any specific control type's semantics.</p>
   <p>RM identity (resource ID, name, control types) is configured in the linked <b>s2-rm-config</b> node, shared with the transport node.</p>
-  <p>A CEM tells resources apart by resource ID alone, so each <b>s2-rm</b> needs an <b>s2-rm-config</b> with its own Resource ID. If another running <b>s2-rm</b> or <b>s2-resource</b> already uses the same ID (e.g. two <b>s2-rm</b> nodes sharing one <b>s2-rm-config</b>), this node shows a red <b>duplicate resource ID</b> status and does not start; it is only retried when deployed again. The Resource ID may be <code>${NAME}</code> to take it from a subflow instance property. An <b>s2-dbus</b> wired to a refused <b>s2-rm</b> still registers its D-Bus service, but that service never completes an S2 handshake - remove or disable it too.</p>
+  <p>A CEM tells resources apart by resource ID alone, so each <b>s2-rm</b> needs an <b>s2-rm-config</b> with its own Resource ID. If another running <b>s2-rm</b> or <b>s2-resource</b> already uses the same ID (e.g. two <b>s2-rm</b> nodes sharing one <b>s2-rm-config</b>), this node shows a red <b>duplicate resource ID</b> status and does not start; it is only retried when deployed again. A copy-pasted <b>s2-rm</b> keeps the original's <b>s2-rm-config</b>, so the editor marks the copy invalid until it gets its own. An empty Resource ID, or one that isn't 2-64 letters, digits, <code>-</code>, <code>_</code> or <code>:</code>, is refused too (<b>resource ID missing</b>, <b>invalid resource ID</b>). The Resource ID may be <code>${NAME}</code> to take it from a subflow instance property. An <b>s2-dbus</b> wired to a refused <b>s2-rm</b> still registers its D-Bus service, but that service never completes an S2 handshake - remove or disable it too.</p>
   <p>Control-type-specific behavior (OMBC mode resolution, PEBC schedule dispatch, etc.) lives in dedicated nodes - <b>s2-ombc</b>, <b>s2-pebc</b> - wired to this node's "from CEM" output, with their command output wired back to this node's input.</p>
   <h3>Input</h3>
   <dl class="message-properties">

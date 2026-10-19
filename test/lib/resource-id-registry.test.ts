@@ -1,4 +1,4 @@
-import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../src/lib/s2/resource-id-registry'
+import { claimResourceId, releaseResourceId, releaseAllResourceIds, resourceIdProblem, unresolvedEnvVar } from '../../src/lib/s2/resource-id-registry'
 
 // The registry is process-wide, so every test uses its own resource IDs.
 
@@ -60,9 +60,51 @@ describe('unresolvedEnvVar', () => {
     expect(unresolvedEnvVar('${S2_RESOURCE_ID}')).toBe('S2_RESOURCE_ID')
   })
 
+  it('returns the variable name of the older $(NAME) form', () => {
+    expect(unresolvedEnvVar('$(S2_RESOURCE_ID)')).toBe('S2_RESOURCE_ID')
+  })
+
   it('returns null for an ordinary resource ID', () => {
     expect(unresolvedEnvVar('3e9f140d-e08f-4ece-87fc-8929b5811858')).toBeNull()
     expect(unresolvedEnvVar('my-heatpump-01')).toBeNull()
     expect(unresolvedEnvVar('prefix-${S2_RESOURCE_ID}')).toBeNull()
+  })
+})
+
+describe('releaseAllResourceIds', () => {
+  it('frees every claim kind held by one node, and only that node', () => {
+    claimResourceId('rid-all-a', 'node-a', 'rm')
+    claimResourceId('rid-all-a', 'node-a', 'transport')
+    claimResourceId('rid-all-b', 'node-b', 'rm')
+
+    releaseAllResourceIds('node-a')
+
+    expect(claimResourceId('rid-all-a', 'node-c', 'rm')).toEqual({ claimed: true })
+    expect(claimResourceId('rid-all-a', 'node-c', 'transport')).toEqual({ claimed: true })
+    expect(claimResourceId('rid-all-b', 'node-c', 'rm')).toEqual({ claimed: false, holder: 'node-b' })
+  })
+})
+
+describe('resourceIdProblem', () => {
+  it('accepts a UUID, a non-UUID in the S2 ID format, and a number', () => {
+    expect(resourceIdProblem('3e9f140d-e08f-4ece-87fc-8929b5811858')).toBeNull()
+    expect(resourceIdProblem('my-heatpump_01:a')).toBeNull()
+    expect(resourceIdProblem(42)).toBeNull()
+  })
+
+  it('reports an empty resource ID as missing', () => {
+    expect(resourceIdProblem('')).toEqual({ status: 'resource ID missing', message: expect.any(String) })
+    expect(resourceIdProblem(undefined)).toEqual({ status: 'resource ID missing', message: expect.any(String) })
+  })
+
+  it('reports an unresolved environment variable, in either form, naming it', () => {
+    expect(resourceIdProblem('${S2_ID}')).toEqual({ status: 'resource ID variable not set', message: expect.stringContaining('S2_ID') })
+    expect(resourceIdProblem('$(S2_ID)')).toEqual({ status: 'resource ID variable not set', message: expect.stringContaining('S2_ID') })
+  })
+
+  it('reports a value outside the S2 ID format, naming it', () => {
+    expect(resourceIdProblem('boiler 1')).toEqual({ status: 'invalid resource ID', message: expect.stringContaining('boiler 1') })
+    expect(resourceIdProblem('a'.repeat(65))).toEqual({ status: 'invalid resource ID', message: expect.any(String) })
+    expect(resourceIdProblem('a')).toEqual({ status: 'invalid resource ID', message: expect.any(String) })
   })
 })

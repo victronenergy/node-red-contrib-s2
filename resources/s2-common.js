@@ -22,10 +22,24 @@ window.__s2Common.generateUuid = function () {
   })
 }
 
-// Same pattern Node-RED uses to substitute a whole property value from the node's environment
-// (e.g. a subflow instance property) before the node starts.
+// Same patterns Node-RED uses to substitute a whole property value from the node's environment
+// (e.g. a subflow instance property) before the node starts: ${NAME}, and the older $(NAME).
 window.__s2Common.isEnvRef = function (value) {
-  return /^\$\{\S+\}$/.test(value)
+  return /^\$\{\S+\}$/.test(value) || /^\$\(\S+\)$/.test(value)
+}
+
+// Node-RED keeps a pasted s2-rm on the original's s2-rm-config, so both would send the same
+// resource ID and the runtime refuses one. Returns the id of another s2-rm using rmConfigId.
+window.__s2Common.rmConfigSharedBy = function (RED, node, rmConfigId) {
+  if (!rmConfigId) return null
+  let other = null
+  RED.nodes.eachNode(function (n) {
+    if (n.type === 's2-rm' && n.id !== node.id && n.rmConfig === rmConfigId) {
+      other = n.id
+      return false
+    }
+  })
+  return other
 }
 
 // A CEM tells resources apart by resource ID only, and copy-paste or a repeated import copies the

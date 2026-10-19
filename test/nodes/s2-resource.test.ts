@@ -63,7 +63,8 @@ const DEFAULT_DBUS_CONFIG = {
 }
 
 function setupNode (config: Record<string, unknown>, cemConfig: unknown = DEFAULT_CEM_CONFIG, dbusConfig: unknown = DEFAULT_DBUS_CONFIG) {
-  const merged: Record<string, unknown> = { id: 'node-test-id', cem: 'cem-cfg-id', dbusConfig: 'dbus-cfg-id', ...config }
+  // A resource ID per node id: the runtime refuses two running nodes with the same one.
+  const merged: Record<string, unknown> = { id: 'node-test-id', cem: 'cem-cfg-id', dbusConfig: 'dbus-cfg-id', resourceId: `rid-for-${String(config.id ?? 'node-test-id')}`, ...config }
 
   const handlers: Record<string, (...args: unknown[]) => void> = {}
   const nodeContext: Record<string, unknown> = {}
@@ -129,22 +130,11 @@ function outputAt (node: Record<string, unknown>, index: number): unknown[] {
 // --- RM identity (task 3.1) ---
 
 describe('s2-resource - RM identity', () => {
-  it('auto-generates a resourceId when not configured', () => {
-    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none' })
-    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
-    handlers.input(
-      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
-      jest.fn(), jest.fn()
-    )
+  it('refuses to start without a resource ID instead of generating a new one on every start', () => {
+    const { node, handlers } = setupNode({ transport: 'external', controlType: 'none', resourceId: '' })
 
-    const rmd = outputAt(node, 0).find((m) => {
-      const payload = (m as { payload?: { message?: { message_type?: string } } }).payload
-      return payload?.message?.message_type === MessageType.RESOURCE_MANAGER_DETAILS
-    }) as { payload: { message: Record<string, unknown> } } | undefined
-
-    expect(rmd).toBeDefined()
-    expect(typeof rmd!.payload.message.resource_id).toBe('string')
-    expect((rmd!.payload.message.resource_id as string).length).toBeGreaterThan(0)
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID missing' })
+    expect(handlers.input).toBeUndefined()
   })
 
   it('parses comma-separated roles into role objects', () => {
@@ -1093,5 +1083,45 @@ describe('s2-resource - transport claim and environment variables', () => {
 
     expect(claimResourceId('rid-release-on-throw', 'next-rm', 'rm')).toEqual({ claimed: true })
     expect(claimResourceId('rid-release-on-throw', 'next-transport', 'transport')).toEqual({ claimed: true })
+  })
+})
+
+describe('s2-resource - resource ID start-up check', () => {
+  it('refuses a resource ID outside the S2 ID format', () => {
+    ;(S2DbusTransport as unknown as jest.Mock).mockClear()
+
+    const { node, handlers } = setupNode({ id: 'invalid-res', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: 'boiler 1' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('boiler 1'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'invalid resource ID' })
+    expect(S2DbusTransport).not.toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('refuses the older $(NAME) form when the variable is not set', () => {
+    const { node } = setupNode({ id: 'old-env-res', transport: 'external', controlType: 'none', resourceId: '$(S2_RESOURCE_ID)' })
+
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+  })
+
+  it('uses a number from an environment variable as its string form', () => {
+    const { node, handlers } = setupNode({ id: 'number-res', transport: 'external', controlType: 'none', resourceId: 42 })
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input(
+      { payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } },
+      jest.fn(), jest.fn()
+    )
+
+    const rmd = outputAt(node, 0).find((m) => (m as { payload?: { message?: { message_type?: string } } }).payload?.message?.message_type === MessageType.RESOURCE_MANAGER_DETAILS) as { payload: { message: Record<string, unknown> } } | undefined
+    expect(rmd!.payload.message.resource_id).toBe('42')
+  })
+
+  it('releases its claims when its setup throws after claiming', () => {
+    mockTransport.connect.mockImplementation(() => { throw new SyntaxError('Invalid URL') })
+
+    expect(() => setupNode({ id: 'throwing-setup-res', transport: 'websocket', controlType: 'none', resourceId: 'rid-setup-throws' })).toThrow('Invalid URL')
+
+    expect(claimResourceId('rid-setup-throws', 'next-rm', 'rm')).toEqual({ claimed: true })
+    expect(claimResourceId('rid-setup-throws', 'next-transport', 'transport')).toEqual({ claimed: true })
   })
 })

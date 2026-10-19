@@ -1146,13 +1146,11 @@ describe('s2-rm - duplicate resource ID', () => {
     expect(handlers.input).toBeUndefined()
   })
 
-  it('starts normally with an empty resource ID', () => {
-    setupNode({ id: 'first-empty-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '' })
+  it('refuses to start with an empty resource ID', () => {
+    const { node, handlers } = setupNode({ id: 'empty-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '' })
 
-    const { node, handlers } = setupNode({ id: 'second-empty-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '' })
-
-    expect(node.error).not.toHaveBeenCalled()
-    expect(handlers.input).toBeDefined()
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID missing' })
+    expect(handlers.input).toBeUndefined()
   })
 
   it('releases the resource ID on close', () => {
@@ -1196,5 +1194,22 @@ describe('s2-rm - environment variables and release', () => {
     }
 
     expect(claimResourceId('rid-rm-release-on-throw', 'next-rm')).toEqual({ claimed: true })
+  })
+})
+
+describe('s2-rm - resource ID start-up check', () => {
+  it('refuses a resource ID outside the S2 ID format', () => {
+    const { node, handlers } = setupNode({ id: 'invalid-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: 'my heatpump' })
+
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'invalid resource ID' })
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('releases its claim when its setup throws after claiming (malformed CEM URL)', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-bad-cem-url' }
+
+    expect(() => setupNode({ id: 'bad-url-rm', cem: 'cem-cfg-id' }, rmConfig, {}, { url: 'not a url' })).toThrow()
+
+    expect(claimResourceId('rid-rm-bad-cem-url', 'next-rm')).toEqual({ claimed: true })
   })
 })
