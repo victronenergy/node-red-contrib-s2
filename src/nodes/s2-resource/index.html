@@ -47,7 +47,9 @@
         debug: { value: false },
 
         controlType: { value: 'ombc' },
-        systemDescription: { value: '' },
+        // Empty with Control type None. Optional, so Node-RED accepts '' before asking the json
+        // typedInput, which would reject it (JSON.parse('')).
+        systemDescription: { value: '', required: false },
         defaultOperationModeId: { value: '' },
         autoConfirmInstructions: { value: false },
 
