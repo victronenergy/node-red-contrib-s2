@@ -1,7 +1,7 @@
 # editor-dialogs Specification
 
 ## Purpose
-TBD - created by archiving change dark-mode-dialogs. Update Purpose after archive.
+Defines how the S2 nodes' edit dialogs look in the Node-RED editor, independent of what each dialog contains: they follow the editor's theme, light or dark, and keep their text readable in it.
 
 ## Requirements
 
