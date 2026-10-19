@@ -1,4 +1,4 @@
-import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/node-red'
+import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage, NodeRedStatus } from '../../types/node-red'
 import { S2CemConfigNode, S2DbusConfigNode } from '../../types/config-nodes'
 import { S2ResourceManager } from '../../lib/s2/resource-manager'
 import { OMBCController, DESCRIBED_MODE_REQUEST_SINCE } from '../../lib/s2/ombc-controller'
@@ -245,6 +245,33 @@ export = function (RED: NodeRedApp): void {
 
     let ombcController: OMBCController | undefined
 
+    // The connection (RM and transport) and the built-in control type each have a status. Shown
+    // together, so e.g. "Confirmed: Off" can't hide whether a CEM is connected at all. The colour
+    // is the connection's, unless the control type is warning (yellow) or failing (red).
+    let connectionStatus: NodeRedStatus = {}
+    let controlTypeStatus: NodeRedStatus | null = null
+    function showStatus (): void {
+      if (!controlTypeStatus) {
+        node.status(connectionStatus)
+        return
+      }
+      const alerting = controlTypeStatus.fill === 'yellow' || controlTypeStatus.fill === 'red'
+      node.status({
+        fill: alerting ? controlTypeStatus.fill : (connectionStatus.fill ?? controlTypeStatus.fill),
+        shape: connectionStatus.shape ?? controlTypeStatus.shape,
+        text: connectionStatus.text ? `${connectionStatus.text} | ${controlTypeStatus.text}` : controlTypeStatus.text
+      })
+    }
+    function setConnectionStatus (status: NodeRedStatus): void {
+      connectionStatus = status
+      showStatus()
+    }
+    function setControlTypeStatus (status: NodeRedStatus): void {
+      // The controller's initial 'idle' says nothing about OMBC yet.
+      controlTypeStatus = status.text === 'idle' ? null : status
+      showStatus()
+    }
+
     // Tracks whether the built-in transport is actually registered/connected (WebSocket) or
     // registered (D-Bus, which - unlike WebSocket - stays "ready" across individual CEM sessions
     // coming and going). S2ResourceManager's own "waiting for CEM" status is transport-agnostic
@@ -290,13 +317,13 @@ export = function (RED: NodeRedApp): void {
         // Prefix match, not equality - resource-manager.ts appends a " - <control types>"
         // suffix (e.g. after SetAvailableControlTypes) that must survive both rewrites below.
         if (transportReady && status.fill === 'grey' && (status.text || '').startsWith('waiting for CEM')) {
-          node.status({ ...status, fill: 'green' })
+          setConnectionStatus({ ...status, fill: 'green' })
         } else if ((status.text || '').startsWith(`CEM connected (${TRANSPORT_CEM_ID})`)) {
           const label = cemStatusLabel()
           const suffix = (status.text || '').slice(`CEM connected (${TRANSPORT_CEM_ID})`.length)
-          node.status({ ...status, text: label ? `CEM connected (${label})${suffix}` : `CEM connected${suffix}` })
+          setConnectionStatus({ ...status, text: label ? `CEM connected (${label})${suffix}` : `CEM connected${suffix}` })
         } else {
-          node.status(status)
+          setConnectionStatus(status)
         }
       },
       onLog: (msg) => node.log(msg),
@@ -326,7 +353,7 @@ export = function (RED: NodeRedApp): void {
           : undefined,
         onEmitInstruction: (msg) => sendDownstream(msg),
         onSendCommand: (msg) => rm.handleInput(msg, () => {}),
-        onStatus: (status) => node.status(status),
+        onStatus: (status) => setControlTypeStatus(status),
         onWarn: (message) => node.warn(`[s2-resource] ${message}`),
         getContextValue: (key) => node.context().get(key),
         setContextValue: (key, value) => node.context().set(key, value),
@@ -353,7 +380,7 @@ export = function (RED: NodeRedApp): void {
     if (isWebSocketTransport) {
       const cemConfig = RED.nodes.getNode(config.cem || '') as S2CemConfigNode | null
       if (!cemConfig) {
-        node.status({ fill: 'red', shape: 'dot', text: 'CEM config missing' })
+        setConnectionStatus({ fill: 'red', shape: 'dot', text: 'CEM config missing' })
       } else {
         wsCemConfig = cemConfig
         const resourceId = rmDetails.resourceId
@@ -371,7 +398,7 @@ export = function (RED: NodeRedApp): void {
         let hasConnected = false
 
         node.log(`[s2-resource] connecting to ${url} (auth: ${headers ? 'Basic' : 'none'}, resourceId: ${resourceId || '(empty)'})`)
-        node.status({ fill: 'yellow', shape: 'ring', text: 'connecting...' })
+        setConnectionStatus({ fill: 'yellow', shape: 'ring', text: 'connecting...' })
 
         wsTransport.on('open', () => {
           hasConnected = true
@@ -399,7 +426,7 @@ export = function (RED: NodeRedApp): void {
             if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${TRANSPORT_CEM_ID} (Disconnect)`, { cemId: TRANSPORT_CEM_ID })
             node.log(`[s2-resource] disconnected - reconnecting in ${reconnectSec}s`)
           } else {
-            node.status({ fill: 'red', shape: 'ring', text: 'disconnected' })
+            setConnectionStatus({ fill: 'red', shape: 'ring', text: 'disconnected' })
           }
         })
 
@@ -413,10 +440,10 @@ export = function (RED: NodeRedApp): void {
 
     if (isDbusTransport) {
       if (!dbusConfig) {
-        node.status({ fill: 'red', shape: 'dot', text: 'D-Bus config missing' })
+        setConnectionStatus({ fill: 'red', shape: 'dot', text: 'D-Bus config missing' })
       } else if (!KNOWN_DBUS_DEVICE_TYPES.includes(dbusConfig.deviceType)) {
         node.error(`s2-resource: unrecognized deviceType "${dbusConfig.deviceType}" - expected one of ${KNOWN_DBUS_DEVICE_TYPES.join(', ')}`)
-        node.status({ fill: 'red', shape: 'dot', text: `invalid deviceType: ${dbusConfig.deviceType}` })
+        setConnectionStatus({ fill: 'red', shape: 'dot', text: `invalid deviceType: ${dbusConfig.deviceType}` })
       } else {
         measurementCache = new PowerMeasurementCache(dbusConfig.measurementType, dbusConfig.nrOfPhases, dbusConfig.phaseSetting)
         dbusTransport = new S2DbusTransport({
@@ -432,18 +459,18 @@ export = function (RED: NodeRedApp): void {
           autoCalculateEnergy: dbusConfig.autoCalculateEnergy
         })
 
-        node.status({ fill: 'yellow', shape: 'ring', text: 'registering...' })
+        setConnectionStatus({ fill: 'yellow', shape: 'ring', text: 'registering...' })
 
         dbusTransport.on('open', () => {
           transportReady = true
-          node.status({ fill: 'green', shape: 'ring', text: 'waiting for CEM' })
+          setConnectionStatus({ fill: 'green', shape: 'ring', text: 'waiting for CEM' })
         })
 
         dbusTransport.on('connect', (dbusCemId: string, keepAliveInterval: number) => {
           currentDbusCemId = dbusCemId
           node.log(`[s2-resource] CEM ${dbusCemId} connected (keepAliveInterval: ${keepAliveInterval}s)`)
           if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${dbusCemId} (Connect)`, { cemId: dbusCemId, keepAliveInterval })
-          node.status({ fill: 'green', shape: 'dot', text: 'CEM connected' })
+          setConnectionStatus({ fill: 'green', shape: 'dot', text: 'CEM connected' })
           rm.handleInput({ payload: { command: 'Connect', cemId: TRANSPORT_CEM_ID, keepAliveInterval } }, () => {})
         })
 
@@ -452,7 +479,7 @@ export = function (RED: NodeRedApp): void {
           if (config.debug) publishToDebugSidebar(RED, node, `<- from CEM ${dbusCemId} (Disconnect)`, { cemId: dbusCemId })
           currentDbusCemId = undefined
           measurementCache?.stop()
-          node.status({ fill: 'green', shape: 'ring', text: 'waiting for CEM' })
+          setConnectionStatus({ fill: 'green', shape: 'ring', text: 'waiting for CEM' })
           rm.handleInput({ payload: { command: 'Disconnect', cemId: TRANSPORT_CEM_ID } }, () => {})
         })
 

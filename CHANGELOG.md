@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- `s2-resource` with a built-in control type shows its connection and its control-type state together, e.g. `CEM connected (opportunity_loads) - NC,OMBC | Confirmed: Off`, instead of whichever was set last. A confirmed mode no longer hides whether a CEM is connected; a waiting state (e.g. `waiting for ModeConfirmation`) turns the status yellow.
 - The S2 nodes' edit dialogs follow the Node-RED editor theme. With a dark theme (e.g. `dark-modern` or `midnight-red` from `@node-red-contrib-themes/theme-collection`), the hint boxes and active tabs were white blocks and some labels were nearly unreadable; colours now come from the theme's own variables. The default light theme looks the same, except that warning boxes show their text in the normal text colour, with the amber border and tint carrying the warning.
 - Packaging: `npm pack` from a source checkout (e.g. a GitHub tag tarball) no longer produces a package without `dist/` - it now builds first, or fails loudly when devDependencies are missing. Repacking the published npm tarball (as the Venus OS recipe does) needs no build and keeps `dist/`.
 - Packaging: `node-red` is no longer a peer dependency, so a plain production install (`npm install --omit=dev`, as the Venus OS recipe runs) no longer pulls in a second copy of Node-RED (about 120 MB). The Node-RED version requirement stays in `node-red.version` (`>=4.1.0`), which is what the palette manager checks; palette installs are unaffected.
