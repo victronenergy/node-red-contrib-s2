@@ -142,7 +142,7 @@ When a `SetAvailableControlTypes` command removes a control type that a connecte
 - **THEN** the RM sends the CEM an updated `ResourceManagerDetails` without `OPERATION_MODE_BASED_CONTROL`, and the session's active control type and any in-progress instruction/status flow continue unchanged unless the CEM itself sends a new `SelectControlType`
 
 ### Requirement: s2-rm-config resource ID is unique when added in the editor
-When the user adds an `s2-rm-config` node to the editor (Node-RED marks such nodes changed), the editor SHALL generate a new `resourceId` if its `resourceId` is empty or equal to the `resourceId` of any other `s2-rm-config` or `s2-resource` node in the editor. Otherwise it SHALL keep the `resourceId`; a `resourceId` of the form `${NAME}` SHALL always be kept. Nodes the editor adds while loading or reloading the deployed flows SHALL be left unchanged.
+When the user adds an `s2-rm-config` node to the editor (Node-RED marks such nodes changed), the editor SHALL generate a new `resourceId` if its `resourceId` is empty or equal to the `resourceId` of any other `s2-rm-config` or `s2-resource` node in the editor. Otherwise it SHALL keep the `resourceId`; an environment variable reference, `${NAME}` (or Node-RED's older `$(NAME)` form), SHALL always be kept. Nodes the editor adds while loading or reloading the deployed flows SHALL be left unchanged.
 
 #### Scenario: s2-rm-config imported as a copy
 - **WHEN** an import adds an `s2-rm-config` under a new node id whose `resourceId` an existing `s2-rm-config` already holds
@@ -168,15 +168,15 @@ When an `s2-rm` node starts, it SHALL claim the resolved `resourceId` of its `s2
 - **THEN** the `s2-rm` node is refused in the same way
 
 #### Scenario: Empty resource ID
-- **WHEN** an `s2-rm-config` has an empty `resourceId`
-- **THEN** the `s2-rm` node claims the `resourceId` it generates at start-up, which no other node holds, and starts normally
+- **WHEN** an `s2-rm-config` has an empty `resourceId`, e.g. from a blank environment variable
+- **THEN** the `s2-rm` node logs an error, shows a red `resource ID missing` status, and does not handle any input commands
 
 #### Scenario: Environment variable not set
 - **WHEN** an `s2-rm-config`'s `resourceId` is `${S2_RESOURCE_ID}` and that variable is not set for the `s2-rm`'s flow
 - **THEN** the `s2-rm` logs an error naming `S2_RESOURCE_ID`, shows a red `resource ID variable not set` status, and does not handle any input commands
 
 ### Requirement: s2-websocket refuses a resource ID another transport is using
-When an `s2-websocket` node starts, it SHALL claim the `resourceId` of its `s2-rm-config` as a transport, in the same registry; an `s2-rm` claiming that ID as a Resource Manager does not conflict. If another running transport already holds that claim, or the `resourceId` is an unresolved `${NAME}`, the `s2-websocket` SHALL log an error saying why, show the same red status as a refused `s2-rm`, and SHALL NOT connect to the CEM. It SHALL release its claim when it closes, before disconnecting.
+When an `s2-websocket` node starts, it SHALL claim the `resourceId` of its `s2-rm-config` as a transport, in the same registry; an `s2-rm` claiming that ID as a Resource Manager does not conflict. If another running transport already holds that claim, or the `resourceId` is empty, an unresolved environment variable reference or outside the S2 ID format, the `s2-websocket` SHALL log an error saying why, show the same red status as a refused `s2-rm`, and SHALL NOT connect to the CEM. It SHALL release its claim when it closes, before disconnecting.
 
 #### Scenario: s2-rm and s2-websocket on one config
 - **WHEN** one `s2-rm` and one `s2-websocket` reference the same `s2-rm-config`
@@ -189,3 +189,21 @@ When an `s2-websocket` node starts, it SHALL claim the `resourceId` of its `s2-r
 #### Scenario: Transport already used by an s2-resource
 - **WHEN** an `s2-resource` with `Transport: WebSocket` and `resourceId` X is running and an `s2-websocket` whose `s2-rm-config` has `resourceId` X starts after it
 - **THEN** the `s2-websocket` is refused and doesn't connect
+
+### Requirement: s2-rm and s2-websocket check the resource ID before starting
+After Node-RED's environment variable substitution, `s2-rm` and `s2-websocket` SHALL refuse to start when the `resourceId` of their `s2-rm-config` is empty, an unresolved environment variable reference (`${NAME}` (or Node-RED's older `$(NAME)` form)), or not 2-64 characters of `a-z`, `A-Z`, `0-9`, `-`, `_` or `:`, with the same errors and red statuses as `s2-resource`. If a node's setup fails after it has claimed its resource ID, the claim SHALL be released.
+
+#### Scenario: Resource ID with a space
+- **WHEN** an `s2-rm-config`'s Resource ID is `my heatpump`
+- **THEN** both the `s2-rm` and the `s2-websocket` using it show a red `invalid resource ID` status and don't start
+
+#### Scenario: Malformed CEM URL
+- **WHEN** an `s2-rm` or `s2-websocket`'s setup throws after claiming its resource ID because its `s2-cem-config` URL is malformed
+- **THEN** the claim is released
+
+### Requirement: s2-rm nodes sharing an s2-rm-config are flagged in the editor
+The editor SHALL mark an `s2-rm` node invalid, with a message saying another `s2-rm` uses the same `s2-rm-config`, when another `s2-rm` node references the same `s2-rm-config`, since only one of them can start.
+
+#### Scenario: s2-rm copied and pasted
+- **WHEN** an `s2-rm` node is copied and pasted, and the copy references the original's `s2-rm-config`
+- **THEN** the pasted `s2-rm` is marked invalid in the editor before deploy, with a message saying another `s2-rm` uses the same `s2-rm-config`; the original is marked as well the next time the editor validates it (e.g. when the flows are reloaded)
