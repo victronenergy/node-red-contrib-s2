@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- `s2-resource` with `Control type: None` is no longer marked invalid in the editor ("Invalid JSON data: Unexpected end of JSON input"), so deploying no longer warns that the workspace contains nodes that are not properly configured (#69). Its empty system description is now accepted; a malformed one is still flagged.
 - `s2-resource` and `s2-rm-config` get a new resource ID when a copy of the node itself is added in the editor - a copy-paste, or a flow or example imported again with "Import copy" (including imports that bring their own flow tab) - instead of keeping the original's. A copy-pasted `s2-rm` keeps using the original's `s2-rm-config`, so both would share one resource ID: the editor now marks the copy invalid until it gets its own `s2-rm-config`. A CEM tells resources apart by resource ID alone, so two resources sharing one were merged on the CEM side: GX Opportunity Loads showed one load twice and lost the other, with control behaving randomly. A cut-and-paste, a first-time import and a fresh node from the palette keep or get a single ID as before; deployed flows are not changed when the editor loads or reloads them. A node dropped from the palette now gets its resource ID straight away, instead of only once its edit dialog is opened.
 - The `s2-dbus-quickstart` example no longer shares its resource ID with `boiler-ombc-demo`.
 
