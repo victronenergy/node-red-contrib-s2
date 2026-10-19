@@ -22,7 +22,9 @@ The RM offers one or more **Control Types** that describe how its flexibility ca
 | Power Envelope Based Control | PEBC | Power envelope constraints |
 | Power Profile Based Control | PPBC | Fixed power profiles |
 
-This package currently implements **OMBC** as RM.
+This package implements the RM side. **OMBC** (`s2-ombc`, or `s2-resource`'s built-in control type) and
+**PEBC** (`s2-pebc`) have dedicated nodes; FRBC, DDBC and PPBC instructions are acknowledged and forwarded
+as raw S2 messages on `s2-rm`'s "from CEM" output, for the flow to handle.
 
 ---
 
@@ -157,6 +159,12 @@ CEM                                    RM
  |-- Message: ReceptionStatus(OK) ----> | subject_message_id = OMBC.SystemDescription.message_id
 ```
 
+`OMBC.SystemDescription` and `OMBC.Status` are not sent by `s2-rm` itself: the OMBC control type
+(`s2-ombc`, or `s2-resource` with `Control type: OMBC`) sees `SelectControlType` on `s2-rm`'s "from CEM"
+output and pushes them back as `SystemDescription`/`UpdateStatus` commands. With no default mode
+configured and no `ModeConfirmation` yet, there is no `OMBC.Status` to send; the control type emits
+a `ModeRequest` for the flow to report the current mode instead.
+
 **Open question:** The spec is ambiguous about whether the RM should wait for the CEM's
 `ReceptionStatus` for `OMBC.SystemDescription` before sending `OMBC.Status`. The current
 implementation sends both immediately (fire-and-forget). The reference CEM (`s2-cem-cli.py`)
@@ -182,9 +190,18 @@ CEM                                    RM
  |-- Message: OMBC.Instruction -------> |
  |                                      |
  |<-- Message: ReceptionStatus(OK) -----|
+ |<-- Message: InstructionStatusUpdate -| status=ACCEPTED
+ |                                      |  (at execution_time)
+ |<-- Message: InstructionStatusUpdate -| status=STARTED
+ |<-- Message: OMBC.Status -------------| once the flow confirms the new mode
 ```
 
-The RM acks every instruction immediately and forwards it downstream for the flow to act on.
+The RM acks every instruction immediately with `ReceptionStatus` and `InstructionStatusUpdate(ACCEPTED)`.
+An instruction whose `execution_time` is in the future is queued (in flow context, polled every
+`instructionPollIntervalMs`) and forwarded when due; one that is due already is forwarded at once.
+On forwarding, the RM sends `InstructionStatusUpdate(STARTED)`, unless "Skip instruction status updates" is
+checked in the RM config. A `RevokeObject` for a queued instruction removes it and sends `REVOKED`. PEBC
+instructions skip this queue: `s2-pebc` schedules them itself.
 
 ### 5. Disconnect
 
@@ -227,7 +244,7 @@ The s2python pydantic models enforce tighter types than the JSON schema for some
 
 | Field | JSON schema type | s2python type | Implication |
 |---|---|---|---|
-| `ResourceManagerDetails.resource_id` | `ID` (string pattern) | `uuid.UUID` | Must be a proper UUID - Node-RED node IDs (hex strings) are rejected |
+| `ResourceManagerDetails.resource_id` | `ID` (string pattern) | `uuid.UUID` | Must be a proper UUID - Node-RED node IDs (hex strings) are rejected. Generated IDs are UUIDs; a non-UUID entered on `s2-resource`'s WebSocket Resource ID field gets a warning in the dialog |
 | `ResourceManagerDetails.message_id` | `ID` (string pattern) | `uuid.UUID` | Use `generateId()` which produces UUIDs |
 | `OMBCOperationMode.id` | `ID` (string pattern) | `uuid.UUID` | Must be a valid UUID string, not a plain name like `"normal"` |
 | `OMBCStatus.message_id` | `ID` (string pattern) | `uuid.UUID` | Use `generateId()` which produces UUIDs |
@@ -256,65 +273,43 @@ directly when you need more than one control type on the same RM, a shared CEM c
 several `s2-resource`-shaped resources (`s2-cem-config` is still just a config node either way),
 or a transport `s2-resource` doesn't offer a built-in for yet.
 
-## Planned Architecture (next steps)
-
-The intended Node-RED flow structure is:
+## Node architecture
 
 ```
-[Transport node]  <->  [RM node]  -->  [device control]
+[transport]  <->  [s2-rm]  <->  [control-type node]  <->  [device flow]
 ```
 
-**Transport node** (handles D-Bus or network):
-- Current: `victron-virtual` acload node (Venus OS D-Bus)
-- Future: `s2-websocket` node (direct WebSocket to CEM)
-- Future: `s2-mqtt` node
-- All transports speak the same internal command interface so they are drop-in replacements
+- **Transport:** `s2-websocket` (the RM dials out to a CEM) or `s2-dbus` (registers a
+  `com.victronenergy.<acload|heatpump>.virtual_s2_<nodeId>` service a CEM on the GX calls into).
+  Both speak the same command interface to `s2-rm`, so they are drop-in replacements.
+- **`s2-rm`:** the generic S2 session (handshake, `ResourceManagerDetails`, control-type selection,
+  instruction ack/queue/routing), configured by `s2-rm-config`. Output 1 goes back to the transport,
+  output 2 carries every S2 message from the CEM, plus `Connected`/`Disconnected` lifecycle events.
+- **Control-type nodes:** `s2-ombc` (+ `s2-ombc-config`) and `s2-pebc` (+ `s2-pebc-config`) read
+  `s2-rm`'s output 2, turn instructions into device-level output, and send their commands
+  (`SystemDescription`, `UpdateStatus`, `PowerConstraints`, `InstructionStatus`) back into `s2-rm`.
+- **`s2-resource`:** all of the above in one node - `s2-rm` plus a built-in transport (WebSocket,
+  D-Bus, or External) and a built-in control type (OMBC, or None).
 
-**RM node** (`s2-rm`, currently named `s2-message-handling`):
-- Owns all S2 protocol logic
-- Configured via node UI with a JSON block:
-  - Supported control types (OMBC now, PEBC next, others later)
-  - Per-control-type config: operation modes / power ranges / constraints
-  - Phase info (1/2/3-phase)
-  - Hysteresis settings
-  - Firmware version, model, manufacturer
-- Port 1 out: messages to send back to the transport (to the CEM)
-- Port 2 out: S2 messages received from the CEM (for downstream processing)
-- Port 3 out: device control commands derived from received instructions
+Each RM is identified to the CEM by its resource ID only. The runtime refuses a second running RM, or
+a second transport, with the same resource ID (see the `s2-resource` and `s2-rm-protocol` specs under
+`openspec/specs/`).
 
-The node is designed to support multiple control types. The JSON config should be structured
-per control type so new ones can be added without changing the node interface:
+### Disabling CEM control at runtime
+
+To stop a connected CEM from controlling the device without ending the session, re-send
+`ResourceManagerDetails` with a narrower `available_control_types`. Send this to `s2-rm` or
+`s2-resource` (no `cemId` needed):
 
 ```json
-{
-  "controlTypes": {
-    "OMBC": {
-      "operationModes": [...],
-      "transitions": [],
-      "timers": []
-    },
-    "PEBC": {
-      "powerConstraints": [...]
-    }
-  }
-}
+{ "payload": { "command": "SetAvailableControlTypes", "isControllable": false } }
 ```
 
-The CEM selects which control type to use via `SelectControlType`. The RM node routes to the
-appropriate handler. Priority order for implementation: OMBC (done), PEBC (next), others later.
-
-### Disabling CEM control via input
-
-To tell a connected CEM to stop controlling the device without disconnecting the session,
-re-send `ResourceManagerDetails` with `available_control_types: []`. The CEM must respect
-this and stop sending instructions. This is the spec-correct "no control" mode.
-
-The RM node input should accept a command to trigger this, e.g.:
-```json
-{ "payload": { "command": "SetControlTypes", "controlTypes": [] } }
-```
-
-To re-enable: send `SetControlTypes` with the desired list (e.g. `["OPERATION_MODE_BASED_CONTROL"]`).
+This advertises exactly `["NOT_CONTROLABLE"]`, and requires "Not Controllable" to have been enabled in
+the node's configured control types. `isControllable: true` restores the configured list. The list form,
+`"availableControlTypes": ["OPERATION_MODE_BASED_CONTROL"]`, replaces the advertised list verbatim. An
+empty list is rejected: S2 requires at least one advertised control type. See the README for the full
+contract.
 
 `SessionRequest: TERMINATE` is available too but fully disconnects - use it only when you want
 the CEM to disconnect and reconnect from scratch, not just to pause control.
@@ -323,13 +318,9 @@ the CEM to disconnect and reconnect from scratch, not just to pause control.
 
 ## Known Limitations / TODO
 
-- WebSocket transport (`s2-websocket` node) is not yet implemented
-- `s2-message-handling` node should be renamed to `s2-rm` (S2 Resource Manager)
-- OMBC system description + operation modes should move from hardcoded defaults to JSON config in the RM node
-- Phase and hysteresis config not yet exposed
-- Only OMBC control type is currently supported in `S2Session`; PEBC is the next planned control type
-- No `SessionRequest` (reconnect/terminate) handling
-- No `RevokeObject` handling
-- No `PowerMeasurement` / `PowerForecast` sending
-- KeepAlive timeout enforcement on the RM side is not implemented (the D-Bus layer in Venus OS handles this, but the Node-RED session does not independently monitor it)
-- `SetControlTypes` input command (re-advertise capabilities / disable control) not yet implemented
+- No dedicated nodes for FRBC, DDBC and PPBC: their instructions are acknowledged and forwarded raw
+- `SessionRequest` from the CEM (reconnect/terminate) is forwarded on `s2-rm`'s output 2 but not acted on
+- The optional D-Bus RM settings (`S2/0/RmSettings/OnHysteresis`, `OffHysteresis`, `PowerSetting`) are not exposed
+- `s2-dbus` doesn't know the resource ID, so it can't refuse a duplicate the way `s2-websocket` does; an
+  `s2-dbus` wired to a refused `s2-rm` registers a D-Bus service that never completes a handshake
+- See the open question under "Control Type Selection" about waiting for the `OMBC.SystemDescription` ack

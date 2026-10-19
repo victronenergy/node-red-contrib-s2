@@ -22,10 +22,10 @@ S2 uses Energy Flexibility Patterns (control types) rather than device-specific 
 
 | Control Type | Abbreviation | Description |
 |---|---|---|
-| Operation Mode Based Control | OMBC | Discrete operation modes with power ranges - currently implemented |
+| Operation Mode Based Control | OMBC | Discrete operation modes with power ranges - `s2-ombc`, and built into `s2-resource` |
 | Fill Rate Based Control | FRBC | Buffer/storage fill-rate model |
 | Demand Driven Based Control | DDBC | Demand-driven actuator control |
-| Power Envelope Based Control | PEBC | Power envelope constraints - next planned |
+| Power Envelope Based Control | PEBC | Power envelope constraints - `s2-pebc` |
 | Power Profile Based Control | PPBC | Fixed power profiles |
 | Not Controlable | - | Device cannot be controlled |
 
@@ -77,7 +77,9 @@ CEM                                    RM
  |-- Message: OMBC.Instruction -------->| operation_mode_id, operation_mode_factor, abnormal_condition
  |                                      |
  |<-- Message: ReceptionStatus(OK) -----|
- |<-- Message: OMBC.Status -------------| updated active mode (when acted upon)
+ |<-- Message: InstructionStatusUpdate -| ACCEPTED (immediately)
+ |<-- Message: InstructionStatusUpdate -| STARTED (at execution_time; future ones are queued)
+ |<-- Message: OMBC.Status -------------| updated active mode, once the flow confirms it
 ```
 
 The RM MUST ack every instruction immediately and then act on it.
@@ -240,35 +242,47 @@ S2/0/RmSettings/PowerSetting   - optional, Watts
 ## Project Architecture (node-red-contrib-s2)
 
 ### Transport Layer (`src/lib/transport/`)
-- `websocket.ts`: `S2WebSocketTransport` - EventEmitter wrapper around `ws` with auto-reconnect, uses subprotocol `reids.2`
-- D-Bus transport handled by `node-red-contrib-victron` acload virtual device
+- `websocket.ts`: `S2WebSocketTransport` - EventEmitter wrapper around `ws` with auto-reconnect and heartbeat, used by `s2-websocket` and `s2-resource` (`Transport: WebSocket`)
+- `dbus.ts`: `S2DbusTransport` - registers `com.victronenergy.<acload|heatpump>.virtual_s2_<nodeId>` with `/S2/0/Rm` via `dbus-victron-virtual` (which also enforces the KeepAlive timeout), claims a DeviceInstance, exposes power measurement as BusItems; used by `s2-dbus` and `s2-resource` (`Transport: D-Bus`). No dependency on node-red-contrib-victron.
 
 ### Protocol Layer (`src/lib/s2/`)
-- `messages.ts`: MessageType/ControlType/ReceptionStatusResult constants, factory functions (`makeHandshake`, `makeResourceManagerDetails`, `makeOMBCSystemDescription`, `makeOMBCStatus`, `makePowerMeasurement`, `makeReceptionStatus`), `parse()`, `serialize()`, `generateId()` (UUID v4)
-- `session.ts`: `S2Session` state machine - one instance per CEM connection. States: HANDSHAKING -> CONNECTED. Handles: HandshakeResponse, SelectControlType, all instruction types (OMBC/FRBC/DDBC/PEBC/PPBC), ReceptionStatus forwarding
+- `messages.ts`: MessageType/ControlType/ReceptionStatusResult/InstructionStatus constants, message factories, `parse()`, `serialize()`, `generateId()` (UUID v4)
+- `session.ts`: `S2Session` - one per CEM connection. HANDSHAKING -> CONNECTED; acks every message with a `message_id`, sends `InstructionStatusUpdate(ACCEPTED)` for instructions, retries once on `TEMPORARY_ERROR`, validates every message against the vendored S2 JSON schema (`schema-validation.ts`)
+- `resource-manager.ts`: `S2ResourceManager` - the session map and command interface shared by `s2-rm` and `s2-resource`; queues future instructions, sends STARTED/REVOKED, handles `SetAvailableControlTypes` and `PowerConstraints`
+- `ombc-controller.ts`: OMBC control type, shared by `s2-ombc` and `s2-resource`; `schedule.ts`: PEBC schedule accumulation for `s2-pebc`
+- `resource-id-registry.ts`: process-wide resource ID claims (RM and transport) and the start-up check of the resource ID
 
 ### Node Layer (`src/nodes/`)
-- `s2-rm/index.ts`: S2 Resource Manager node - manages session map, routes D-Bus commands (Connect/Message/KeepAlive/PowerMeasurement/Disconnect), 2 output ports (to-CEM, from-CEM incl. instructions)
-- `s2-websocket/index.ts`: Stub, not yet implemented
+- `s2-resource`: composite node - RM + built-in transport (WebSocket / D-Bus / External) + built-in control type (OMBC / None). The recommended starting point.
+- `s2-rm` (+ `s2-rm-config`): RM only, 2 outputs (to transport, from CEM incl. instructions and lifecycle events)
+- `s2-websocket` (+ `s2-cem-config`), `s2-dbus` (+ `s2-dbus-config`): transports
+- `s2-ombc` (+ `s2-ombc-config`), `s2-pebc` (+ `s2-pebc-config`): control types
 
-### Internal Command Interface (between transport and s2-rm)
+### Internal Command Interface (into s2-rm / s2-resource)
 
-Input from transport:
+Input `msg.payload`, from a transport or a control-type node:
 ```
-{ command: 'Connect',          cemId, keepAliveInterval }
-{ command: 'Message',          cemId, message }   // message = raw S2 JSON string
-{ command: 'KeepAlive',        cemId }
-{ command: 'PowerMeasurement', cemId, values: [{commodity_quantity, value}] }
-{ command: 'Disconnect',       cemId }
+{ command: 'Connect',           cemId, keepAliveInterval }
+{ command: 'Message',           cemId, message }   // message = raw S2 JSON string
+{ command: 'KeepAlive',         cemId }
+{ command: 'Disconnect',        cemId }
+{ command: 'PowerMeasurement',  cemId, values: [{commodity_quantity, value}] }
+{ command: 'Forecast',          cemId, forecast }
+{ command: 'InstructionStatus', cemId, instructionId, status }
+{ command: 'UpdateStatus',      cemId, controlType, <e.g. ombc: {...}> }
+{ command: 'SystemDescription', cemId, controlType, <e.g. ombc: {...}> }
+{ command: 'PowerConstraints',  constraints }                       // no cemId: applies to all sessions
+{ command: 'SetAvailableControlTypes', availableControlTypes | isControllable }   // no cemId
 ```
 
 Output to transport (port 1):
 ```
 { payload: { s2Signal: 'Message', message: <S2 object> }, cemId }
 { payload: { s2Signal: 'PowerMeasurementStart', commodityQuantities: [...] }, cemId }
+{ payload: { 'S2/0/Active': 1 | 0 } }
 ```
 
-Output port 2: All received S2 messages, incl. instructions `{ payload: <S2 msg>, cemId, topic: <message_type> }`
+Output port 2: every S2 message from the CEM, incl. instructions, as `{ payload: <S2 msg>, cemId, topic: <message_type> }`, plus `{ topic: 'Connected' | 'Disconnected', cemId }`.
 
 ---
 
@@ -318,26 +332,21 @@ python3 ~/git/venus-s2-tools/s2-cem-cli.py
 
 ---
 
-## Disabling CEM Control (spec-correct method)
+## Disabling CEM Control at runtime
 
-To temporarily stop CEM control without disconnecting:
-- Re-send `ResourceManagerDetails` with `available_control_types: []`
-- To re-enable: send with desired list (e.g. `["OPERATION_MODE_BASED_CONTROL"]`)
+To stop CEM control without disconnecting, re-send `ResourceManagerDetails` with a narrower list:
+- `{ command: 'SetAvailableControlTypes', isControllable: false }` advertises exactly `['NOT_CONTROLABLE']` (only allowed when NOT_CONTROLABLE is in the configured control types); `isControllable: true` restores the configured list
+- `{ command: 'SetAvailableControlTypes', availableControlTypes: [...] }` replaces the list verbatim; an empty list is rejected, since S2 requires at least one advertised control type
 - `SessionRequest: TERMINATE` fully disconnects - use only for reconnect-from-scratch
 
 ---
 
 ## Known Limitations / Planned Work
 
-- WebSocket transport not yet implemented
-- Only OMBC control type is supported; PEBC is next
-- OMBC config is via JSON in node UI, not yet fully surfaced
-- No `SessionRequest` (reconnect/terminate) handling
-- No `RevokeObject` handling
-- No `PowerForecast` sending
-- No `InstructionStatusUpdate` sending
-- KeepAlive timeout not independently monitored by Node-RED session (Venus OS D-Bus handles it)
-- `SetControlTypes` input command not yet implemented
+- No dedicated nodes for FRBC, DDBC and PPBC: their instructions are acked and forwarded raw on `s2-rm`'s output 2
+- `SessionRequest` from the CEM is forwarded but not acted on
+- D-Bus `S2/0/RmSettings/*` (hysteresis, power setting) are not exposed
+- `s2-dbus` doesn't know the resource ID, so it can't refuse a duplicate like `s2-websocket` does
 
 ---
 
