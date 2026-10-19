@@ -4,6 +4,8 @@ import { PowerMeasurementValue } from './power-measurement-cache'
 
 interface CemState {
   selectedControlType: string | null
+  /** A ModeRequest went out and no mode has been confirmed since (behaviour version 0.9.7+). */
+  awaitingConfirmation: boolean
 }
 
 type PowerRange = { commodity_quantity: string, start_of_range: number, end_of_range: number }
@@ -63,7 +65,7 @@ export class OMBCController {
   private getOrCreateState (cemId: string): CemState {
     let state = this.cemStates.get(cemId)
     if (!state) {
-      state = { selectedControlType: null }
+      state = { selectedControlType: null, awaitingConfirmation: false }
       this.cemStates.set(cemId, state)
     }
     return state
@@ -292,7 +294,13 @@ export class OMBCController {
     if (resolved) {
       const commodityPower = this.calculatePower(resolved.powerRanges, resolved.factor)
       const values = this.calculateValues(resolved.powerRanges, resolved.factor)
-      this.opts.onStatus({ fill: 'green', shape: 'dot', text: resolved.label })
+      // Until the flow confirms a mode, an instruction is only what was asked for, not what the
+      // device does - keep the outstanding ModeRequest visible.
+      if (msg.cemId && this.getOrCreateState(msg.cemId as string).awaitingConfirmation) {
+        this.opts.onStatus({ fill: 'yellow', shape: 'ring', text: `instructed: ${resolved.label} - waiting for ModeConfirmation` })
+      } else {
+        this.opts.onStatus({ fill: 'green', shape: 'dot', text: resolved.label })
+      }
       this.opts.onEmitInstruction({
         topic: 'ModeInstruction',
         payload: { id: resolved.id, index: resolved.index, label: resolved.label, factor: resolved.factor, commodityPower, values },
@@ -312,8 +320,10 @@ export class OMBCController {
     if (!cemId) return
     const payload = msg.payload as Record<string, unknown>
     const controlType = payload.control_type as string
-    this.getOrCreateState(cemId).selectedControlType = controlType
+    const state = this.getOrCreateState(cemId)
+    state.selectedControlType = controlType
     if (controlType !== ControlType.OMBC) {
+      state.awaitingConfirmation = false
       this.clearPersistedStatus(cemId)
       return
     }
@@ -341,6 +351,7 @@ export class OMBCController {
         },
         cemId
       })
+      state.awaitingConfirmation = true
       this.opts.onStatus({ fill: 'yellow', shape: 'ring', text: 'waiting for ModeConfirmation' })
     } else {
       this.opts.onEmitInstruction({ topic: 'ModeRequest', payload: null, cemId })
@@ -414,6 +425,7 @@ export class OMBCController {
       }
     }
     this.setPersistedStatus(cemId, status)
+    state.awaitingConfirmation = false
     this.opts.onStatus({ fill: 'green', shape: 'dot', text: `Confirmed: ${this.modeLabelOrId(modeId)}` })
     this.opts.onSendCommand({ payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } })
     return true
