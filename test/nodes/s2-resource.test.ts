@@ -1205,6 +1205,21 @@ describe('s2-resource - status shows connection and control type', () => {
     expect(lastStatus(node).text).not.toContain('|')
   })
 
+  it('shows an operation mode that happens to be labelled idle', () => {
+    const idleMode = JSON.stringify({
+      operationModes: [{ id: 'mode-idle', diagnostic_label: 'idle', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }], abnormal_condition_only: false }],
+      transitions: [],
+      timers: []
+    })
+    const { node, handlers } = setupNode({ id: 'st-idle-label', transport: 'external', controlType: 'ombc', systemDescription: idleMode })
+    handshake(handlers)
+    selectOmbc(handlers)
+
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'oi1', id: 'instr-1', execution_time: new Date().toISOString(), operation_mode_id: 'mode-idle', operation_mode_factor: 1, abnormal_condition: false }) } }, jest.fn(), jest.fn())
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected.* \| idle$/)
+  })
+
   it('is unchanged with Control type None', () => {
     const { node, handlers } = setupNode({ id: 'st-none', transport: 'external', controlType: 'none' })
 

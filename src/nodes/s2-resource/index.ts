@@ -266,9 +266,12 @@ export = function (RED: NodeRedApp): void {
       connectionStatus = status
       showStatus()
     }
+    // The controller reports 'idle' from its constructor, which says nothing about OMBC yet.
+    // Ignored by when it arrives, not by its text: an operation mode may be labelled 'idle' too.
+    let controlTypeConstructed = false
     function setControlTypeStatus (status: NodeRedStatus): void {
-      // The controller's initial 'idle' says nothing about OMBC yet.
-      controlTypeStatus = status.text === 'idle' ? null : status
+      if (!controlTypeConstructed) return
+      controlTypeStatus = status
       showStatus()
     }
 
@@ -365,6 +368,7 @@ export = function (RED: NodeRedApp): void {
         autoConfirmInstructions: config.autoConfirmInstructions === true,
         describeModeRequest: versionAtLeast(config.version, DESCRIBED_MODE_REQUEST_SINCE)
       })
+      controlTypeConstructed = true
 
       // Seeds the "Pre-connection default status" (see control-type-ombc spec) at deploy
       // time, so a CEM selecting OMBC gets an initial OMBC.Status without the flow author

@@ -414,7 +414,7 @@ An `s2-resource` whose `systemDescription` is empty, as it is with `Control type
 - **THEN** the node is marked invalid with an "Invalid JSON data" message
 
 ### Requirement: Status shows the connection and the control type
-With a built-in control type, `s2-resource`'s node status SHALL show its latest connection status (Resource Manager and transport) and its latest control-type status together, as `<connection> | <control type>`. The colour and shape SHALL come from the connection status, except that a yellow or red control-type status sets the colour. The control type's initial `idle` status SHALL add nothing.
+With a built-in control type, `s2-resource`'s node status SHALL show its latest connection status (Resource Manager and transport) and its latest control-type status together, as `<connection> | <control type>`. The colour and shape SHALL come from the connection status, except that a yellow or red control-type status sets the colour. The `idle` status the control type reports before anything has happened SHALL add nothing.
 
 #### Scenario: Mode confirmed while a CEM is connected
 - **WHEN** a CEM is connected and the built-in OMBC has confirmed mode `Off`
@@ -431,3 +431,7 @@ With a built-in control type, `s2-resource`'s node status SHALL show its latest 
 #### Scenario: Nothing to report about the control type
 - **WHEN** no mode has been confirmed, defaulted or requested yet
 - **THEN** the status shows only the connection status, as before
+
+#### Scenario: Operation mode labelled idle
+- **WHEN** an instruction selects an operation mode whose label is `idle`
+- **THEN** the status shows the connection followed by `| idle`, like any other mode label
