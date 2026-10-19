@@ -323,7 +323,14 @@ export class OMBCController {
     const state = this.getOrCreateState(cemId)
     state.selectedControlType = controlType
     if (controlType !== ControlType.OMBC) {
-      state.awaitingConfirmation = false
+      if (state.awaitingConfirmation) {
+        state.awaitingConfirmation = false
+        // Only this node's status shows the wait, so take it down unless another CEM still waits.
+        const othersWaiting = [...this.cemStates.values()].some(s => s.awaitingConfirmation)
+        this.opts.onStatus(othersWaiting
+          ? { fill: 'yellow', shape: 'ring', text: 'waiting for ModeConfirmation' }
+          : { fill: 'grey', shape: 'ring', text: 'OMBC not selected' })
+      }
       this.clearPersistedStatus(cemId)
       return
     }
@@ -340,6 +347,8 @@ export class OMBCController {
     }
 
     if (status) {
+      // A known mode answers an earlier ModeRequest, e.g. a default confirmed while disconnected.
+      state.awaitingConfirmation = false
       this.opts.onSendCommand({ payload: { command: 'UpdateStatus', cemId, controlType: ControlType.OMBC, ombc: status } })
     } else if (this.opts.describeModeRequest) {
       const modes = (this.systemDescription.operationModes as Array<Record<string, unknown>> | undefined) || []
