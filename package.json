@@ -12,6 +12,7 @@
     "dist/",
     "resources/",
     "examples/",
+    "scripts/prepack.js",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -33,7 +34,7 @@
     }
   },
   "scripts": {
-    "prepublishOnly": "npm run build && npm run check-package-files",
+    "prepublishOnly": "npm run check-package-files",
     "build": "tsc && npm run copy-html && npm run copy-schemas",
     "clean": "rm -rf dist",
     "copy-html": "node scripts/copy-html.js",
@@ -43,7 +44,8 @@
     "test": "npm run lint && npm run test:unit",
     "test:unit": "jest",
     "test:watch": "jest --watch",
-    "lint": "eslint src/ test/"
+    "lint": "eslint src/ test/",
+    "prepack": "node scripts/prepack.js"
   },
   "keywords": [
     "node-red",
@@ -52,9 +54,6 @@
     "victron"
   ],
   "license": "MIT",
-  "peerDependencies": {
-    "node-red": ">=4.1.0"
-  },
   "dependencies": {
     "dbus-native-victron": "^0.4.12",
     "dbus-victron-virtual": "^0.1.37",
