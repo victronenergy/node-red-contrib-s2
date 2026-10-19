@@ -1167,3 +1167,81 @@ describe('s2-resource - built-in OMBC waiting status with auto-confirm', () => {
     expect(last.fill).toBe('green')
   })
 })
+
+describe('s2-resource - status shows connection and control type', () => {
+  const handshake = (handlers: Record<string, (...args: unknown[]) => void>) => {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } }, jest.fn(), jest.fn())
+  }
+  const selectOmbc = (handlers: Record<string, (...args: unknown[]) => void>) =>
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }) } }, jest.fn(), jest.fn())
+  const lastStatus = (node: Record<string, unknown>) => {
+    const calls = (node.status as jest.Mock).mock.calls
+    return calls[calls.length - 1][0] as { fill?: string, shape?: string, text?: string }
+  }
+
+  it('shows the connection together with the confirmed mode', () => {
+    const { node, handlers } = setupNode({ id: 'st-confirmed', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    handshake(handlers)
+    selectOmbc(handlers)
+
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: { label: 'Standby' } }, jest.fn(), jest.fn())
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected.* \| Confirmed: Standby$/)
+    expect(lastStatus(node).fill).toBe('green')
+  })
+
+  it('turns yellow while waiting for a ModeConfirmation, keeping the connection text', () => {
+    const { node, handlers } = setupNode({ id: 'st-waiting', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, version: '0.9.7' })
+    handshake(handlers)
+
+    selectOmbc(handlers)
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected.* \| waiting for ModeConfirmation$/)
+    expect(lastStatus(node).fill).toBe('yellow')
+  })
+
+  it('keeps the confirmed mode when the CEM disconnects', () => {
+    const { node, handlers } = setupNode({ id: 'st-disconnect', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+    handshake(handlers)
+    selectOmbc(handlers)
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: { label: 'Standby' } }, jest.fn(), jest.fn())
+
+    handlers.input({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn(), jest.fn())
+
+    expect(lastStatus(node).text).toMatch(/^waiting for CEM.* \| Confirmed: Standby$/)
+  })
+
+  it('shows only the connection while the control type has nothing to report', () => {
+    const { node, handlers } = setupNode({ id: 'st-idle', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+
+    handshake(handlers)
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected/)
+    expect(lastStatus(node).text).not.toContain('|')
+  })
+
+  it('shows an operation mode that happens to be labelled idle', () => {
+    const idleMode = JSON.stringify({
+      operationModes: [{ id: 'mode-idle', diagnostic_label: 'idle', power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', start_of_range: 0, end_of_range: 0 }], abnormal_condition_only: false }],
+      transitions: [],
+      timers: []
+    })
+    const { node, handlers } = setupNode({ id: 'st-idle-label', transport: 'external', controlType: 'ombc', systemDescription: idleMode })
+    handshake(handlers)
+    selectOmbc(handlers)
+
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'oi1', id: 'instr-1', execution_time: new Date().toISOString(), operation_mode_id: 'mode-idle', operation_mode_factor: 1, abnormal_condition: false }) } }, jest.fn(), jest.fn())
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected.* \| idle$/)
+  })
+
+  it('is unchanged with Control type None', () => {
+    const { node, handlers } = setupNode({ id: 'st-none', transport: 'external', controlType: 'none' })
+
+    handshake(handlers)
+
+    expect(lastStatus(node).text).toMatch(/^CEM connected/)
+    expect(lastStatus(node).text).not.toContain('|')
+  })
+})
