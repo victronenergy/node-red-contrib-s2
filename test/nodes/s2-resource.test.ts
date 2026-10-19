@@ -1125,3 +1125,29 @@ describe('s2-resource - resource ID start-up check', () => {
     expect(claimResourceId('rid-setup-throws', 'next-transport', 'transport')).toEqual({ claimed: true })
   })
 })
+
+describe('s2-resource - built-in OMBC ModeRequest from behaviour version 0.9.7', () => {
+  function selectOmbc (handlers: Record<string, (...args: unknown[]) => void>) {
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } }, jest.fn(), jest.fn())
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }) } }, jest.fn(), jest.fn())
+  }
+  const modeRequestOf = (node: Record<string, unknown>) =>
+    outputAt(node, 1).find((m) => (m as { topic?: string }).topic === 'ModeRequest') as { payload: unknown } | undefined
+
+  it('lists the configured modes in the ModeRequest payload', () => {
+    const { node, handlers } = setupNode({ id: 'mr-v2', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, version: '0.9.7' })
+
+    selectOmbc(handlers)
+
+    expect(modeRequestOf(node)!.payload).toEqual({ message: expect.stringContaining('ModeConfirmation'), modes: [{ id: 'mode-standby', index: 0, label: 'Standby' }] })
+  })
+
+  it('keeps payload null for a node without a version', () => {
+    const { node, handlers } = setupNode({ id: 'mr-legacy', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION })
+
+    selectOmbc(handlers)
+
+    expect(modeRequestOf(node)!.payload).toBeNull()
+  })
+})

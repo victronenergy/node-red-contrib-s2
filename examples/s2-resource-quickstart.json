@@ -27,6 +27,7 @@
     {
         "id": "c2b3d4e5f6a70004",
         "type": "s2-resource",
+        "version": "0.9.7",
         "z": "c2b3d4e5f6a70001",
         "name": "Boiler",
         "rmName": "RM: Boiler",

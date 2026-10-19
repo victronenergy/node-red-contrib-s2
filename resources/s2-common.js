@@ -98,6 +98,19 @@ window.__s2Common.watchResourceIds = function (RED) {
   })
 }
 
+// Same as src/lib/s2/behaviour-version.ts: a node's version is the release whose behaviour it has,
+// compared as numbers per dotted part ('0.10.0' > '0.9.7'). Missing or unreadable = oldest.
+window.__s2Common.versionAtLeast = function (version, minimum) {
+  if (typeof version !== 'string' || !/^\d+(\.\d+)*$/.test(version)) return false
+  const have = version.split('.').map(Number)
+  const want = minimum.split('.').map(Number)
+  for (let i = 0; i < Math.max(have.length, want.length); i++) {
+    const diff = (have[i] || 0) - (want[i] || 0)
+    if (diff !== 0) return diff > 0
+  }
+  return true
+}
+
 window.__s2Common.initializeTooltips = function () {
   $('.s2-tooltip-container').remove()
   $('.s2-form .tooltip-icon').off('mouseenter.s2 mouseleave.s2')

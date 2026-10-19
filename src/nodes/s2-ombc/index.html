@@ -5,7 +5,10 @@
     color: '#ffffff',
     defaults: {
       name: { value: '' },
-      ombcConfig: { value: '', type: 's2-ombc-config', required: true }
+      ombcConfig: { value: '', type: 's2-ombc-config', required: true },
+      // Release whose behaviour a node has; only newly added nodes get it (flows Node-RED loads or
+      // imports don't get defaults). 0.9.7: ModeRequest carries { message, modes } instead of null.
+      version: { value: '0.9.7' }
     },
     inputs: 1,
     outputs: 2,
@@ -21,12 +24,30 @@
     },
     oneditprepare: function () {
       window.__s2Common.initializeTooltips()
+
+      $('#s2-ombc-version-notice').toggle(!window.__s2Common.versionAtLeast(this.version, this._def.defaults.version.value))
+      $('#s2-ombc-version-update').on('click', function () {
+        $(this).data('requested', true).hide()
+        $('#s2-ombc-version-notice-text').text('This node will use the latest behaviour when you click Done.')
+      })
+    },
+    oneditsave: function () {
+      // Set here rather than through an input, so nodes saved without pressing "Update to latest"
+      // keep having no version at all.
+      if ($('#s2-ombc-version-update').data('requested')) {
+        this.version = this._def.defaults.version.value
+      }
     }
   })
 </script>
 
 <script type="text/html" data-template-name="s2-ombc">
   <div class="s2-form">
+
+    <div class="form-row form-tips" id="s2-ombc-version-notice">
+      <span id="s2-ombc-version-notice-text">This node sends <code>ModeRequest</code> with an empty payload. Newer nodes say what they expect and list the operation modes a <code>ModeConfirmation</code> can name.</span>
+      <button type="button" id="s2-ombc-version-update" class="red-ui-button red-ui-button-small">Update to latest</button>
+    </div>
 
     <div class="form-row">
       <label for="node-input-name">
@@ -79,7 +100,7 @@
         <dt>topic <span class="property-type">string</span></dt>
         <dd><code>'ModeInstruction'</code> for a resolved OMBC instruction, or <code>'ModeRequest'</code> sent after a newly OMBC-selecting CEM has neither a persisted status nor a default available.</dd>
         <dt>payload <span class="property-type">object</span></dt>
-        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, commodityPower, values }</code> for the resolved mode. <code>commodityPower</code> contains S2-shaped <code>{ commodity_quantity, value }</code> pairs derived from the mode's power ranges and factor. Symmetric power uses <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>; per-phase power uses one <code>ELECTRIC.POWER.L1/L2/L3</code> pair per phase. <code>values</code> is the matching convenience shape for <code>PowerMeasurement</code>. The complete payload can be passed to <code>ModeConfirmation</code> or <code>PowerMeasurement</code>; each handler uses only the fields relevant to it. For <code>ModeRequest</code>: <code>null</code>.</dd>
+        <dd>For <code>ModeInstruction</code>: <code>{ id, index, label, factor, commodityPower, values }</code> for the resolved mode. <code>commodityPower</code> contains S2-shaped <code>{ commodity_quantity, value }</code> pairs derived from the mode's power ranges and factor. Symmetric power uses <code>ELECTRIC.POWER.3_PHASE_SYMMETRIC</code>; per-phase power uses one <code>ELECTRIC.POWER.L1/L2/L3</code> pair per phase. <code>values</code> is the matching convenience shape for <code>PowerMeasurement</code>. The complete payload can be passed to <code>ModeConfirmation</code> or <code>PowerMeasurement</code>; each handler uses only the fields relevant to it. For <code>ModeRequest</code>: <code>{ message, modes }</code> - <code>message</code> says no operation mode is known yet, and <code>modes</code> lists every configured mode as <code>{ id, index, label }</code>; answer with a <code>ModeConfirmation</code> naming the mode the device is in now (any one of those entries works as its payload). The node shows <b>waiting for ModeConfirmation</b> until then. Nodes added before this behaviour existed send <code>null</code> instead; their dialog offers <b>Update to latest</b>.</dd>
         <dt>cemId <span class="property-type">string</span></dt>
         <dd>The CEM this message applies to.</dd>
         <dt>rawS2Message <span class="property-type">object</span></dt>

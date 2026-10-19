@@ -11,6 +11,7 @@ interface S2Common {
   isUuid: (value: string) => boolean
   isEnvRef: (value: string) => boolean
   rmConfigSharedBy: (RED: unknown, node: EditorNode, rmConfigId: string) => string | null
+  versionAtLeast: (version: unknown, minimum: string) => boolean
   validateResourceId: (RED: unknown, node: EditorNode, value: string) => true | string
 }
 
@@ -289,5 +290,20 @@ describe('s2-common - rmConfigSharedBy', () => {
     const node = { id: 'rm1', type: 's2-rm', rmConfig: '' }
     const other = { id: 'rm2', type: 's2-rm', rmConfig: '' }
     expect(rmConfigSharedBy(fakeRED([node, other]), node, '')).toBeNull()
+  })
+})
+
+describe('s2-common - versionAtLeast', () => {
+  const { versionAtLeast } = loadS2Common()
+
+  it('compares release versions part by part, as numbers', () => {
+    expect(versionAtLeast('0.10.0', '0.9.7')).toBe(true)
+    expect(versionAtLeast('0.9.7', '0.9.7')).toBe(true)
+    expect(versionAtLeast('0.9.6', '0.9.7')).toBe(false)
+  })
+
+  it('treats a node without a version as older than any release', () => {
+    expect(versionAtLeast(undefined, '0.9.7')).toBe(false)
+    expect(versionAtLeast('next', '0.9.7')).toBe(false)
   })
 })
