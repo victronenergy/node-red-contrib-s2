@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events'
 import registerNode from '../../src/nodes/s2-websocket/index'
+import { S2WebSocketTransport } from '../../src/lib/transport/websocket'
+import { claimResourceId } from '../../src/lib/s2/resource-id-registry'
 
 // --- Transport mock ---
 
@@ -382,5 +384,56 @@ describe('s2-websocket - debug logging', () => {
     mockTransport.emit('close')
 
     expect(RED.comms.publish as jest.Mock).not.toHaveBeenCalled()
+  })
+})
+
+describe('s2-websocket - resource ID claim', () => {
+  it('starts when an s2-rm already holds the resource ID as RM', () => {
+    claimResourceId('rid-ws-pair', 'paired-s2-rm', 'rm')
+
+    const { node, handlers } = setupNode({ id: 'ws-pair' }, DEFAULT_CEM_CONFIG, { resourceId: 'rid-ws-pair' })
+
+    expect(node.error).not.toHaveBeenCalled()
+    expect(mockTransport.connect).toHaveBeenCalled()
+    expect(handlers.input).toBeDefined()
+  })
+
+  it('refuses to connect when another transport already carries the resource ID', () => {
+    setupNode({ id: 'ws-first' }, DEFAULT_CEM_CONFIG, { resourceId: 'rid-ws-dup' })
+    ;(S2WebSocketTransport as unknown as jest.Mock).mockClear()
+
+    const { node, handlers } = setupNode({ id: 'ws-second' }, DEFAULT_CEM_CONFIG, { resourceId: 'rid-ws-dup' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('ws-first'))
+    expect(node.error).toHaveBeenCalledWith(expect.stringMatching(/deploy/i))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+    expect(S2WebSocketTransport).not.toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('refuses to connect when the resource ID is an environment variable that is not set', () => {
+    ;(S2WebSocketTransport as unknown as jest.Mock).mockClear()
+
+    const { node } = setupNode({ id: 'ws-env' }, DEFAULT_CEM_CONFIG, { resourceId: '${S2_RESOURCE_ID}' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('S2_RESOURCE_ID'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+    expect(S2WebSocketTransport).not.toHaveBeenCalled()
+  })
+
+  it('does not claim an empty resource ID', () => {
+    setupNode({ id: 'ws-empty-1' }, DEFAULT_CEM_CONFIG, { resourceId: '' })
+
+    const { node } = setupNode({ id: 'ws-empty-2' }, DEFAULT_CEM_CONFIG, { resourceId: '' })
+
+    expect(node.error).not.toHaveBeenCalled()
+  })
+
+  it('releases its claim even when disconnecting throws', () => {
+    const first = setupNode({ id: 'ws-throwing' }, DEFAULT_CEM_CONFIG, { resourceId: 'rid-ws-release' })
+    mockTransport.disconnect.mockImplementation(() => { throw new Error('socket gone') })
+    expect(() => first.handlers.close(jest.fn())).toThrow('socket gone')
+
+    expect(claimResourceId('rid-ws-release', 'next-transport', 'transport')).toEqual({ claimed: true })
   })
 })

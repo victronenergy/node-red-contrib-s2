@@ -2,7 +2,7 @@ import { NodeRedApp, NodeConfig, NodeRedNode, NodeMessage } from '../../types/no
 import { S2RmConfigNode, S2CemConfigNode } from '../../types/config-nodes'
 import { S2ResourceManager } from '../../lib/s2/resource-manager'
 import { RmDetails, generateId } from '../../lib/s2/messages'
-import { claimResourceId, releaseResourceId } from '../../lib/s2/resource-id-registry'
+import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../lib/s2/resource-id-registry'
 
 interface S2RmConfig extends NodeConfig {
   rmConfig: string
@@ -95,11 +95,18 @@ export = function (RED: NodeRedApp): void {
       firmwareVersion: rmConfigNode.firmwareVersion || '1.0.0'
     }
 
+    const envVar = unresolvedEnvVar(rmDetails.resourceId)
+    if (envVar) {
+      node.error(`s2-rm: resource ID is \${${envVar}}, but environment variable ${envVar} is not set. Set it in the subflow instance's properties (or the flow or global environment), then deploy this node again.`)
+      node.status({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+      return
+    }
+
     // A CEM tells resources apart by resource_id only, so a second RM with the same ID (two s2-rm
     // nodes sharing one s2-rm-config, or a copied config) would be merged with this one - refuse it.
     const claim = claimResourceId(rmDetails.resourceId, node.id)
     if (!claim.claimed) {
-      node.error(`s2-rm: resource ID ${rmDetails.resourceId} is already used by node ${claim.holder}. Give this node its own s2-rm-config with a different Resource ID.`)
+      node.error(`s2-rm: resource ID ${rmDetails.resourceId} is already used by node ${claim.holder}. Give this node its own s2-rm-config with a different Resource ID, or remove the other node - then deploy this node again.`)
       node.status({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
       return
     }
@@ -147,8 +154,8 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
-      rm.close()
       releaseResourceId(rmDetails.resourceId, node.id)
+      rm.close()
       node.status({})
       done()
     })

@@ -5,7 +5,7 @@ import { OMBCController } from '../../lib/s2/ombc-controller'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
 import { S2DbusTransport } from '../../lib/transport/dbus'
 import { PowerMeasurementCache } from '../../lib/s2/power-measurement-cache'
-import { claimResourceId, releaseResourceId } from '../../lib/s2/resource-id-registry'
+import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../lib/s2/resource-id-registry'
 import { RmDetails, generateId, OMBCSystemDescriptionConfig } from '../../lib/s2/messages'
 import { publishToDebugSidebar, parseForDebugSidebar } from '../../lib/node-red-debug-sidebar'
 
@@ -117,11 +117,24 @@ export = function (RED: NodeRedApp): void {
       firmwareVersion: config.firmwareVersion || ''
     }
 
+    const envVar = unresolvedEnvVar(rmDetails.resourceId)
+    if (envVar) {
+      node.error(`s2-resource: resource ID is \${${envVar}}, but environment variable ${envVar} is not set. Set it in the subflow instance's properties (or the flow or global environment), then deploy this node again.`)
+      node.status({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+      return
+    }
+
     // A CEM tells resources apart by resource_id only, so a second node with the same ID (e.g. a
     // copy-pasted one) would be merged with this one on the CEM side - refuse it before it starts.
-    const claim = claimResourceId(rmDetails.resourceId, node.id)
+    // A built-in transport carries the ID to the CEM too, so it must not collide with an s2-websocket.
+    const claimsTransport = isWebSocketTransport || isDbusTransport
+    const rmClaim = claimResourceId(rmDetails.resourceId, node.id)
+    const claim = rmClaim.claimed && claimsTransport
+      ? claimResourceId(rmDetails.resourceId, node.id, 'transport')
+      : rmClaim
     if (!claim.claimed) {
-      node.error(`s2-resource: resource ID ${rmDetails.resourceId} is already used by node ${claim.holder}. Copy and paste this node (the copy gets a new resource ID), then delete this one.`)
+      if (rmClaim.claimed) releaseResourceId(rmDetails.resourceId, node.id)
+      node.error(`s2-resource: resource ID ${rmDetails.resourceId} is already used by node ${claim.holder}. Copy and paste this node (the copy gets a new resource ID) and delete this one, or remove the other node - then deploy this node again.`)
       node.status({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
       return
     }
@@ -495,10 +508,11 @@ export = function (RED: NodeRedApp): void {
     })
 
     node.on('close', (done) => {
+      releaseResourceId(rmDetails.resourceId, node.id)
+      if (claimsTransport) releaseResourceId(rmDetails.resourceId, node.id, 'transport')
       rm.close()
       if (wsTransport) wsTransport.disconnect()
       if (dbusTransport) dbusTransport.disconnect()
-      releaseResourceId(rmDetails.resourceId, node.id)
       node.status({})
       done()
     })

@@ -54,7 +54,7 @@
 <script type="text/html" data-help-name="s2-rm">
   <p>Generic S2 protocol state machine for a connected CEM. Handles the S2 handshake, sends ResourceManagerDetails, and acknowledges/routes instructions - independent of any specific control type's semantics.</p>
   <p>RM identity (resource ID, name, control types) is configured in the linked <b>s2-rm-config</b> node, shared with the transport node.</p>
-  <p>A CEM tells resources apart by resource ID alone, so each <b>s2-rm</b> needs an <b>s2-rm-config</b> with its own Resource ID. If another running <b>s2-rm</b> or <b>s2-resource</b> already uses the same ID (e.g. two <b>s2-rm</b> nodes sharing one <b>s2-rm-config</b>), this node shows a red <b>duplicate resource ID</b> status and does not start.</p>
+  <p>A CEM tells resources apart by resource ID alone, so each <b>s2-rm</b> needs an <b>s2-rm-config</b> with its own Resource ID. If another running <b>s2-rm</b> or <b>s2-resource</b> already uses the same ID (e.g. two <b>s2-rm</b> nodes sharing one <b>s2-rm-config</b>), this node shows a red <b>duplicate resource ID</b> status and does not start; it is only retried when deployed again. The Resource ID may be <code>${NAME}</code> to take it from a subflow instance property. An <b>s2-dbus</b> wired to a refused <b>s2-rm</b> still registers its D-Bus service, but that service never completes an S2 handshake - remove or disable it too.</p>
   <p>Control-type-specific behavior (OMBC mode resolution, PEBC schedule dispatch, etc.) lives in dedicated nodes - <b>s2-ombc</b>, <b>s2-pebc</b> - wired to this node's "from CEM" output, with their command output wired back to this node's input.</p>
   <h3>Input</h3>
   <dl class="message-properties">

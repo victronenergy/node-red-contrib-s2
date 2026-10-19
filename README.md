@@ -92,7 +92,9 @@ A CEM tells resources apart by their resource ID alone, so every `s2-resource` (
 
 With `Transport: WebSocket`, `s2-resource` shows its Resource ID on the Connection tab, so you can register it with your CEM or replace it with the ID your CEM expects (2-64 letters, digits, `-`, `_` or `:`; a warning shows when it isn't a UUID, which CEMs built on s2python require). For D-Bus it stays hidden: GX Opportunity Loads never needs it.
 
-If two running nodes still end up with the same ID (e.g. a flow copy-pasted with a version before this check, or two `s2-rm` nodes sharing one `s2-rm-config`), the one that starts second refuses to start with a red `duplicate resource ID` status and an error naming the other node. Copy and paste the refused `s2-resource` (the copy gets a new ID) and delete the original, or give the `s2-rm` its own `s2-rm-config`, then deploy.
+If two running nodes still end up with the same ID (e.g. a flow copy-pasted with a version before this check, or two `s2-rm` nodes sharing one `s2-rm-config`), the one that starts second refuses to start with a red `duplicate resource ID` status and an error naming the other node. Copy and paste the refused `s2-resource` (the copy gets a new ID) and delete the original, or give the `s2-rm` its own `s2-rm-config`, then deploy. A refused node is only retried when it is deployed again. The same applies to transports: only one `s2-websocket`, or `s2-resource` with a built-in transport, connects per resource ID. An `s2-dbus` doesn't know the resource ID, so one wired to a refused `s2-rm` still registers its D-Bus service, which never completes a handshake.
+
+Inside a subflow, every instance needs its own resource ID. Set the Resource ID (shown inside subflows for every transport) to `${NAME}` and give each instance its own `NAME` subflow property; Node-RED substitutes it per instance. An instance without the variable refuses to start with a red `resource ID variable not set` status.
 
 ## Sending PowerMeasurements
 

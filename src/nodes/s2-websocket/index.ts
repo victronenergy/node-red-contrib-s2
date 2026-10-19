@@ -2,6 +2,7 @@ import { NodeRedApp, NodeConfig, NodeRedNode } from '../../types/node-red'
 import { S2CemConfigNode, S2RmConfigNode } from '../../types/config-nodes'
 import { S2WebSocketTransport } from '../../lib/transport/websocket'
 import { publishToDebugSidebar, parseForDebugSidebar } from '../../lib/node-red-debug-sidebar'
+import { claimResourceId, releaseResourceId, unresolvedEnvVar } from '../../lib/s2/resource-id-registry'
 
 interface S2WebSocketConfig extends NodeConfig {
   cem: string      // reference to s2-cem-config node
@@ -46,8 +47,26 @@ export = function (RED: NodeRedApp): void {
       return
     }
 
-    // Substitute {resourceId} in the URL template, or append the UUID if no placeholder is present
     const resourceId = rmConfig.resourceId || ''
+    const envVar = unresolvedEnvVar(resourceId)
+    if (envVar) {
+      node.error(`s2-websocket: resource ID is \${${envVar}}, but environment variable ${envVar} is not set. Set it in the subflow instance's properties (or the flow or global environment), then deploy this node again.`)
+      node.status({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+      return
+    }
+
+    // The paired s2-rm claims this ID as an RM; a second transport for it would open another CEM
+    // connection under the same resource_id. Without an ID there is nothing to collide on.
+    if (resourceId) {
+      const claim = claimResourceId(resourceId, node.id, 'transport')
+      if (!claim.claimed) {
+        node.error(`s2-websocket: resource ID ${resourceId} is already connected by node ${claim.holder}. Give this node's s2-rm its own s2-rm-config with a different Resource ID, or remove the other node - then deploy this node again.`)
+        node.status({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+        return
+      }
+    }
+
+    // Substitute {resourceId} in the URL template, or append the UUID if no placeholder is present
     const url = cemConfig.url.includes('{resourceId}')
       ? cemConfig.url.replace('{resourceId}', resourceId)
       : (cemConfig.url.endsWith('/') ? cemConfig.url : cemConfig.url + '/') + resourceId
@@ -161,6 +180,7 @@ export = function (RED: NodeRedApp): void {
     transport.connect()
 
     node.on('close', (done) => {
+      if (resourceId) releaseResourceId(resourceId, node.id, 'transport')
       transport.disconnect()
       node.status({})
       done()

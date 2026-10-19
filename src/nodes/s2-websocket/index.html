@@ -66,6 +66,7 @@
   <p>WebSocket transport for S2 protocol. The RM dials out to a CEM and speaks the same command interface as the victron-virtual acload node.</p>
   <p>Wire port 1 of the paired <b>s2-rm</b> node to the input of this node, and the output of this node to the input of <b>s2-rm</b>.</p>
   <p>Both this node and <b>s2-rm</b> must reference the same <b>s2-rm-config</b> node so the Resource ID is consistent between the URL and ResourceManagerDetails.</p>
+  <p>Only one transport may connect with a given Resource ID: if another <b>s2-websocket</b>, or an <b>s2-resource</b> with a built-in transport, already uses it, this node shows a red <b>duplicate resource ID</b> status and does not connect. It is only retried when deployed again.</p>
   <h3>Input</h3>
   <dl class="message-properties">
     <dt>payload.s2Signal <span class="property-type">string</span></dt>

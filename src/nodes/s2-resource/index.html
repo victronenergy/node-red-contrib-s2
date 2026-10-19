@@ -136,7 +136,7 @@
         function refreshResourceIdWarning () {
           const value = $('#node-input-resourceId').val()
           const common = window.__s2Common
-          $('#s2-resource-id-warning').toggle(!!value && !common.isUuid(value) && common.validateResourceId(RED, node, value) === true)
+          $('#s2-resource-id-warning').toggle(!!value && !common.isEnvRef(value) && !common.isUuid(value) && common.validateResourceId(RED, node, value) === true)
         }
         $('#node-input-resourceId').on('input change', refreshResourceIdWarning)
         refreshResourceIdWarning()
@@ -151,6 +151,9 @@
         function showTransportSection () {
           const t = $('#node-input-transport').val()
           $('#s2-resource-transport-websocket').toggle(t === 'websocket')
+          $('#s2-resource-transport-websocket-reconnect').toggle(t === 'websocket')
+          // Inside a subflow every instance needs its own ID (via ${NAME}), whatever the transport.
+          $('#s2-resource-id-section').toggle(t === 'websocket' || !!RED.nodes.subflow(node.z))
           $('#s2-resource-transport-dbus').toggle(t === 'dbus')
           $('#s2-resource-transport-external').toggle(t === 'external')
           $('#s2-resource-transport-debug-row').toggle(t === 'websocket' || t === 'dbus')
@@ -509,11 +512,17 @@
           <label for="node-input-cem"><i class="fa fa-globe"></i> CEM<i class="fa fa-info-circle tooltip-icon" data-tooltip="The s2-cem-config node holding the CEM's WebSocket URL and credentials - the same config node s2-websocket uses today, so multiple s2-resource nodes can share one CEM connection."></i></label>
           <input type="text" id="node-input-cem">
         </div>
+      </div>
+
+      <div id="s2-resource-id-section">
         <div class="form-row">
-          <label for="node-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Identifies this resource to the CEM, and is used in the CEM URL. Generated automatically - replace it only if your CEM expects a specific ID. Changing it after deployment makes the CEM see a new resource."></i></label>
+          <label for="node-input-resourceId"><i class="fa fa-id-card"></i> Resource ID<i class="fa fa-info-circle tooltip-icon" data-tooltip="Identifies this resource to the CEM (and is used in a WebSocket CEM's URL). Generated automatically - replace it only if your CEM expects a specific ID. Inside a subflow, use ${NAME} to take it from a subflow property, so each instance gets its own. Changing it after deployment makes the CEM see a new resource."></i></label>
           <input type="text" id="node-input-resourceId">
         </div>
         <div id="s2-resource-id-warning" class="s2-resource-id-warning">Not a UUID. CEMs built on s2python only accept a UUID as resource ID.</div>
+      </div>
+
+      <div id="s2-resource-transport-websocket-reconnect">
         <div class="form-row">
           <label for="node-input-reconnectInterval"><i class="fa fa-refresh"></i> Reconnect<i class="fa fa-info-circle tooltip-icon" data-tooltip="Seconds to wait before reconnecting after the WebSocket connection drops."></i></label>
           <input type="number" id="node-input-reconnectInterval" min="1" step="1">
@@ -700,7 +709,8 @@
   <h3>Resource Manager tab</h3>
   <p>The Resource Manager's identity and advertised capabilities - the same fields <b>s2-rm-config</b> exposes today, now inline on this node instead of a separate config node (a resource's identity isn't shared across resources the way a CEM connection is). Control Types and Power Meas. are shown here only for whatever the built-in Transport/Control type don't already determine: with <b>Control type: OMBC</b>, <code>OPERATION_MODE_BASED_CONTROL</code> is advertised automatically instead of showing a checkbox; with <b>Transport: D-Bus</b>, Power Meas. is set on the D-Bus config node instead (it also determines the actual D-Bus property), not here - two independent pickers for the same thing would just drift out of sync. Otherwise, <b>Provides power measurement</b> (checked by default) reveals a 3-phase-symmetric/per-phase type selector; uncheck it for a resource that genuinely provides none. (<code>NOT_CONTROLABLE</code> is a separate checkbox on the Control Type tab, since it applies regardless of Control type.)</p>
   <p>With <b>Transport: WebSocket</b>, the Connection tab shows the <b>Resource ID</b> that identifies this resource to the CEM and is used in its URL - copy it to register the resource with your CEM, or replace it with the ID your CEM expects (2-64 letters, digits, <code>-</code>, <code>_</code> or <code>:</code>). A warning shows when it isn't a UUID, since CEMs built on s2python only accept one. Changing it after deployment makes the CEM see a new resource.</p>
-  <p>For the other transports the resource ID is generated for you and not shown. A CEM tells resources apart by that ID alone, so every resource needs its own: a copied, pasted or re-imported node gets a new one automatically, while a cut-and-paste keeps it. If two deployed nodes still share an ID (e.g. from a flow made with an older version), the one that starts second shows a red <b>duplicate resource ID</b> status and does not start - copy and paste it (the copy gets a new ID), delete the original and deploy.</p>
+  <p>Inside a subflow, the Resource ID field is shown for every transport: set it to <code>${NAME}</code> and give each subflow instance its own <code>NAME</code> property, so each instance is a separate resource. An instance where the variable isn't set shows a red <b>resource ID variable not set</b> status and does not start.</p>
+  <p>Otherwise the resource ID is generated for you and not shown. A CEM tells resources apart by that ID alone, so every resource needs its own: a copied, pasted or re-imported node gets a new one automatically, while a cut-and-paste keeps it. If two deployed nodes still share an ID (e.g. from a flow made with an older version), the one that starts second shows a red <b>duplicate resource ID</b> status and does not start - copy and paste it (the copy gets a new ID), delete the original and deploy. The same happens when an <b>s2-websocket</b> already connects with this ID. A refused node is only retried when it is deployed again, so after removing the other node, change and deploy this one or do a full deploy.</p>
 
   <h3>Control Type tab</h3>
   <p><b>Include "Not Controllable" in advertised control types</b> (checked by default, applies regardless of Control type) adds <code>NOT_CONTROLABLE</code> to the advertised list, so the CEM can choose not to control this resource - some CEMs select it as their initial/default state before switching to OMBC, so unchecking this may prevent them from ever taking control. Uncheck it only if that choice should never be offered.</p>

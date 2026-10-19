@@ -1,6 +1,7 @@
 import { MessageType, serialize } from '../../src/lib/s2/messages'
 import registerNode from '../../src/nodes/s2-rm/index'
 import { claimResourceId } from '../../src/lib/s2/resource-id-registry'
+import { S2ResourceManager } from '../../src/lib/s2/resource-manager'
 
 const DEFAULT_RM_CONFIG = {
   resourceId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
@@ -1163,5 +1164,37 @@ describe('s2-rm - duplicate resource ID', () => {
 
     expect(node.error).not.toHaveBeenCalled()
     expect(handlers.input).toBeDefined()
+  })
+})
+
+describe('s2-rm - environment variables and release', () => {
+  it('refuses to start when the resource ID is an environment variable that is not set', () => {
+    const { node, handlers } = setupNode({ id: 'env-rm' }, { ...DEFAULT_RM_CONFIG, resourceId: '${S2_RESOURCE_ID}' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('S2_RESOURCE_ID'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('says to deploy the refused node again once the other node is gone', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-guidance' }
+    setupNode({ id: 'holder-rm' }, rmConfig)
+
+    const { node } = setupNode({ id: 'refused-rm' }, rmConfig)
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringMatching(/deploy/i))
+  })
+
+  it('releases its claim even when closing the resource manager throws', () => {
+    const rmConfig = { ...DEFAULT_RM_CONFIG, resourceId: 'rid-rm-release-on-throw' }
+    const first = setupNode({ id: 'throwing-rm' }, rmConfig)
+    const closeSpy = jest.spyOn(S2ResourceManager.prototype, 'close').mockImplementation(() => { throw new Error('close failed') })
+    try {
+      expect(() => first.handlers.close(jest.fn())).toThrow('close failed')
+    } finally {
+      closeSpy.mockRestore()
+    }
+
+    expect(claimResourceId('rid-rm-release-on-throw', 'next-rm')).toEqual({ claimed: true })
   })
 })

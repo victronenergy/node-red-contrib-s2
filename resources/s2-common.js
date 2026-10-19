@@ -22,10 +22,18 @@ window.__s2Common.generateUuid = function () {
   })
 }
 
+// Same pattern Node-RED uses to substitute a whole property value from the node's environment
+// (e.g. a subflow instance property) before the node starts.
+window.__s2Common.isEnvRef = function (value) {
+  return /^\$\{\S+\}$/.test(value)
+}
+
 // A CEM tells resources apart by resource ID only, and copy-paste or a repeated import copies the
 // ID along with the rest of the node - so an ID another S2 node already holds must be replaced.
+// An environment variable reference resolves per subflow instance at runtime, so it is kept.
 window.__s2Common.resourceIdNeedsReplacing = function (RED, node) {
   if (!node.resourceId) return true
+  if (window.__s2Common.isEnvRef(node.resourceId)) return false
   let taken = false
   const check = function (other) {
     if (other.id !== node.id &&
@@ -48,7 +56,7 @@ window.__s2Common.isUuid = function (value) {
 // The S2 ID schema's pattern, anchored - the schema's own is unanchored, so taken literally it
 // accepts any string containing two valid characters. Empty is allowed: oneditsave fills it in.
 window.__s2Common.validateResourceId = function (RED, node, value) {
-  if (!value) return true
+  if (!value || window.__s2Common.isEnvRef(value)) return true
   if (!/^[a-zA-Z0-9\-_:]{2,64}$/.test(value)) {
     return 'Resource ID must be 2-64 characters: letters, digits, "-", "_" or ":"'
   }
@@ -60,21 +68,18 @@ window.__s2Common.validateResourceId = function (RED, node, value) {
 
 // nodes:add rather than a node definition's onadd: onadd only runs for nodes landing on the
 // active tab, so an import that brings its own tab (every shipped example, any exported flow)
-// would keep duplicate IDs. nodes:add also fires during the initial flow load, which must be left
-// alone - a deployed duplicate is reported by the runtime instead of being changed silently here.
+// would keep duplicate IDs. nodes:add also fires when the editor loads or reloads the deployed
+// flows, which must be left alone - a deployed duplicate is reported by the runtime instead. Only
+// user additions arrive marked changed: the palette sets it, and paste and imports use markChanged.
 window.__s2Common.watchResourceIds = function (RED) {
   if (window.__s2Common._watchingResourceIds) return
   window.__s2Common._watchingResourceIds = true
 
-  // A script loaded later (e.g. palette install) misses flows:loaded, but then tabs already exist.
-  let flowsLoaded = RED.workspaces.count() > 0
-  RED.events.on('flows:loaded', function () { flowsLoaded = true })
   RED.events.on('nodes:add', function (node) {
-    if (!flowsLoaded) return
+    if (!node.changed) return
     if (node.type !== 's2-resource' && node.type !== 's2-rm-config') return
     if (window.__s2Common.resourceIdNeedsReplacing(RED, node)) {
       node.resourceId = window.__s2Common.generateUuid()
-      node.changed = true
     }
   })
 }

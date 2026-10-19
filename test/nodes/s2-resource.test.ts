@@ -3,6 +3,7 @@ import { MessageType, serialize } from '../../src/lib/s2/messages'
 import registerNode from '../../src/nodes/s2-resource/index'
 import { S2WebSocketTransport } from '../../src/lib/transport/websocket'
 import { S2DbusTransport } from '../../src/lib/transport/dbus'
+import { claimResourceId } from '../../src/lib/s2/resource-id-registry'
 
 // --- Transport mock (same pattern as test/nodes/s2-websocket.test.ts) ---
 
@@ -1028,5 +1029,69 @@ describe('s2-resource - duplicate resource ID', () => {
 
     expect(node.error).not.toHaveBeenCalled()
     expect(handlers.input).toBeDefined()
+  })
+})
+
+describe('s2-resource - transport claim and environment variables', () => {
+  it('refuses to start when another transport already carries the resource ID (WebSocket)', () => {
+    claimResourceId('rid-ws-transport-held', 'some-s2-websocket', 'transport')
+    ;(S2WebSocketTransport as unknown as jest.Mock).mockClear()
+
+    const { node, handlers } = setupNode({ id: 'ws-res', transport: 'websocket', controlType: 'none', resourceId: 'rid-ws-transport-held' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('some-s2-websocket'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'duplicate resource ID' })
+    expect(S2WebSocketTransport).not.toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('refuses to start when another transport already carries the resource ID (D-Bus)', () => {
+    claimResourceId('rid-dbus-transport-held', 'some-s2-websocket', 'transport')
+    ;(S2DbusTransport as unknown as jest.Mock).mockClear()
+
+    setupNode({ id: 'dbus-res', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: 'rid-dbus-transport-held' })
+
+    expect(S2DbusTransport).not.toHaveBeenCalled()
+  })
+
+  it('leaves the transport claim free with Transport: External', () => {
+    setupNode({ id: 'ext-res', transport: 'external', controlType: 'none', resourceId: 'rid-external-no-transport' })
+
+    expect(claimResourceId('rid-external-no-transport', 'external-s2-websocket', 'transport')).toEqual({ claimed: true })
+  })
+
+  it('gives up its RM claim when its own transport claim is refused', () => {
+    claimResourceId('rid-rm-claim-rollback', 'some-s2-websocket', 'transport')
+    setupNode({ id: 'refused-res', transport: 'websocket', controlType: 'none', resourceId: 'rid-rm-claim-rollback' })
+
+    expect(claimResourceId('rid-rm-claim-rollback', 'other-rm', 'rm')).toEqual({ claimed: true })
+  })
+
+  it('refuses to start when its resource ID is an environment variable that is not set', () => {
+    ;(S2DbusTransport as unknown as jest.Mock).mockClear()
+
+    const { node, handlers } = setupNode({ id: 'env-res', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: '${S2_RESOURCE_ID}' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringContaining('S2_RESOURCE_ID'))
+    expect(node.status).toHaveBeenLastCalledWith({ fill: 'red', shape: 'dot', text: 'resource ID variable not set' })
+    expect(S2DbusTransport).not.toHaveBeenCalled()
+    expect(handlers.input).toBeUndefined()
+  })
+
+  it('says to deploy the refused node again once the other node is gone', () => {
+    setupNode({ id: 'holder', transport: 'external', controlType: 'none', resourceId: 'rid-guidance' })
+
+    const { node } = setupNode({ id: 'refused', transport: 'external', controlType: 'none', resourceId: 'rid-guidance' })
+
+    expect(node.error).toHaveBeenCalledWith(expect.stringMatching(/deploy/i))
+  })
+
+  it('releases its claims even when disconnecting the transport throws', () => {
+    const first = setupNode({ id: 'throwing-res', transport: 'dbus', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, resourceId: 'rid-release-on-throw' })
+    mockDbusTransport.disconnect.mockImplementation(() => { throw new Error('bus gone') })
+    expect(() => first.handlers.close(jest.fn())).toThrow('bus gone')
+
+    expect(claimResourceId('rid-release-on-throw', 'next-rm', 'rm')).toEqual({ claimed: true })
+    expect(claimResourceId('rid-release-on-throw', 'next-transport', 'transport')).toEqual({ claimed: true })
   })
 })
