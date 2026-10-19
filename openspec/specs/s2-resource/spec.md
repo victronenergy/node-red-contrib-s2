@@ -139,7 +139,7 @@ When `Transport: D-Bus` is selected, `s2-resource`'s Resource Manager tab's Powe
 - **THEN** the "Device" section heading and its Manufacturer/Model/Serial/Firmware fields appear above the `Roles` checkboxes
 
 ### Requirement: Resource ID is not shown on the RM tab
-`s2-resource`'s `resourceId` SHALL NOT be shown as a visible field on the Resource Manager tab. For `Transport: D-Bus` and `Transport: External` it SHALL NOT be shown anywhere in the dialog, consistent with other auto-generated internal identifiers this node doesn't surface (e.g. the D-Bus `DeviceInstance`). It SHALL still be auto-generated once (on first add, if not already set) and persisted unchanged across redeploys.
+`s2-resource`'s `resourceId` SHALL NOT be shown as a visible field on the Resource Manager tab. For `Transport: D-Bus` and `Transport: External` it SHALL NOT be shown anywhere in the dialog unless the node is inside a subflow template, consistent with other auto-generated internal identifiers this node doesn't surface (e.g. the D-Bus `DeviceInstance`). It SHALL still be auto-generated once (on first add, if not already set) and persisted unchanged across redeploys.
 
 #### Scenario: RM tab has no visible Resource ID field
 - **WHEN** the Resource Manager tab is rendered
@@ -150,7 +150,7 @@ When `Transport: D-Bus` is selected, `s2-resource`'s Resource Manager tab's Powe
 - **THEN** `resourceId` is generated once on the first add and never changes on subsequent redeploys
 
 #### Scenario: Resource ID hidden for D-Bus
-- **WHEN** the Connection tab is rendered with `Transport: D-Bus` or `Transport: External`
+- **WHEN** the Connection tab of an `s2-resource` that is not inside a subflow template is rendered with `Transport: D-Bus` or `Transport: External`
 - **THEN** no visible field shows or edits `resourceId`
 
 ### Requirement: Inapplicable per-phase OMBC fields are dimmed for a single-phase D-Bus device
@@ -254,7 +254,7 @@ When configured with `Transport: External` and `Control type: None`, `s2-resourc
 </content>
 
 ### Requirement: Resource ID is unique when a node is added in the editor
-When an `s2-resource` node is added to the editor after the deployed flows have loaded, the editor SHALL generate a new `resourceId` and mark the node changed if its `resourceId` is empty or equal to that of any other `s2-resource` or `s2-rm-config` node in the editor; otherwise it SHALL keep it. Nodes added while the deployed flows load SHALL be left unchanged.
+When the user adds an `s2-resource` node to the editor (from the palette, by paste, through the Import dialog or from Examples; Node-RED marks such nodes changed), the editor SHALL generate a new `resourceId` if its `resourceId` is empty or equal to that of any other `s2-resource` or `s2-rm-config` node in the editor; otherwise it SHALL keep it. A `resourceId` of the form `${NAME}` SHALL be kept. Nodes the editor adds while loading or reloading the deployed flows SHALL be left unchanged.
 
 #### Scenario: Node dropped from the palette
 - **WHEN** a new `s2-resource` node is dropped from the palette
@@ -276,12 +276,20 @@ When an `s2-resource` node is added to the editor after the deployed flows have 
 - **WHEN** the editor loads deployed flows that already contain two `s2-resource` nodes with the same `resourceId`
 - **THEN** neither node's `resourceId` is changed in the editor and no node is marked changed
 
+#### Scenario: Deployed duplicates are not changed on reload
+- **WHEN** the editor reloads the deployed flows without a page reload (e.g. after a deploy conflict or a project switch) and they contain two `s2-resource` nodes with the same `resourceId`
+- **THEN** neither node's `resourceId` is changed in the editor
+
 #### Scenario: Resource ID held by an s2-rm-config node
 - **WHEN** an `s2-resource` node is added whose `resourceId` equals an existing `s2-rm-config` node's `resourceId`
 - **THEN** the added node gets a newly generated `resourceId`
 
+#### Scenario: Environment variable copied
+- **WHEN** an `s2-resource` node whose `resourceId` is `${S2_RESOURCE_ID}` is copied and pasted
+- **THEN** the pasted node keeps `${S2_RESOURCE_ID}`
+
 ### Requirement: Duplicate resource ID refuses to start
-When an `s2-resource` node starts, it SHALL claim its resolved `resourceId` for the running Node-RED instance. If another running `s2-resource` or `s2-rm` node already holds that `resourceId`, the node SHALL log an error naming the other node's id, show a red `duplicate resource ID` status, and SHALL NOT create its Resource Manager, transport (no D-Bus service registration, no WebSocket connection) or built-in control type. A node SHALL release its claim when it closes.
+When an `s2-resource` node starts, it SHALL claim its resolved `resourceId` as a Resource Manager for the running Node-RED instance and, with `Transport: WebSocket` or `Transport: D-Bus`, also as a transport. If another running node already holds either claim for that `resourceId`, the node SHALL log an error naming the other node's id and saying it starts once it is deployed again after that node is gone, show a red `duplicate resource ID` status, and SHALL NOT create its Resource Manager, transport (no D-Bus service registration, no WebSocket connection) or built-in control type. A node SHALL release its claims when it closes, before anything else in its close handling.
 
 #### Scenario: Two deployed nodes share a resource ID
 - **WHEN** two `s2-resource` nodes with the same `resourceId` are deployed
@@ -295,12 +303,24 @@ When an `s2-resource` node starts, it SHALL claim its resolved `resourceId` for 
 - **WHEN** the node holding a `resourceId` is closed (deleted or redeployed with a different `resourceId`) and the refused node is then redeployed
 - **THEN** the redeployed node claims the `resourceId` and starts normally
 
-### Requirement: Resource ID is editable for WebSocket transport
-With `Transport: WebSocket`, the Connection tab SHALL show the node's `resourceId` in an editable Resource ID field under the CEM picker. Changing the transport SHALL NOT change the node's `resourceId`. Saving the dialog with the field empty SHALL store a newly generated ID.
+#### Scenario: Transport already used by an s2-websocket
+- **WHEN** an `s2-websocket` node is connected for `resourceId` X and an `s2-resource` with `Transport: WebSocket` and `resourceId` X is started after it
+- **THEN** the `s2-resource` is refused in the same way
+
+#### Scenario: Closing transport throws
+- **WHEN** disconnecting the transport throws while an `s2-resource` node closes
+- **THEN** its `resourceId` is released anyway
+
+### Requirement: Resource ID is editable for WebSocket transport and inside subflows
+With `Transport: WebSocket`, or for any transport when the node is inside a subflow template, the Connection tab SHALL show the node's `resourceId` in an editable Resource ID field. Changing the transport SHALL NOT change the node's `resourceId`. Saving the dialog with the field empty SHALL store a newly generated ID.
 
 #### Scenario: Field shown for WebSocket
 - **WHEN** the Connection tab is rendered with `Transport: WebSocket`
 - **THEN** a Resource ID field under the CEM picker shows the node's current `resourceId` and can be edited
+
+#### Scenario: Field shown inside a subflow
+- **WHEN** the Connection tab of an `s2-resource` inside a subflow template is rendered with `Transport: D-Bus`
+- **THEN** an editable Resource ID field shows the node's current `resourceId`
 
 #### Scenario: User sets the ID their CEM expects
 - **WHEN** the user enters `my-heatpump-01` and saves
@@ -315,7 +335,7 @@ With `Transport: WebSocket`, the Connection tab SHALL show the node's `resourceI
 - **THEN** the node's `resourceId` is a newly generated UUID
 
 ### Requirement: Resource ID is validated in the editor
-The editor SHALL treat a non-empty `resourceId` as invalid, with a message saying why, when it is not 2-64 characters of `a-z`, `A-Z`, `0-9`, `-`, `_` or `:`, or when another `s2-resource` or `s2-rm-config` node in the editor has the same `resourceId`. When the value is valid but not a UUID, the dialog SHALL show a non-blocking warning that CEMs built on s2python only accept UUIDs.
+The editor SHALL treat a non-empty `resourceId` as invalid, with a message saying why, when it is neither `${NAME}` (an environment variable reference, `NAME` without whitespace) nor 2-64 characters of `a-z`, `A-Z`, `0-9`, `-`, `_` or `:`, or when it is not an environment variable reference and another `s2-resource` or `s2-rm-config` node in the editor has the same `resourceId`. When the value is a valid ID but not a UUID, the dialog SHALL show a non-blocking warning that CEMs built on s2python only accept UUIDs.
 
 #### Scenario: Invalid characters
 - **WHEN** the Resource ID is set to `my heatpump`
@@ -332,3 +352,18 @@ The editor SHALL treat a non-empty `resourceId` as invalid, with a message sayin
 #### Scenario: UUID
 - **WHEN** the Resource ID is a UUID
 - **THEN** the node is valid and no warning is shown
+
+#### Scenario: Environment variable
+- **WHEN** the Resource ID is set to `${S2_RESOURCE_ID}`, also when another node uses the same reference
+- **THEN** the node is valid and no warning is shown
+
+### Requirement: Resource ID from an environment variable
+An `s2-resource` whose `resourceId` is `${NAME}` SHALL use the value Node-RED substitutes from its environment (subflow instance properties, then flow and global environment) as its resource ID. If the variable is not set, so the value is still `${NAME}` when the node starts, the node SHALL log an error naming the variable, show a red `resource ID variable not set` status, and SHALL NOT start, as for a duplicate.
+
+#### Scenario: Subflow instances with their own IDs
+- **WHEN** a subflow containing an `s2-resource` with `resourceId` `${S2_RESOURCE_ID}` is placed twice, each instance setting `S2_RESOURCE_ID` to a different UUID
+- **THEN** both instances start, each sending its own UUID as `resource_id`
+
+#### Scenario: Variable not set
+- **WHEN** a subflow instance doesn't set `S2_RESOURCE_ID`, and no flow or global environment does
+- **THEN** that instance logs an error naming `S2_RESOURCE_ID`, shows a red `resource ID variable not set` status, and doesn't start
