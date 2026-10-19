@@ -4,6 +4,10 @@
  * All selectors MUST be scoped under .s2-form to prevent
  * affecting other Node-RED nodes.
  *
+ * Colours of the editor surface come from Node-RED's --red-ui-* theme variables, which editor
+ * themes (e.g. the dark ones in @node-red-contrib-themes/theme-collection) redefine. The fallback
+ * is the colour used before, for an editor without those variables.
+ *
  * Label and input sizing intentionally defers to Node-RED defaults so that
  * config node selectors (red-ui-search-container) lay out correctly inline.
  */
@@ -74,17 +78,17 @@
    clipped by a parent overflow or panel boundary. */
 .s2-tooltip-container {
   position: absolute;
-  background: #fff;
-  color: #444;
+  background: var(--red-ui-secondary-background, #fff);
+  color: var(--red-ui-primary-text-color, #444);
   padding: 8px 12px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--red-ui-tertiary-border-color, #ccc);
   border-radius: 3px;
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.4;
   max-width: 280px;
   z-index: 10000;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 6px var(--red-ui-shadow, rgba(0, 0, 0, 0.15));
   pointer-events: none;
 }
 
@@ -109,8 +113,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #666;
-  border-bottom: 1px solid #ccc;
+  color: var(--red-ui-secondary-text-color-active, #666);
+  border-bottom: 1px solid var(--red-ui-tertiary-border-color, #ccc);
   padding-bottom: 4px;
   margin-top: 6px;
 }
@@ -166,7 +170,7 @@
 .s2-form .s2-unit-label {
   margin-left: 6px;
   white-space: nowrap;
-  color: #555;
+  color: var(--red-ui-form-text-color, #555);
   flex-shrink: 0;
 }
 
@@ -206,7 +210,7 @@
 
 /* Advanced toggle link */
 .s2-form .s2-advanced-toggle {
-  color: #666;
+  color: var(--red-ui-secondary-text-color-active, #666);
   font-size: 0.9em;
   text-decoration: none;
   display: inline-flex;
@@ -215,7 +219,7 @@
 }
 
 .s2-form .s2-advanced-toggle:hover {
-  color: #333;
+  color: var(--red-ui-primary-text-color, #333);
   text-decoration: none;
 }
 
@@ -228,13 +232,13 @@
 .s2-form .s2-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid var(--red-ui-tertiary-border-color, #ccc);
   margin-bottom: 8px;
 }
 
 .s2-form .s2-tab {
   padding: 5px 12px;
-  color: #666;
+  color: var(--red-ui-secondary-text-color-active, #666);
   text-decoration: none;
   border: 1px solid transparent;
   border-bottom: none;
@@ -246,15 +250,15 @@
 }
 
 .s2-form .s2-tab:hover {
-  color: #333;
+  color: var(--red-ui-primary-text-color, #333);
   text-decoration: none;
 }
 
 .s2-form .s2-tab.s2-tab-active {
-  color: #333;
+  color: var(--red-ui-primary-text-color, #333);
   font-weight: 600;
-  border-color: #ccc;
-  background: #fff;
+  border-color: var(--red-ui-tertiary-border-color, #ccc);
+  background: var(--red-ui-form-background, #fff);
   margin-bottom: -1px;
 }
 
@@ -303,36 +307,20 @@
 }
 
 .s2-form .s2-ombc-mode-protected-note {
-  color: #888;
+  color: var(--red-ui-secondary-text-color-active, #666);
   font-size: 0.85em;
   font-style: italic;
   margin-top: 2px;
 }
 
-.s2-form .s2-ombc-advanced-warning {
-  color: #a06400;
-  background: #fff8e6;
-  border: 1px solid #f0d78c;
-  border-radius: 3px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  font-size: 0.9em;
-}
-
-.s2-form .s2-pebc-advanced-warning {
-  color: #a06400;
-  background: #fff8e6;
-  border: 1px solid #f0d78c;
-  border-radius: 3px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  font-size: 0.9em;
-}
-
+/* Amber text can't stay readable on both a light and a dark tray, so the warning is carried by
+   the border and a translucent amber tint over whatever the tray's background is. */
+.s2-form .s2-ombc-advanced-warning,
+.s2-form .s2-pebc-advanced-warning,
 .s2-form .s2-resource-id-warning {
-  color: #a06400;
-  background: #fff8e6;
-  border: 1px solid #f0d78c;
+  color: var(--red-ui-form-text-color, #555);
+  background: rgba(255, 191, 64, 0.16);
+  border: 1px solid var(--red-ui-border-color-warning, #f0d78c);
   border-radius: 3px;
   padding: 6px 10px;
   margin-bottom: 8px;
@@ -340,9 +328,9 @@
 }
 
 .s2-form .s2-resource-hint {
-  color: #666;
-  background: #f6f6f2;
-  border: 1px dashed #ccc;
+  color: var(--red-ui-secondary-text-color-active, #666);
+  background: var(--red-ui-tertiary-background, #f6f6f2);
+  border: 1px dashed var(--red-ui-tertiary-border-color, #ccc);
   border-radius: 4px;
   padding: 8px 10px;
   font-size: 0.9em;
