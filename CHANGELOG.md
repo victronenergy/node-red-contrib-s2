@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.7]
+
 ### Added
 
 - `s2-ombc` and `s2-resource` (built-in OMBC): a `ModeRequest` now explains itself. Its payload is `{ message, modes }` instead of `null`: `message` says no operation mode is known yet, and `modes` lists every configured mode as `{ id, index, label }`, any of which works as a `ModeConfirmation` payload. The node shows a yellow `waiting for ModeConfirmation` status until a mode is confirmed; an instruction arriving before that shows `instructed: <mode> - waiting for ModeConfirmation`, so the status never looks settled while the flow still owes a confirmation. This only applies to newly added nodes (from the palette, or the shipped examples): nodes already in your flows keep sending `null`, and their edit dialog offers "Update to latest" to switch.
