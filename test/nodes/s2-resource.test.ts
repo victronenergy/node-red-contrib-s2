@@ -1152,6 +1152,22 @@ describe('s2-resource - built-in OMBC ModeRequest from behaviour version 0.9.7',
   })
 })
 
+describe('s2-resource - built-in OMBC waiting status with auto-confirm', () => {
+  it('confirms the instruction right away, ending the wait', () => {
+    const { node, handlers } = setupNode({ id: 'wait-auto', transport: 'external', controlType: 'ombc', systemDescription: OMBC_SYSTEM_DESCRIPTION, version: '0.9.7', autoConfirmInstructions: true })
+    handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }) } }, jest.fn(), jest.fn())
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct1', control_type: 'OPERATION_MODE_BASED_CONTROL' }) } }, jest.fn(), jest.fn())
+
+    handlers.input({ payload: { command: 'Message', cemId: 'cem-1', message: serialize({ message_type: MessageType.OMBC_INSTRUCTION, message_id: 'oi1', id: 'instr-1', execution_time: new Date().toISOString(), operation_mode_id: 'mode-standby', operation_mode_factor: 1, abnormal_condition: false }) } }, jest.fn(), jest.fn())
+
+    const calls = (node.status as jest.Mock).mock.calls
+    const last = calls[calls.length - 1][0] as { fill: string, text: string }
+    expect(last.text).toMatch(/Confirmed: Standby$/)
+    expect(last.fill).toBe('green')
+  })
+})
+
 describe('s2-resource - status shows connection and control type', () => {
   const handshake = (handlers: Record<string, (...args: unknown[]) => void>) => {
     handlers.input({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn(), jest.fn())

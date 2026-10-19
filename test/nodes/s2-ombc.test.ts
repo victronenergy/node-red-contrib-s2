@@ -797,6 +797,71 @@ describe('s2-ombc - ModeRequest from behaviour version 0.9.7', () => {
   })
 })
 
+describe('s2-ombc - waiting status lasts until a mode is confirmed', () => {
+  const instructOn = (handlers: Record<string, (...args: unknown[]) => void>, id: string) =>
+    handlers.input(instructionMsg('cem-1', { message_type: 'OMBC.Instruction', id, operation_mode_id: 'mode-on', operation_mode_factor: 1 }), jest.fn(), jest.fn())
+  const lastStatus = (node: Record<string, unknown>) => {
+    const calls = (node.status as jest.Mock).mock.calls
+    return calls[calls.length - 1][0]
+  }
+
+  it('keeps waiting through an instruction, until the flow confirms', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    instructOn(handlers, 'instr-1')
+    expect(lastStatus(node)).toEqual({ fill: 'yellow', shape: 'ring', text: 'instructed: Normal operation - waiting for ModeConfirmation' })
+    expect((node.send as jest.Mock).mock.calls.some((c: unknown[]) => Array.isArray(c[0]) && ((c[0] as unknown[])[0] as { topic?: string } | null)?.topic === 'ModeInstruction')).toBe(true)
+
+    handlers.input({ cemId: 'cem-1', topic: 'ModeConfirmation', payload: { id: 'mode-on' } }, jest.fn(), jest.fn())
+    expect(lastStatus(node)).toEqual({ fill: 'green', shape: 'dot', text: 'Confirmed: Normal operation' })
+
+    instructOn(handlers, 'instr-2')
+    expect(lastStatus(node)).toEqual({ fill: 'green', shape: 'dot', text: 'Normal operation' })
+  })
+
+  it('stops waiting when OMBC selection restores a known mode (e.g. a default confirmed while disconnected)', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    handlers.input({ cemId: 'cem-1', topic: 'Disconnected' }, jest.fn(), jest.fn())
+    handlers.input({ topic: 'ModeConfirmation', payload: { id: 'mode-on' } }, jest.fn(), jest.fn())
+
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    instructOn(handlers, 'instr-1')
+
+    expect(lastStatus(node)).toEqual({ fill: 'green', shape: 'dot', text: 'Normal operation' })
+  })
+
+  it('stops showing the wait when the CEM switches to another control type', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    instructOn(handlers, 'instr-1')
+
+    selectControlType(handlers, 'cem-1', 'POWER_ENVELOPE_BASED_CONTROL')
+
+    expect(lastStatus(node)).toEqual({ fill: 'grey', shape: 'ring', text: 'OMBC not selected' })
+  })
+
+  it('keeps showing the wait while another CEM is still waiting', () => {
+    const { node, handlers } = setupNode({ version: '0.9.7' })
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    selectControlType(handlers, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
+
+    selectControlType(handlers, 'cem-1', 'POWER_ENVELOPE_BASED_CONTROL')
+
+    expect(lastStatus(node)).toEqual({ fill: 'yellow', shape: 'ring', text: 'waiting for ModeConfirmation' })
+  })
+
+  it('shows an instruction in green as before for a node without a version', () => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+
+    instructOn(handlers, 'instr-1')
+
+    expect(lastStatus(node)).toEqual({ fill: 'green', shape: 'dot', text: 'Normal operation' })
+  })
+})
+
 describe('s2-ombc - reconnect resend', () => {
   it('resends SystemDescription and the last confirmed UpdateStatus when SelectControlType(OMBC) is observed again', () => {
     const { node, handlers } = setupNode()
