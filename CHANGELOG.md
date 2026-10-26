@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.0.0]
+
+First stable release. No functional changes since 0.9.7.
+
 ## [0.9.7]
 
 ### Added
