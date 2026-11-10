@@ -1,5 +1,13 @@
 import { ErrorObject, ValidateFunction } from 'ajv'
-import generatedValidators from './schema-validators.generated'
+import type GeneratedValidators from './schema-validators.generated'
+
+// The generated validators (~440K of code) are loaded on first validation rather than at module
+// level, so registering the S2 nodes at Node-RED startup doesn't load them for the (many)
+// installs whose flows have no S2 nodes.
+function loadGeneratedValidators (): typeof GeneratedValidators {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('./schema-validators.generated')
+}
 
 /**
  * Validates S2 payloads against precompiled validators for the vendored `s2-json` v0.0.2-beta
@@ -34,6 +42,7 @@ function isKnownAdvisoryError (err: ErrorObject): boolean {
 }
 
 function getValidatorForMessageType (messageType: string): ValidateFunction | null {
+  const generatedValidators = loadGeneratedValidators()
   const exportName = generatedValidators.messageTypeToExport[messageType]
   if (!exportName) return null
   const validate = generatedValidators[exportName]

@@ -1,5 +1,12 @@
 import { EventEmitter } from 'events'
-import WebSocket from 'ws'
+import type WebSocket from 'ws'
+
+// Loaded on first connect rather than at module level, so registering the S2 nodes at Node-RED
+// startup doesn't load ws for the (many) installs whose flows have no S2 nodes.
+function loadWebSocket (): typeof WebSocket {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('ws')
+}
 
 export interface S2WebSocketTransportOptions {
   url: string
@@ -105,6 +112,7 @@ export class S2WebSocketTransport extends EventEmitter {
   }
 
   private _doConnect (): void {
+    const WebSocket = loadWebSocket()
     const ws = this._headers
       ? new WebSocket(this._url, { headers: this._headers })
       : new WebSocket(this._url)
