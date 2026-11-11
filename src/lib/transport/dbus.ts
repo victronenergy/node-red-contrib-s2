@@ -1,9 +1,23 @@
 import { EventEmitter } from 'events'
-import * as dbus from 'dbus-native-victron'
-import { addVictronInterfaces, addSettings, removeSettings, getValue, VictronInterfaceHandle } from 'dbus-victron-virtual'
+import type * as DbusNative from 'dbus-native-victron'
+import type * as DbusVictronVirtual from 'dbus-victron-virtual'
+import type { VictronInterfaceHandle } from 'dbus-victron-virtual'
 import { resolveMeasurementProps } from '../s2/power-measurement-cache'
 import { EnergyAccumulator } from '../s2/energy-accumulator'
 import { buildMinimalMeterShape, MinimalMeterPosition } from './minimal-meter-properties'
+
+// The D-Bus libraries are loaded on first use rather than at module level, so registering the
+// S2 nodes at Node-RED startup doesn't load them for the (many) installs whose flows have no S2
+// nodes.
+function loadDbus (): typeof DbusNative {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('dbus-native-victron')
+}
+
+function loadDbusVictronVirtual (): typeof DbusVictronVirtual {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('dbus-victron-virtual')
+}
 
 export type S2DbusConnectionMode = 'auto' | 'system' | 'tcp'
 
@@ -60,10 +74,10 @@ function isSettingsServiceUnavailable (error: unknown): boolean {
   )
 }
 
-async function callAddSettingsWithRetry (bus: unknown, settings: Parameters<typeof addSettings>[1]): Promise<unknown> {
+async function callAddSettingsWithRetry (bus: unknown, settings: Parameters<typeof DbusVictronVirtual.addSettings>[1]): Promise<unknown> {
   for (let attempt = 0; attempt < MAX_ADD_SETTINGS_RETRIES; attempt++) {
     try {
-      return await addSettings(bus, settings)
+      return await loadDbusVictronVirtual().addSettings(bus, settings)
     } catch (error) {
       if (!isSettingsServiceUnavailable(error) || attempt === MAX_ADD_SETTINGS_RETRIES - 1) {
         throw error
@@ -121,7 +135,7 @@ function getDeviceInstance (result: unknown): number | null {
 async function takeLegacyClassAndVrmInstance (bus: unknown, legacyPath: string): Promise<string | null> {
   let legacyValue: unknown
   try {
-    const result = await getValue(bus, {
+    const result = await loadDbusVictronVirtual().getValue(bus, {
       path: legacyPath,
       interface_: 'com.victronenergy.BusItem',
       destination: 'com.victronenergy.settings'
@@ -135,7 +149,7 @@ async function takeLegacyClassAndVrmInstance (bus: unknown, legacyPath: string):
   if (typeof legacyValue !== 'string' || !legacyValue.includes(':')) return null
 
   try {
-    await removeSettings(bus, [{ path: legacyPath }])
+    await loadDbusVictronVirtual().removeSettings(bus, [{ path: legacyPath }])
   } catch (err) {
     console.warn(`S2DbusTransport: failed to remove legacy setting ${legacyPath}:`, err)
   }
@@ -167,7 +181,7 @@ async function takeLegacyClassAndVrmInstance (bus: unknown, legacyPath: string):
  */
 export class S2DbusTransport extends EventEmitter {
   private readonly opts: S2DbusTransportOptions
-  private bus: dbus.DBusClient | undefined
+  private bus: DbusNative.DBusClient | undefined
   private handle: VictronInterfaceHandle | undefined
   private serviceName: string | undefined
   private readonly energyAccumulator = new EnergyAccumulator()
@@ -181,6 +195,7 @@ export class S2DbusTransport extends EventEmitter {
 
   connect (): void {
     const { connectionMode, tcpAddress } = this.opts
+    const dbus = loadDbus()
 
     if (connectionMode === 'tcp') {
       if (!tcpAddress) {
@@ -215,7 +230,7 @@ export class S2DbusTransport extends EventEmitter {
     })
   }
 
-  private async claimDeviceInstanceAndRegister (bus: dbus.DBusClient): Promise<void> {
+  private async claimDeviceInstanceAndRegister (bus: DbusNative.DBusClient): Promise<void> {
     const { deviceType, nodeId } = this.opts
     // Sanitized the same way node-red-contrib-victron's sanitizeIdForDbus does - node.id is
     // already alphanumeric in practice, this is just a defensive match to that convention.
@@ -331,7 +346,7 @@ export class S2DbusTransport extends EventEmitter {
     }
 
     try {
-      this.handle = addVictronInterfaces(bus, declaration, definition, true)
+      this.handle = loadDbusVictronVirtual().addVictronInterfaces(bus, declaration, definition, true)
     } catch (err) {
       this.emit('error', err instanceof Error ? err : new Error(String(err)))
       return
