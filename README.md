@@ -19,6 +19,8 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 | **s2-rm-config** | Configuration for RM identity: resource ID, name, roles, control types, serial number, power measurement/forecast |
 | **s2-ombc** | Operation Mode Based Control - declares the OMBC system description, resolves OMBC instructions, and confirms operation mode changes back to the CEM |
 | **s2-ombc-config** | Configuration for `s2-ombc`: OMBC system description (operation modes, transitions, timers), with a friendly editor for the common case and a raw-JSON Advanced mode for everything else |
+| **s2-frbc** | Fill Rate Based Control - sends the FRBC system description and leakage behaviour, resolves FRBC instructions per actuator (power and fill rate at the current fill level), and reports fill level, actuator state, timers, usage forecast and fill level target profile back to the CEM |
+| **s2-frbc-config** | Configuration for `s2-frbc`: FRBC system description (actuators, operation modes, storage) and leakage behaviour as JSON, pre-filled with a working example and validated as you edit |
 | **s2-pebc** | Power Envelope Based Control - accumulates power envelope schedules from PEBC instructions, dispatches the active bound as it becomes effective, caps outgoing PowerForecasts to the accumulated schedule, and (optionally) resolves which side of an asymmetric bound currently applies from your PowerMeasurement |
 | **s2-pebc-config** | Configuration for `s2-pebc`: default power constraints (grid connection preset or custom wattage) |
 | **s2-cem-config** | Configuration for CEM connection (WebSocket URL and credentials) |
@@ -36,15 +38,16 @@ Below, each node's internal type (`s2-resource`, `s2-rm`, ...) is used for ident
 - A composite **s2-resource** node for a minimal, single-node S2 flow, alongside the fully wired-together `s2-rm` + transport + control-type model
 - Operation Mode Based Control (OMBC), via the dedicated **s2-ombc** node
 - Power Envelope Based Control (PEBC) with configurable power constraints, via the dedicated **s2-pebc** node
+- Fill Rate Based Control (FRBC) for storage-like resources (buffer tanks, ...), via the dedicated **s2-frbc** node
 - WebSocket and Venus OS D-Bus transports (**s2-websocket** / **s2-dbus**), with no dependency on node-red-contrib-victron
 - PowerMeasurement forwarding (3-phase symmetric or per-phase L1/L2/L3), including live D-Bus BusItem properties and optional energy (kWh) auto-calculation over the D-Bus transport
 - PowerForecast support
 - Multiple concurrent CEM sessions
 - Configurable RM roles (Consumer, Producer, Storage)
 - Context variable templates in serial number (e.g. `{{global.vrmId}}`)
-- S2 messages are validated against the real S2 JSON schema on both the message path (`s2-rm`) and at config-save time (`s2-ombc-config`'s and `s2-pebc-config`'s Advanced/JSON mode) - a malformed message, system description, or power constraints range is caught with a specific error instead of only failing downstream on the CEM side
+- S2 messages are validated against the real S2 JSON schema on both the message path (`s2-rm`) and at config-save time (`s2-ombc-config`'s and `s2-pebc-config`'s Advanced/JSON mode, `s2-frbc-config`) - a malformed message, system description, or power constraints range is caught with a specific error instead of only failing downstream on the CEM side
 
-Other S2 control types (FRBC, DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its "from CEM" output, as raw S2 messages, for you to handle in your own flow.
+Other S2 control types (DDBC, PPBC) have no dedicated node yet - **s2-rm** forwards their instructions on its "from CEM" output, as raw S2 messages, for you to handle in your own flow.
 
 ## Installation
 
@@ -65,11 +68,11 @@ For the simplest possible flow, drag in a single **s2-resource** node instead: p
    - s2-websocket output 2 -> s2-rm input
    - s2-rm output 1 -> s2-websocket input
 4. s2-rm output 2 carries all S2 messages from the CEM (e.g. SelectControlType, ReceptionStatus, RevokeObject) and instructions (e.g. `OMBC.Instruction`, `PEBC.Instruction`), as raw S2 messages with `msg.topic` set to the `message_type`.
-5. For OMBC or PEBC, add the matching control-type node (**s2-ombc** + **s2-ombc-config**, or **s2-pebc** + **s2-pebc-config**) and wire it up:
+5. For OMBC, PEBC or FRBC, add the matching control-type node (**s2-ombc** + **s2-ombc-config**, **s2-pebc** + **s2-pebc-config**, or **s2-frbc** + **s2-frbc-config**) and wire it up:
    - s2-rm output 2 -> control-type node input (so it can observe `SelectControlType`/`RevokeObject` and resolve its own instructions)
    - control-type node's command output -> s2-rm input (routes `UpdateStatus`/`SystemDescription`/`PowerConstraints`/`InstructionStatus` commands back through s2-rm)
 
-   `s2-ombc` and `s2-pebc` can be wired in parallel downstream of the same `s2-rm` - each ignores instructions meant for the other control type.
+   `s2-ombc`, `s2-pebc` and `s2-frbc` can be wired in parallel downstream of the same `s2-rm` - each ignores instructions meant for another control type.
 
    If you're sending PowerForecasts and using `s2-pebc`, route your Forecast command into `s2-pebc`'s input too (instead of directly into s2-rm) - see [Sending PowerForecasts](#sending-powerforecasts).
 
@@ -82,6 +85,7 @@ Import any of these from the Node-RED palette manager's "Import Examples" menu (
 | `s2-resource-quickstart` | The recommended starting point: the same boiler-OMBC scenario below, collapsed to a single **s2-resource** node (`Transport: WebSocket`, `Control type: OMBC`) plus the **s2-cem-config** it shares its CEM connection with. |
 | `boiler-ombc-demo` | The fully wired-together model: **s2-rm-config** + **s2-cem-config** + **s2-websocket** + **s2-rm** + **s2-ombc-config** + **s2-ombc**, simulating a single-phase electric boiler with two operation modes (Standby/off, Normal 2500W) - no real hardware required. |
 | `s2-dbus-quickstart` | The same boiler-OMBC scenario as `boiler-ombc-demo`, but over the **s2-dbus** transport (Venus OS D-Bus) instead of WebSocket - for a CEM running on the same GX device. |
+| `frbc-quickstart` | A heat pump heating a buffer tank as an FRBC resource over the **s2-dbus** transport: **s2-rm** + **s2-frbc** + **s2-frbc-config**, with a function node simulating the tank's fill level and confirming each instruction - no real hardware required. |
 | `opportunity-loads-sg-ready-ombc` | Models an SG-Ready-style heat pump/load as an OMBC resource, driven by a real Venus OS relay state instead of a fake trigger. |
 | `opportunity-loads-mypv-ac-thor` | Drives a real My-PV AC-Thor 9s over its HTTP control API as an OMBC resource via **s2-resource**'s built-in D-Bus transport, reporting back its own instructed power as the measurement (see [Faking a measurement from an OMBC instruction](#faking-a-measurement-from-an-ombc-instruction)). |
 | `pebc-instruction-tester` | A standalone CEM-side tester (no S2 nodes involved) that POSTs `PEBC.Instruction` bodies at a resource manager's REST endpoint - useful for exercising **s2-pebc** without a real CEM. |

@@ -41,6 +41,9 @@ interface S2RmConfig extends NodeConfig {
  *   { command: 'SetAvailableControlTypes', availableControlTypes: [...] }  <- replaces the advertised list verbatim
  *                                             (NOT_CONTROLABLE only included if you list it) and re-sends
  *                                             ResourceManagerDetails to every connected CEM
+ *   { command: 'ReplaySelection', controlType }  <- re-emits SelectControlType (payload.replay: true) on output 2
+ *                                             for each connected CEM that has this control type selected;
+ *                                             sent by a control-type node after it restarts
  *   { command: 'SetAvailableControlTypes', isControllable: false }  <- shortcut: advertises exactly
  *                                             ['NOT_CONTROLABLE']. isControllable: true restores the deploy-time
  *                                             configured list. Exactly one of availableControlTypes/isControllable

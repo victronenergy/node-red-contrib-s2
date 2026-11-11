@@ -311,6 +311,29 @@ export class S2ResourceManager {
       return
     }
 
+    // ReplaySelection lets a control-type node that restarted while s2-rm kept its sessions (a
+    // modified-nodes deploy) learn which CEMs still have its control type selected: the
+    // selection is re-emitted on the "from CEM" output, marked replay: true, only for those
+    // CEMs. Nothing is sent to any CEM.
+    if (command === 'ReplaySelection') {
+      const { controlType } = msg.payload as { controlType?: unknown }
+      if (typeof controlType !== 'string' || !controlType) {
+        done(new Error('ReplaySelection requires a controlType string'))
+        return
+      }
+      for (const [sessionCemId, session] of this.sessions) {
+        if (session.state === State.CONNECTED && session.selectedControlType === controlType) {
+          this.opts.onEmitToCem({
+            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: controlType, replay: true },
+            cemId: sessionCemId,
+            topic: MessageType.SELECT_CONTROL_TYPE
+          })
+        }
+      }
+      done()
+      return
+    }
+
     // SetAvailableControlTypes applies globally (all current + future sessions), so like
     // PowerConstraints it does not require a cemId - it changes what the RM itself
     // advertises, not something addressed to one CEM's session.

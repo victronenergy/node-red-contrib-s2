@@ -47,18 +47,30 @@ The RM SHALL expose exactly two outputs - to transport, and from CEM (including 
 - **THEN** the RM still exposes only two outputs; PEBC-specific schedule data is not emitted from `s2-rm` itself
 
 ### Requirement: Generic status update command
-The RM SHALL accept an `UpdateStatus` command containing a control-type-namespaced status payload and a `cemId`, and SHALL send the corresponding S2 status message to that CEM's session.
+The RM SHALL accept an `UpdateStatus` command containing a control-type-namespaced status payload and a `cemId`, and SHALL send the corresponding S2 status message to that CEM's session. For `FILL_RATE_BASED_CONTROL` the `frbc` namespace MAY carry any of `actuatorStatuses`, `storageStatus`, `timerStatuses`, `usageForecast` and `fillLevelTargetProfile`; the RM SHALL send one S2 message per entry present, in that order, and SHALL reject an `frbc` payload that carries none of them.
 
 #### Scenario: Control-type node reports confirmed state
 - **WHEN** an `UpdateStatus` command is received for a connected CEM with a namespaced status payload
 - **THEN** the RM sends the corresponding status message (e.g. `OMBC.Status`) to that CEM
 
+#### Scenario: FRBC storage and actuator status in one command
+- **WHEN** an `UpdateStatus` command with `controlType: 'FILL_RATE_BASED_CONTROL'` and `frbc: { actuatorStatuses: [a], storageStatus: s }` is received for a connected CEM
+- **THEN** the RM sends `FRBC.ActuatorStatus` for `a` followed by `FRBC.StorageStatus` for `s`, each with its own `message_id`, and both pass S2 schema validation
+
+#### Scenario: Empty FRBC status payload
+- **WHEN** an `UpdateStatus` command with `controlType: 'FILL_RATE_BASED_CONTROL'` and an `frbc` object containing none of the supported entries is received
+- **THEN** the RM sends nothing and reports an error
+
 ### Requirement: Generic system description command
-The RM SHALL accept a `SystemDescription` command containing a control-type-namespaced system description payload and a `cemId`, and SHALL send the corresponding S2 system description message to that CEM's session.
+The RM SHALL accept a `SystemDescription` command containing a control-type-namespaced system description payload and a `cemId`, and SHALL send the corresponding S2 system description message to that CEM's session. For `FILL_RATE_BASED_CONTROL` the `frbc` namespace SHALL carry `systemDescription` (`actuators`, `storage`) and MAY carry `leakageBehaviour`; the RM SHALL send `FRBC.SystemDescription`, then `FRBC.LeakageBehaviour` if present, `valid_from` defaulting to now.
 
 #### Scenario: Control-type node pushes its system description
 - **WHEN** a `SystemDescription` command is received for a connected CEM with a namespaced system description payload
 - **THEN** the RM sends the corresponding system description message (e.g. `OMBC.SystemDescription`) to that CEM
+
+#### Scenario: FRBC system description with leakage behaviour
+- **WHEN** a `SystemDescription` command with `controlType: 'FILL_RATE_BASED_CONTROL'` and `frbc: { systemDescription, leakageBehaviour }` is received for a connected CEM
+- **THEN** the RM sends `FRBC.SystemDescription` followed by `FRBC.LeakageBehaviour` to that CEM
 
 ### Requirement: Transport Active flag reflects control-type selection
 On every `SelectControlType` message, in addition to its existing acknowledgment behavior, the RM SHALL emit a `/S2/0/Active` write on its transport output: `1` when the newly selected control type is anything other than `NO_SELECTION` or `NOT_CONTROLABLE`, and `0` when it is `NO_SELECTION` or `NOT_CONTROLABLE`. This write requires no dedicated output port or `cemId`.
@@ -207,3 +219,14 @@ The editor SHALL mark an `s2-rm` node invalid, with a message saying another `s2
 #### Scenario: s2-rm copied and pasted
 - **WHEN** an `s2-rm` node is copied and pasted, and the copy references the original's `s2-rm-config`
 - **THEN** the pasted `s2-rm` is marked invalid in the editor before deploy, with a message saying another `s2-rm` uses the same `s2-rm-config`; the original is marked as well the next time the editor validates it (e.g. when the flows are reloaded)
+
+### Requirement: Selection replay command
+The RM SHALL accept a `ReplaySelection` command with a `controlType` and no `cemId`. For every connected CEM whose selected control type equals it, the RM SHALL emit `SelectControlType` with that control type and `replay: true` on its "from CEM" output, and SHALL send nothing to any CEM. Without a `controlType` the command SHALL be rejected.
+
+#### Scenario: One of two CEMs has FRBC selected
+- **WHEN** CEM A has FRBC selected, CEM B has OMBC selected, and `{ command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' }` arrives
+- **THEN** the RM emits one `SelectControlType` for A with `replay: true`, and nothing for B or to either CEM
+
+#### Scenario: No sessions after a full deploy
+- **WHEN** `ReplaySelection` arrives and no CEM is connected
+- **THEN** the RM emits nothing

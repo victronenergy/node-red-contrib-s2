@@ -30,7 +30,9 @@
       "s2-ombc-config": "./dist/nodes/s2-ombc-config/index.js",
       "s2-ombc": "./dist/nodes/s2-ombc/index.js",
       "s2-pebc-config": "./dist/nodes/s2-pebc-config/index.js",
-      "s2-pebc": "./dist/nodes/s2-pebc/index.js"
+      "s2-pebc": "./dist/nodes/s2-pebc/index.js",
+      "s2-frbc-config": "./dist/nodes/s2-frbc-config/index.js",
+      "s2-frbc": "./dist/nodes/s2-frbc/index.js"
     }
   },
   "scripts": {

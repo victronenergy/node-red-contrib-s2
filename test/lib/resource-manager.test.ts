@@ -139,6 +139,37 @@ describe('S2ResourceManager - UpdateStatus / SystemDescription commands', () => 
     expect(sysDesc).toBeDefined()
   })
 
+  it('relays FRBC SystemDescription and UpdateStatus commands to the CEM', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+    const range = (start: number, end: number) => ({ start_of_range: start, end_of_range: end })
+
+    rm.handleInput({
+      payload: {
+        command: 'SystemDescription',
+        cemId: 'cem-1',
+        controlType: 'FILL_RATE_BASED_CONTROL',
+        frbc: {
+          systemDescription: {
+            actuators: [{
+              id: 'hp',
+              supported_commodities: ['ELECTRICITY'],
+              operation_modes: [{ id: 'hp-on', abnormal_condition_only: false, elements: [{ fill_level_range: range(0, 100), fill_rate: range(0, 1), power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', ...range(0, 1000) }] }] }],
+              transitions: [],
+              timers: []
+            }],
+            storage: { provides_leakage_behaviour: false, provides_fill_level_target_profile: false, provides_usage_forecast: false, fill_level_range: range(0, 100) }
+          }
+        }
+      }
+    }, jest.fn())
+    rm.handleInput({ payload: { command: 'UpdateStatus', cemId: 'cem-1', controlType: 'FILL_RATE_BASED_CONTROL', frbc: { storageStatus: { presentFillLevel: 12 } } } }, jest.fn())
+
+    const sent = transportMsgs.map(m => (m?.payload as { message?: { message_type?: string } }).message?.message_type)
+    expect(sent).toEqual([MessageType.FRBC_SYSTEM_DESCRIPTION, MessageType.FRBC_STORAGE_STATUS])
+  })
+
   it('warns and does not throw when a command targets an unknown CEM', () => {
     const { rm, warnings } = setup()
     const done = jest.fn()
@@ -147,6 +178,43 @@ describe('S2ResourceManager - UpdateStatus / SystemDescription commands', () => 
 
     expect(done).toHaveBeenCalledWith()
     expect(warnings.length).toBeGreaterThan(0)
+  })
+})
+
+describe('S2ResourceManager - ReplaySelection', () => {
+  function select (rm: S2ResourceManager, cemId: string, controlType: string): void {
+    rm.handleInput({ payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: `sct-${cemId}`, control_type: controlType }) } }, jest.fn())
+  }
+
+  it('re-emits SelectControlType, marked replay, only for connected CEMs with that control type selected', () => {
+    const { rm, cemMsgs, transportMsgs } = setup()
+    connectAndHandshake(rm, 'cem-1')
+    connectAndHandshake(rm, 'cem-2')
+    connectAndHandshake(rm, 'cem-3')
+    select(rm, 'cem-1', 'FILL_RATE_BASED_CONTROL')
+    select(rm, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
+    cemMsgs.length = 0
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(cemMsgs).toEqual([{
+      payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: 'FILL_RATE_BASED_CONTROL', replay: true },
+      cemId: 'cem-1',
+      topic: MessageType.SELECT_CONTROL_TYPE
+    }])
+    expect(transportMsgs).toEqual([]) // nothing goes to any CEM
+  })
+
+  it('replays nothing without sessions, and requires a controlType', () => {
+    const { rm, cemMsgs } = setup()
+    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, jest.fn())
+    expect(cemMsgs).toEqual([])
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'ReplaySelection' } }, done)
+    expect(done).toHaveBeenCalledWith(new Error('ReplaySelection requires a controlType string'))
   })
 })
 

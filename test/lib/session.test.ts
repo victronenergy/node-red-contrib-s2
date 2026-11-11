@@ -879,3 +879,73 @@ describe('S2Session sendInstructionStatus', () => {
     expect(msg.instruction_id).toBe('instr-5')
   })
 })
+
+describe('S2Session FRBC system description and status', () => {
+  function connectedSession () {
+    const mocks = makeSession()
+    mocks.session.start()
+    mocks.session.handleMessage(raw({ message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr1', selected_protocol_version: '0.0.2-beta' }))
+    mocks.onSend.mockClear()
+    return mocks
+  }
+
+  const range = (start: number, end: number) => ({ start_of_range: start, end_of_range: end })
+  const systemDescription = {
+    actuators: [{
+      id: 'hp',
+      supported_commodities: ['ELECTRICITY'],
+      operation_modes: [{
+        id: 'hp-on',
+        abnormal_condition_only: false,
+        elements: [{ fill_level_range: range(0, 100), fill_rate: range(0, 1), power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', ...range(0, 1000) }] }]
+      }],
+      transitions: [],
+      timers: []
+    }],
+    storage: { provides_leakage_behaviour: true, provides_fill_level_target_profile: true, provides_usage_forecast: true, fill_level_range: range(0, 100) }
+  }
+
+  // S2Session._send schema-validates every outgoing message and reports an error instead of
+  // sending an invalid one, so "sent and no onError" means the message is valid S2.
+  it('sends FRBC.SystemDescription followed by FRBC.LeakageBehaviour, both schema-valid', () => {
+    const { session, onSend, onError } = connectedSession()
+    session.sendSystemDescription(ControlType.FRBC, {
+      frbc: { systemDescription, leakageBehaviour: { elements: [{ fill_level_range: range(0, 100), leakage_rate: 0.01 }] } }
+    })
+    expect(onError).not.toHaveBeenCalled()
+    expect(onSend.mock.calls.map(c => c[0].message_type)).toEqual([MessageType.FRBC_SYSTEM_DESCRIPTION, 'FRBC.LeakageBehaviour'])
+    expect(onSend.mock.calls[0][0].actuators[0].id).toBe('hp')
+    expect(typeof onSend.mock.calls[0][0].valid_from).toBe('string')
+  })
+
+  it('sends one schema-valid message per FRBC status entry, actuator status first', () => {
+    const { session, onSend, onError } = connectedSession()
+    session.updateStatus(ControlType.FRBC, {
+      frbc: {
+        storageStatus: { presentFillLevel: 42 },
+        actuatorStatuses: [{ actuatorId: 'hp', activeOperationModeId: 'hp-on', operationModeFactor: 0.5, previousOperationModeId: 'hp-off', transitionTimestamp: '2026-01-01T00:00:00.000Z' }],
+        timerStatuses: [{ actuatorId: 'hp', timerId: 'min-on', finishedAt: '2026-01-01T00:30:00.000Z' }],
+        usageForecast: { elements: [{ duration: 3600000, usage_rate_expected: 0.1 }] },
+        fillLevelTargetProfile: { startTime: '2026-01-01T00:00:00.000Z', elements: [{ duration: 3600000, fill_level_range: range(50, 60) }] }
+      }
+    })
+    expect(onError).not.toHaveBeenCalled()
+    const sent = onSend.mock.calls.map(c => c[0])
+    expect(sent.map(m => m.message_type)).toEqual([
+      MessageType.FRBC_ACTUATOR_STATUS, MessageType.FRBC_STORAGE_STATUS, MessageType.FRBC_TIMER_STATUS,
+      MessageType.FRBC_USAGE_FORECAST, MessageType.FRBC_FILL_LEVEL_TARGET_PROFILE
+    ])
+    expect(sent[0]).toMatchObject({ actuator_id: 'hp', active_operation_mode_id: 'hp-on', operation_mode_factor: 0.5, previous_operation_mode_id: 'hp-off' })
+    expect(sent[1].present_fill_level).toBe(42)
+    expect(sent[2]).toMatchObject({ timer_id: 'min-on', actuator_id: 'hp', finished_at: '2026-01-01T00:30:00.000Z' })
+    expect(typeof sent[3].start_time).toBe('string')
+    expect(sent[4].start_time).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('reports an error for an FRBC status payload with no entries', () => {
+    const { session, onSend, onError } = connectedSession()
+    session.updateStatus(ControlType.FRBC, { frbc: {} })
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('FRBC status update has none of') }))
+  })
+})

@@ -1,0 +1,168 @@
+[
+    {
+        "id": "f7a1c2d3e4b50001",
+        "type": "tab",
+        "label": "S2 - Heat pump buffer (FRBC, D-Bus)",
+        "disabled": false,
+        "env": [],
+        "info": ""
+    },
+    {
+        "id": "f7a1c2d3e4b50002",
+        "type": "comment",
+        "z": "f7a1c2d3e4b50001",
+        "name": "FRBC quickstart",
+        "info": "A heat pump heating a buffer tank, controlled by a CEM with Fill Rate Based Control.\n\n- **s2-rm-config** advertises FILL_RATE_BASED_CONTROL.\n- **s2-frbc-config** holds the system description (heat pump with Off/Heating modes, 0-100 % tank, 5-minute minimum on/off timers) and the tank's leakage.\n- **Buffer simulator** reports the fill level every 10 s and confirms every instruction. Replace it with your real device: send `StorageStatus { fillLevel }` and, once the device switched, wire the `ActuatorInstruction` payload back as `ActuatorConfirmation`.\n\nThe fill level sent at deploy is stored and sent to the CEM as soon as it selects FRBC.",
+        "x": 160,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "f7a1c2d3e4b50003",
+        "type": "s2-rm-config",
+        "name": "S2 RM heat pump",
+        "resourceId": "6f1d8c2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f",
+        "rmName": "RM: Heat pump",
+        "roles": "ENERGY_CONSUMER",
+        "controlTypes": "NOT_CONTROLABLE,FILL_RATE_BASED_CONTROL",
+        "serialNumber": "",
+        "manufacturer": "Victron Energy",
+        "model": "Virtual RM",
+        "firmwareVersion": "1.0.0",
+        "instructionPollIntervalMs": 2000,
+        "skipInstructionStatus": false,
+        "providesPowerMeasurement": "",
+        "providesForecast": false
+    },
+    {
+        "id": "f7a1c2d3e4b50004",
+        "type": "s2-dbus-config",
+        "name": "Heat pump D-Bus device",
+        "connectionMode": "auto",
+        "tcpAddress": "",
+        "deviceType": "heatpump",
+        "measurementType": ""
+    },
+    {
+        "id": "f7a1c2d3e4b50005",
+        "type": "s2-dbus",
+        "z": "f7a1c2d3e4b50001",
+        "name": "",
+        "dbusConfig": "f7a1c2d3e4b50004",
+        "debug": true,
+        "x": 690,
+        "y": 160,
+        "wires": [
+            [
+                "f7a1c2d3e4b50006"
+            ]
+        ]
+    },
+    {
+        "id": "f7a1c2d3e4b50006",
+        "type": "s2-rm",
+        "z": "f7a1c2d3e4b50001",
+        "name": "RM - Heat pump",
+        "rmConfig": "f7a1c2d3e4b50003",
+        "cem": "",
+        "x": 460,
+        "y": 160,
+        "wires": [
+            [
+                "f7a1c2d3e4b50005"
+            ],
+            [
+                "f7a1c2d3e4b50007"
+            ]
+        ]
+    },
+    {
+        "id": "f7a1c2d3e4b50007",
+        "type": "s2-frbc",
+        "z": "f7a1c2d3e4b50001",
+        "name": "",
+        "frbcConfig": "f7a1c2d3e4b50008",
+        "x": 470,
+        "y": 260,
+        "wires": [
+            [
+                "f7a1c2d3e4b50009",
+                "f7a1c2d3e4b5000a"
+            ],
+            [
+                "f7a1c2d3e4b50006"
+            ]
+        ]
+    },
+    {
+        "id": "f7a1c2d3e4b50008",
+        "type": "s2-frbc-config",
+        "name": "Heat pump buffer",
+        "systemDescription": "{\"actuators\":[{\"id\":\"5f0c3a62-8d1e-4b7a-9c35-2e6f1a7b8c90\",\"diagnostic_label\":\"Heat pump\",\"supported_commodities\":[\"ELECTRICITY\"],\"operation_modes\":[{\"id\":\"a3d2e1f0-6b5c-4d7e-8f91-0a1b2c3d4e5f\",\"diagnostic_label\":\"Off\",\"abnormal_condition_only\":false,\"elements\":[{\"fill_level_range\":{\"start_of_range\":0,\"end_of_range\":100},\"fill_rate\":{\"start_of_range\":0,\"end_of_range\":0},\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.3_PHASE_SYMMETRIC\",\"start_of_range\":0,\"end_of_range\":0}]}]},{\"id\":\"b4e3f2a1-7c6d-4e8f-9a02-1b2c3d4e5f60\",\"diagnostic_label\":\"Heating\",\"abnormal_condition_only\":false,\"elements\":[{\"fill_level_range\":{\"start_of_range\":0,\"end_of_range\":100},\"fill_rate\":{\"start_of_range\":0.001,\"end_of_range\":0.005},\"power_ranges\":[{\"commodity_quantity\":\"ELECTRIC.POWER.3_PHASE_SYMMETRIC\",\"start_of_range\":500,\"end_of_range\":2000}]}]}],\"transitions\":[{\"id\":\"c5f4a3b2-8d7e-4f90-ab13-2c3d4e5f6071\",\"from\":\"a3d2e1f0-6b5c-4d7e-8f91-0a1b2c3d4e5f\",\"to\":\"b4e3f2a1-7c6d-4e8f-9a02-1b2c3d4e5f60\",\"start_timers\":[\"e7b6c5d4-af90-4b12-8d35-4e5f60718293\"],\"blocking_timers\":[\"f8c7d6e5-b0a1-4c23-9e46-5f60718293a4\"],\"abnormal_condition_only\":false},{\"id\":\"d6a5b4c3-9e8f-4a01-bc24-3d4e5f607182\",\"from\":\"b4e3f2a1-7c6d-4e8f-9a02-1b2c3d4e5f60\",\"to\":\"a3d2e1f0-6b5c-4d7e-8f91-0a1b2c3d4e5f\",\"start_timers\":[\"f8c7d6e5-b0a1-4c23-9e46-5f60718293a4\"],\"blocking_timers\":[\"e7b6c5d4-af90-4b12-8d35-4e5f60718293\"],\"abnormal_condition_only\":false}],\"timers\":[{\"id\":\"e7b6c5d4-af90-4b12-8d35-4e5f60718293\",\"diagnostic_label\":\"Minimum on time\",\"duration\":300000},{\"id\":\"f8c7d6e5-b0a1-4c23-9e46-5f60718293a4\",\"diagnostic_label\":\"Minimum off time\",\"duration\":300000}]}],\"storage\":{\"diagnostic_label\":\"Buffer tank\",\"fill_level_label\":\"%\",\"provides_leakage_behaviour\":true,\"provides_fill_level_target_profile\":false,\"provides_usage_forecast\":false,\"fill_level_range\":{\"start_of_range\":0,\"end_of_range\":100}}}",
+        "leakageBehaviour": "{\"elements\":[{\"fill_level_range\":{\"start_of_range\":0,\"end_of_range\":100},\"leakage_rate\":0.002}]}"
+    },
+    {
+        "id": "f7a1c2d3e4b50009",
+        "type": "debug",
+        "z": "f7a1c2d3e4b50001",
+        "name": "debug - instructions",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 720,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "f7a1c2d3e4b5000a",
+        "type": "function",
+        "z": "f7a1c2d3e4b50001",
+        "name": "Buffer simulator",
+        "func": "// Simulates the buffer tank: integrates the instructed fill rate minus leakage, reports the\n// fill level every tick, and confirms each instruction straight away (a real flow would confirm\n// once the heat pump actually switched).\nconst LEAKAGE_PER_S = 0.002 // % per second - matches the leakage in the FRBC config\nconst now = Date.now()\nconst last = context.get('last') ?? now\nconst rate = context.get('rate') ?? 0\nlet fill = context.get('fill') ?? 50\nfill = Math.min(100, Math.max(0, fill + (rate - LEAKAGE_PER_S) * (now - last) / 1000))\ncontext.set('fill', fill)\ncontext.set('last', now)\n\nif (msg.topic === 'ActuatorInstruction') {\n    context.set('rate', msg.payload.fillRate)\n    node.status({ fill: 'blue', shape: 'dot', text: `${msg.payload.operationModeLabel} - ${fill.toFixed(1)} %` })\n    return [{ topic: 'ActuatorConfirmation', payload: msg.payload, cemId: msg.cemId }, null]\n}\nif (msg.topic === 'Selected' || msg.topic === 'Deselected') {\n    return [null, null]\n}\nnode.status({ fill: 'grey', shape: 'ring', text: `${fill.toFixed(1)} %` })\nreturn [null, { topic: 'StorageStatus', payload: { fillLevel: Math.round(fill * 10) / 10 } }]\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 480,
+        "y": 360,
+        "wires": [
+            [
+                "f7a1c2d3e4b50007"
+            ],
+            [
+                "f7a1c2d3e4b50007"
+            ]
+        ]
+    },
+    {
+        "id": "f7a1c2d3e4b5000b",
+        "type": "inject",
+        "z": "f7a1c2d3e4b50001",
+        "name": "every 10 s",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "10",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "topic": "tick",
+        "x": 250,
+        "y": 360,
+        "wires": [
+            [
+                "f7a1c2d3e4b5000a"
+            ]
+        ]
+    }
+]

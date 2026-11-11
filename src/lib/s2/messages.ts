@@ -25,7 +25,7 @@ export const MessageType = Object.freeze({
   // Fill-rate Based Control (FRBC)
   FRBC_ACTUATOR_STATUS: 'FRBC.ActuatorStatus',
   FRBC_FILL_LEVEL_TARGET_PROFILE: 'FRBC.FillLevelTargetProfile',
-  FRBC_LEAKAGE_BEHAVIOUR: 'FRBC.LeakagebBehaviour',
+  FRBC_LEAKAGE_BEHAVIOUR: 'FRBC.LeakageBehaviour',
   FRBC_STORAGE_STATUS: 'FRBC.StorageStatus',
   FRBC_SYSTEM_DESCRIPTION: 'FRBC.SystemDescription',
   FRBC_TIMER_STATUS: 'FRBC.TimerStatus',
@@ -285,6 +285,63 @@ export interface OMBCStatusConfig {
 }
 
 /**
+ * FRBC system description in S2 wire shape, minus the message envelope: `actuators` and
+ * `storage` exactly as FRBC.SystemDescription names them. `message_type`, `message_id` and
+ * (unless validFrom is given) `valid_from` are added when the message is built.
+ */
+export interface FRBCSystemDescriptionConfig {
+  actuators: unknown[]
+  storage: Record<string, unknown>
+  validFrom?: string
+}
+
+/** FRBC.LeakageBehaviour in S2 wire shape (`elements`), minus the message envelope. */
+export interface FRBCLeakageBehaviourConfig {
+  elements: unknown[]
+  validFrom?: string
+}
+
+export interface FRBCActuatorStatusConfig {
+  actuatorId: string
+  activeOperationModeId: string
+  operationModeFactor?: number
+  previousOperationModeId?: string
+  transitionTimestamp?: string
+}
+
+export interface FRBCStorageStatusConfig {
+  presentFillLevel: number
+}
+
+export interface FRBCTimerStatusConfig {
+  actuatorId: string
+  timerId: string
+  /** ISO 8601 datetime */
+  finishedAt: string
+}
+
+/** FRBC.UsageForecast / FRBC.FillLevelTargetProfile: S2 wire-shape `elements`; startTime defaults to now. */
+export interface FRBCProfileConfig {
+  startTime?: string
+  elements: unknown[]
+}
+
+/** The `frbc` namespace of a SystemDescription command. */
+export interface FRBCSystemDescriptionPayload {
+  systemDescription: FRBCSystemDescriptionConfig
+  leakageBehaviour?: FRBCLeakageBehaviourConfig
+}
+
+/** The `frbc` namespace of an UpdateStatus command - one S2 message is sent per entry present. */
+export interface FRBCStatusPayload {
+  actuatorStatuses?: FRBCActuatorStatusConfig[]
+  storageStatus?: FRBCStorageStatusConfig
+  timerStatuses?: FRBCTimerStatusConfig[]
+  usageForecast?: FRBCProfileConfig
+  fillLevelTargetProfile?: FRBCProfileConfig
+}
+
+/**
  * Simplified input for building a PEBC.PowerConstraints message.
  * Produces a single commodity constraint with matching LOWER_LIMIT and
  * UPPER_LIMIT ranges, consequence_type DEFER - as required by most CEMs.
@@ -499,6 +556,99 @@ export function makeOMBCStatus(status: OMBCStatusConfig): S2OMBCStatusMessage {
     msg.transition_timestamp = status.transitionTimestamp
   }
   return msg
+}
+
+/**
+ * Create an FRBC.SystemDescription message.
+ */
+export function makeFRBCSystemDescription (config: FRBCSystemDescriptionConfig): object {
+  return {
+    message_type: MessageType.FRBC_SYSTEM_DESCRIPTION,
+    message_id: generateId(),
+    valid_from: config.validFrom ?? new Date().toISOString(),
+    actuators: config.actuators,
+    storage: config.storage
+  }
+}
+
+/**
+ * Create an FRBC.LeakageBehaviour message.
+ */
+export function makeFRBCLeakageBehaviour (config: FRBCLeakageBehaviourConfig): object {
+  return {
+    message_type: MessageType.FRBC_LEAKAGE_BEHAVIOUR,
+    message_id: generateId(),
+    valid_from: config.validFrom ?? new Date().toISOString(),
+    elements: config.elements
+  }
+}
+
+/**
+ * Create an FRBC.ActuatorStatus message.
+ */
+export function makeFRBCActuatorStatus (status: FRBCActuatorStatusConfig): object {
+  const msg: Record<string, unknown> = {
+    message_type: MessageType.FRBC_ACTUATOR_STATUS,
+    message_id: generateId(),
+    actuator_id: status.actuatorId,
+    active_operation_mode_id: status.activeOperationModeId,
+    operation_mode_factor: status.operationModeFactor !== undefined ? status.operationModeFactor : 1
+  }
+  if (status.previousOperationModeId) {
+    msg.previous_operation_mode_id = status.previousOperationModeId
+  }
+  if (status.transitionTimestamp) {
+    msg.transition_timestamp = status.transitionTimestamp
+  }
+  return msg
+}
+
+/**
+ * Create an FRBC.StorageStatus message.
+ */
+export function makeFRBCStorageStatus (status: FRBCStorageStatusConfig): object {
+  return {
+    message_type: MessageType.FRBC_STORAGE_STATUS,
+    message_id: generateId(),
+    present_fill_level: status.presentFillLevel
+  }
+}
+
+/**
+ * Create an FRBC.TimerStatus message.
+ */
+export function makeFRBCTimerStatus (status: FRBCTimerStatusConfig): object {
+  return {
+    message_type: MessageType.FRBC_TIMER_STATUS,
+    message_id: generateId(),
+    timer_id: status.timerId,
+    actuator_id: status.actuatorId,
+    finished_at: status.finishedAt
+  }
+}
+
+/**
+ * Create an FRBC.UsageForecast message.
+ */
+export function makeFRBCUsageForecast (config: FRBCProfileConfig): object {
+  return {
+    message_type: MessageType.FRBC_USAGE_FORECAST,
+    message_id: generateId(),
+    start_time: config.startTime ?? new Date().toISOString(),
+    elements: config.elements
+  }
+}
+
+/**
+ * Create an FRBC.FillLevelTargetProfile message.
+ */
+export function makeFRBCFillLevelTargetProfile (config: FRBCProfileConfig): object {
+  return {
+    message_type: MessageType.FRBC_FILL_LEVEL_TARGET_PROFILE,
+    message_id: generateId(),
+    start_time: config.startTime ?? new Date().toISOString(),
+    elements: config.elements
+  }
 }
 
 /**

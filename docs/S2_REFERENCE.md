@@ -22,9 +22,9 @@ The RM offers one or more **Control Types** that describe how its flexibility ca
 | Power Envelope Based Control | PEBC | Power envelope constraints |
 | Power Profile Based Control | PPBC | Fixed power profiles |
 
-This package implements the RM side. **OMBC** (`s2-ombc`, or `s2-resource`'s built-in control type) and
-**PEBC** (`s2-pebc`) have dedicated nodes; FRBC, DDBC and PPBC instructions are acknowledged and forwarded
-as raw S2 messages on `s2-rm`'s "from CEM" output, for the flow to handle.
+This package implements the RM side. **OMBC** (`s2-ombc`, or `s2-resource`'s built-in control type),
+**PEBC** (`s2-pebc`) and **FRBC** (`s2-frbc`) have dedicated nodes; DDBC and PPBC instructions are
+acknowledged and forwarded as raw S2 messages on `s2-rm`'s "from CEM" output, for the flow to handle.
 
 ---
 
@@ -256,6 +256,23 @@ Always use proper UUIDs for any field that s2python maps to `uuid.UUID`.
 
 ---
 
+## FRBC Notes
+
+- An FRBC resource has one storage and one or more actuators; each actuator has its own operation
+  modes, transitions and timers. Instructions, `FRBC.ActuatorStatus` and `FRBC.TimerStatus` are per actuator.
+- An operation mode has `elements`, each valid for a `fill_level_range`: the mode's `fill_rate` and
+  `power_ranges` depend on the current fill level. `s2-frbc` picks the element for the last reported fill
+  level when resolving an instruction.
+- Fill rate and leakage rate are in fill-level units per second; durations (timers, forecast and target
+  profile elements) are in milliseconds.
+- `FRBC.LeakageBehaviour`, `FRBC.UsageForecast` and `FRBC.FillLevelTargetProfile` may only be sent when the
+  storage description's matching `provides_*` flag is true.
+- A CEM needs at least `FRBC.SystemDescription` and `FRBC.StorageStatus` before it can plan (the Rust EMS
+  checks exactly these two), so `s2-frbc` replays the last known fill level right after the system
+  description on every FRBC selection.
+
+---
+
 ## Recommended starting point: s2-resource
 
 For a new flow, start with the `s2-resource` node instead of wiring the individual nodes below
@@ -266,7 +283,7 @@ to one node with no wiring. `Transport: D-Bus` covers the same session, D-Bus re
 power-measurement relay (including exposing the reading as a real D-Bus BusItem property) as the
 standalone `s2-dbus` node below. `Transport: External` and `Control type: None` fall back to the
 exact same ports/message shapes as `s2-rm` below, for anything the built-ins don't cover yet
-(PEBC, FRBC/DDBC/PPBC) - see its own help panel for the full port contract.
+(PEBC, FRBC, DDBC/PPBC) - see its own help panel for the full port contract.
 
 The individual nodes documented below remain the manually-wired/advanced path: reach for them
 directly when you need more than one control type on the same RM, a shared CEM connection across
@@ -285,7 +302,8 @@ or a transport `s2-resource` doesn't offer a built-in for yet.
 - **`s2-rm`:** the generic S2 session (handshake, `ResourceManagerDetails`, control-type selection,
   instruction ack/queue/routing), configured by `s2-rm-config`. Output 1 goes back to the transport,
   output 2 carries every S2 message from the CEM, plus `Connected`/`Disconnected` lifecycle events.
-- **Control-type nodes:** `s2-ombc` (+ `s2-ombc-config`) and `s2-pebc` (+ `s2-pebc-config`) read
+- **Control-type nodes:** `s2-ombc` (+ `s2-ombc-config`), `s2-pebc` (+ `s2-pebc-config`) and
+  `s2-frbc` (+ `s2-frbc-config`) read
   `s2-rm`'s output 2, turn instructions into device-level output, and send their commands
   (`SystemDescription`, `UpdateStatus`, `PowerConstraints`, `InstructionStatus`) back into `s2-rm`.
 - **`s2-resource`:** all of the above in one node - `s2-rm` plus a built-in transport (WebSocket,
@@ -318,7 +336,8 @@ the CEM to disconnect and reconnect from scratch, not just to pause control.
 
 ## Known Limitations / TODO
 
-- No dedicated nodes for FRBC, DDBC and PPBC: their instructions are acknowledged and forwarded raw
+- No dedicated nodes for DDBC and PPBC: their instructions are acknowledged and forwarded raw
+- FRBC is not a built-in control type of `s2-resource` yet; use `s2-rm` + `s2-frbc`
 - `SessionRequest` from the CEM (reconnect/terminate) is forwarded on `s2-rm`'s output 2 but not acted on
 - The optional D-Bus RM settings (`S2/0/RmSettings/OnHysteresis`, `OffHysteresis`, `PowerSetting`) are not exposed
 - `s2-dbus` doesn't know the resource ID, so it can't refuse a duplicate the way `s2-websocket` does; an

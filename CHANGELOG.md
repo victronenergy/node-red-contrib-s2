@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `s2-frbc` and `s2-frbc-config`: Fill Rate Based Control (FRBC), wired next to `s2-rm` like `s2-ombc`. `s2-frbc-config` holds the FRBC system description (actuators, operation modes, storage) and leakage behaviour as JSON, starts from a working example (a heat pump heating a buffer tank), and is checked against the S2 schema and for consistency (unique ids, transitions and timers that exist) while you edit. When a CEM selects FRBC, `s2-frbc` sends the system description and leakage behaviour, then the last known fill level, actuator states, running timers, usage forecast and fill level target profile, so a CEM can plan without the flow resending anything. It resolves each `FRBC.Instruction` into an `ActuatorInstruction` with the actuator, mode, factor, and the fill rate and power at the current fill level, and aborts instructions for unknown actuators or modes. Flow input topics `StorageStatus`, `ActuatorConfirmation`, `UsageForecast`, `FillLevelTargetProfile` and `TimerStatus` become the matching FRBC messages; an `ActuatorConfirmation` also starts the timers of the transition taken and reports the instruction it confirms as `SUCCEEDED`. New example: `frbc-quickstart`.
+- `s2-rm`: the `SystemDescription` and `UpdateStatus` commands accept an `frbc` payload next to `ombc`, so FRBC messages are schema-checked and retried like the others.
+- `s2-rm`: new `ReplaySelection` command (`{ command: 'ReplaySelection', controlType }`). For every connected CEM that has that control type selected, `s2-rm` emits the selection again on its "from CEM" output, marked `replay: true`; nothing goes to the CEM. `s2-frbc` sends it when it starts, so after a partial deploy (for example an edited `s2-frbc-config`) it sends the new system description to a CEM that kept FRBC selected.
+
+### Fixed
+
+- `MessageType.FRBC_LEAKAGE_BEHAVIOUR`, exported by the package's library entry point, was `'FRBC.LeakagebBehaviour'`; it is now the S2 message type `'FRBC.LeakageBehaviour'`.
+
 ## [1.0.0]
 
 First stable release. No functional changes since 0.9.7.

@@ -9,6 +9,8 @@ const NODE_TYPES = [
   's2-cem-config',
   's2-dbus',
   's2-dbus-config',
+  's2-frbc',
+  's2-frbc-config',
   's2-ombc',
   's2-ombc-config',
   's2-pebc',

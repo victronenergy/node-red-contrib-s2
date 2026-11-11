@@ -9,12 +9,21 @@ import {
   RmDetails,
   OMBCSystemDescriptionConfig,
   OMBCStatusConfig,
+  FRBCStatusPayload,
+  FRBCSystemDescriptionPayload,
   PEBCPowerConstraintsInput,
   makeReceptionStatus,
   makeHandshake,
   makeResourceManagerDetails,
   makeOMBCSystemDescription,
   makeOMBCStatus,
+  makeFRBCSystemDescription,
+  makeFRBCLeakageBehaviour,
+  makeFRBCActuatorStatus,
+  makeFRBCStorageStatus,
+  makeFRBCTimerStatus,
+  makeFRBCUsageForecast,
+  makeFRBCFillLevelTargetProfile,
   makePEBCPowerConstraints,
   makeInstructionStatusUpdate,
   parse,
@@ -35,12 +44,14 @@ export type StateValue = (typeof State)[keyof typeof State]
 /** Control-type-namespaced status payload, e.g. `{ ombc: OMBCStatusConfig }`. */
 export interface StatusPayload {
   ombc?: OMBCStatusConfig
+  frbc?: FRBCStatusPayload
   [key: string]: unknown
 }
 
 /** Control-type-namespaced system description payload, e.g. `{ ombc: OMBCSystemDescriptionConfig }`. */
 export interface SystemDescriptionPayload {
   ombc?: OMBCSystemDescriptionConfig
+  frbc?: FRBCSystemDescriptionPayload
   [key: string]: unknown
 }
 
@@ -303,6 +314,26 @@ export class S2Session {
       }
       return
     }
+    if (controlType === ControlType.FRBC && payload.frbc) {
+      const frbc = payload.frbc
+      // One S2 message per entry present, in a fixed order: actuator state first, so a CEM
+      // that plans on StorageStatus already knows which mode each actuator is in.
+      const messages: object[] = [
+        ...(frbc.actuatorStatuses || []).map(makeFRBCActuatorStatus),
+        ...(frbc.storageStatus ? [makeFRBCStorageStatus(frbc.storageStatus)] : []),
+        ...(frbc.timerStatuses || []).map(makeFRBCTimerStatus),
+        ...(frbc.usageForecast ? [makeFRBCUsageForecast(frbc.usageForecast)] : []),
+        ...(frbc.fillLevelTargetProfile ? [makeFRBCFillLevelTargetProfile(frbc.fillLevelTargetProfile)] : [])
+      ]
+      if (messages.length === 0) {
+        this._onError(new Error('FRBC status update has none of actuatorStatuses, storageStatus, timerStatuses, usageForecast, fillLevelTargetProfile'))
+        return
+      }
+      if (this._state === State.CONNECTED) {
+        for (const msg of messages) this._send(msg)
+      }
+      return
+    }
     this._onError(new Error(`No status message available for control type ${controlType}`))
   }
 
@@ -313,6 +344,15 @@ export class S2Session {
     if (controlType === ControlType.OMBC && payload.ombc) {
       if (this._state === State.CONNECTED) {
         this._send(makeOMBCSystemDescription(payload.ombc))
+      }
+      return
+    }
+    if (controlType === ControlType.FRBC && payload.frbc && payload.frbc.systemDescription) {
+      if (this._state === State.CONNECTED) {
+        this._send(makeFRBCSystemDescription(payload.frbc.systemDescription))
+        if (payload.frbc.leakageBehaviour) {
+          this._send(makeFRBCLeakageBehaviour(payload.frbc.leakageBehaviour))
+        }
       }
       return
     }
