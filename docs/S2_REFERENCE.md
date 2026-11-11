@@ -267,6 +267,10 @@ Always use proper UUIDs for any field that s2python maps to `uuid.UUID`.
   profile elements) are in milliseconds.
 - `FRBC.LeakageBehaviour`, `FRBC.UsageForecast` and `FRBC.FillLevelTargetProfile` may only be sent when the
   storage description's matching `provides_*` flag is true.
+- Every instruction must end in a final status (SUCCEEDED, REVOKED, REJECTED or ABORTED). S2 doesn't define
+  when an FRBC instruction succeeds, nor what happens to a superseded one or one revoked after it started;
+  `s2-frbc` uses the flow's `ActuatorConfirmation` for SUCCEEDED, ABORTED for an instruction overtaken by one
+  for another mode of the same actuator, and REVOKED for a revoke after it reached the flow (see its help).
 - A CEM needs at least `FRBC.SystemDescription` and `FRBC.StorageStatus` before it can plan (the Rust EMS
   checks exactly these two), so `s2-frbc` replays the last known fill level right after the system
   description on every FRBC selection.

@@ -379,14 +379,11 @@ describe('FRBCController - ActuatorConfirmation', () => {
     expect(commands.filter(c => c.command === 'InstructionStatus')).toHaveLength(count)
   })
 
-  it('does not report SUCCEEDED for a confirmation of a different factor, or for a revoked instruction', () => {
+  it('does not report SUCCEEDED for a confirmation of a different factor', () => {
     const { select, instruct, input, commands } = setup()
     select('cem-1')
     instruct('cem-1', { actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 0.5 })
     input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp', operationMode: 'hp-on', factor: 1 } })
-    instruct('cem-1', { actuator_id: 'heater', operation_mode: 'heater-on', id: 'instr-2' })
-    input({ cemId: 'cem-1', topic: 'RevokeObject', payload: { message_type: 'RevokeObject', object_type: 'FRBC.Instruction', object_id: 'instr-2' } })
-    input({ topic: 'ActuatorConfirmation', payload: { actuator: 'heater', operationMode: 'heater-on' } })
     expect(commands.filter(c => c.command === 'InstructionStatus')).toEqual([])
   })
 
@@ -536,5 +533,100 @@ describe('FRBCController - unrecognised input', () => {
     input({ payload: { fillLevel: 3 } })
     input({ cemId: 'cem-1', topic: 'ReceptionStatus', payload: { message_type: 'ReceptionStatus', subject_message_id: 'x', status: 'OK' } })
     expect(warnings).toEqual(['Ignored input with msg.topic (none): expected one of StorageStatus, ActuatorConfirmation, UsageForecast, FillLevelTargetProfile, TimerStatus'])
+  })
+})
+
+describe('FRBCController - instruction lifecycle (every instruction ends in a final status)', () => {
+  const statuses = (commands: Array<Record<string, unknown>>) =>
+    commands.filter(c => c.command === 'InstructionStatus').map(c => `${String(c.instructionId)}:${String(c.status)}`)
+  const confirm = (input: (msg: NodeMessage) => jest.Mock, operationMode: string, factor = 1) =>
+    input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp', operationMode, factor } })
+
+  it('closes every open instruction a confirmation fulfils, not only the newest', () => {
+    const { select, instruct, input, commands } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-off' })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-off' })
+    instruct('cem-1', { id: 'i3', actuator_id: 'hp', operation_mode: 'hp-off' })
+    confirm(input, 'hp-off')
+    expect(statuses(commands)).toEqual(['i1:SUCCEEDED', 'i2:SUCCEEDED', 'i3:SUCCEEDED'])
+  })
+
+  it('aborts an unconfirmed instruction when a newer one for the same actuator asks for another mode', () => {
+    const { select, instruct, commands } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    instruct('cem-1', { id: 'h1', actuator_id: 'heater', operation_mode: 'heater-on' })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-off' })
+    // Only hp's own earlier instruction is overtaken; the heater's stays open.
+    expect(statuses(commands)).toEqual(['i1:ABORTED'])
+  })
+
+  it('keeps an earlier instruction for the same mode open, and closes it with the confirmation', () => {
+    const { select, instruct, input, commands } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 0.5 })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 1 })
+    expect(statuses(commands)).toEqual([])
+    // i2 is confirmed; i1 (same mode, other factor) was overtaken by it.
+    confirm(input, 'hp-on', 1)
+    expect(statuses(commands)).toEqual(['i1:ABORTED', 'i2:SUCCEEDED'])
+  })
+
+  it('leaves newer instructions open when an older one is confirmed', () => {
+    const { select, instruct, input, commands } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 1 })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 0.5 })
+    confirm(input, 'hp-on', 1)
+    expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
+    confirm(input, 'hp-on', 0.5)
+    expect(statuses(commands)).toEqual(['i1:SUCCEEDED', 'i2:SUCCEEDED'])
+  })
+
+  it('reports an instruction revoked after it reached the flow as REVOKED and tells the flow', () => {
+    const { select, instruct, input, commands, instructions } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 0.5 })
+    input({ cemId: 'cem-1', topic: 'RevokeObject', payload: { message_type: 'RevokeObject', object_type: 'FRBC.Instruction', object_id: 'i1' } })
+    expect(statuses(commands)).toEqual(['i1:REVOKED'])
+    expect(instructions[instructions.length - 1]).toEqual({
+      topic: 'Revoked',
+      payload: { instructionId: 'i1', actuatorId: 'hp', operationModeId: 'hp-on', factor: 0.5 },
+      cemId: 'cem-1'
+    })
+    // No longer open: a later confirmation doesn't report it again.
+    confirm(input, 'hp-on', 0.5)
+    expect(statuses(commands)).toEqual(['i1:REVOKED'])
+  })
+
+  it('ignores a revoke for an instruction it never handed to the flow (s2-rm answers those)', () => {
+    const { select, input, commands, instructions } = setup()
+    select('cem-1')
+    const before = instructions.length
+    input({ cemId: 'cem-1', topic: 'RevokeObject', payload: { message_type: 'RevokeObject', object_type: 'FRBC.Instruction', object_id: 'pending' } })
+    expect(statuses(commands)).toEqual([])
+    expect(instructions).toHaveLength(before)
+  })
+
+  it('aborts open instructions when the CEM switches to another control type, but not when the session ends', () => {
+    const switched = setup()
+    switched.select('cem-1')
+    switched.instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    switched.select('cem-1', 'NOT_CONTROLABLE')
+    expect(statuses(switched.commands)).toEqual(['i1:ABORTED'])
+
+    const disconnected = setup()
+    disconnected.select('cem-1')
+    disconnected.instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    disconnected.input({ topic: 'Disconnected', cemId: 'cem-1', payload: undefined })
+    expect(statuses(disconnected.commands)).toEqual([])
+  })
+
+  it('aborts the oldest open instruction when more than 50 are open', () => {
+    const { select, instruct, commands } = setup()
+    select('cem-1')
+    for (let i = 0; i <= 50; i++) instruct('cem-1', { id: `i${i}`, actuator_id: 'hp', operation_mode: 'hp-on' })
+    expect(statuses(commands)).toEqual(['i0:ABORTED'])
   })
 })

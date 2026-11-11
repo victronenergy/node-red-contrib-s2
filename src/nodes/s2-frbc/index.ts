@@ -33,7 +33,12 @@ interface S2FrbcNodeConfig extends NodeConfig {
  *   { topic: 'ActuatorInstruction', payload: { instructionId, actuatorId, actuatorLabel, actuatorIndex,
  *     operationModeId, operationModeLabel, operationModeIndex, factor, abnormalCondition, fillRate,
  *     commodityPower, values? }, cemId, rawS2Message }
+ *   { topic: 'Revoked', payload: { instructionId, actuatorId, operationModeId, factor }, cemId }
+ *     (the CEM revoked an instruction this node already emitted; reported to the CEM as REVOKED)
  *   { topic: 'Selected' | 'Deselected', payload: { ... }, cemId }
+ *
+ * Every instruction this node emits ends in a final InstructionStatus: SUCCEEDED on a matching
+ * ActuatorConfirmation, ABORTED when overtaken (see FRBCController), REVOKED on a revoke.
  *
  * Output port 2 - commands to s2-rm:
  *   { payload: { command: 'SystemDescription', cemId, controlType, frbc } }

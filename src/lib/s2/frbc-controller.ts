@@ -3,6 +3,7 @@ import {
   ControlType,
   MessageType,
   InstructionStatus,
+  InstructionStatusValue,
   FRBCActuatorStatusConfig,
   FRBCLeakageBehaviourConfig,
   FRBCProfileConfig,
@@ -336,12 +337,27 @@ export class FRBCController {
 
   // -- CEM messages --
 
+  /**
+   * Gives an open instruction its final status. S2 requires an InstructionStatusUpdate for every
+   * instruction until it reaches SUCCEEDED, REVOKED, REJECTED or ABORTED, so no open instruction
+   * may be forgotten without one.
+   */
+  private finishInstruction (cemId: string, open: OpenInstruction, status: InstructionStatusValue): void {
+    this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId: open.instructionId, status } })
+  }
+
   /** Forgets a CEM's FRBC selection and session state, telling the flow if it had FRBC selected. */
-  private deselect (cemId: string, reason: Record<string, unknown>): void {
+  // With sessionEnded the session is gone (Disconnected) or replaced (Connected), so there is no
+  // one left to report to; after a switch to another control type the session remains, and open
+  // FRBC instructions get ABORTED - they will no longer be carried out.
+  private deselect (cemId: string, reason: Record<string, unknown>, sessionEnded: boolean): void {
     const state = this.cemStates.get(cemId)
     if (state?.selected) {
       state.selected = false
       state.lastSentFillLevel = undefined
+      if (!sessionEnded) {
+        for (const open of state.openInstructions) this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
+      }
       state.openInstructions = []
       this.opts.onEmitInstruction({ topic: 'Deselected', payload: reason, cemId })
     }
@@ -355,7 +371,7 @@ export class FRBCController {
     const state = this.getOrCreateCemState(cemId)
 
     if (controlType !== ControlType.FRBC) {
-      this.deselect(cemId, { controlType })
+      this.deselect(cemId, { controlType }, false)
       return
     }
 
@@ -434,8 +450,18 @@ export class FRBCController {
 
     if (cemId && instructionId) {
       const state = this.getOrCreateCemState(cemId)
+      // An unconfirmed earlier instruction for this actuator that asked for another mode is
+      // overtaken: it will not be carried out any more. One for the same mode stays open - the
+      // device may still be switching to it, and the confirmation closes both.
+      state.openInstructions = state.openInstructions.filter(open => {
+        if (open.actuatorId !== actuator.id || open.operationModeId === mode.id) return true
+        this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
+        return false
+      })
       state.openInstructions.push({ instructionId, actuatorId: actuator.id, operationModeId: mode.id, factor })
-      if (state.openInstructions.length > MAX_OPEN_INSTRUCTIONS) state.openInstructions.shift()
+      if (state.openInstructions.length > MAX_OPEN_INSTRUCTIONS) {
+        this.finishInstruction(cemId, state.openInstructions.shift()!, InstructionStatus.ABORTED)
+      }
     }
 
     this.opts.onStatus({ fill: 'green', shape: 'dot', text: `instructed: ${label(actuator)} → ${label(mode)}` })
@@ -460,11 +486,23 @@ export class FRBCController {
     })
   }
 
+  // s2-rm already answers a revoke for an instruction it still holds (execution_time not reached).
+  // Revoking one that was already handed to the flow is left open by S2; the CEM asked for it, so
+  // it gets REVOKED, and the flow is told so the device logic can decide whether to undo anything.
   private handleRevoke (msg: NodeMessage): void {
     const payload = msg.payload as Record<string, unknown>
-    const state = this.cemStates.get(msg.cemId as string)
+    const cemId = msg.cemId as string
+    const state = this.cemStates.get(cemId)
     if (!state || payload.object_type !== MessageType.FRBC_INSTRUCTION) return
-    state.openInstructions = state.openInstructions.filter(i => i.instructionId !== payload.object_id)
+    const index = state.openInstructions.findIndex(i => i.instructionId === payload.object_id)
+    if (index < 0) return
+    const [open] = state.openInstructions.splice(index, 1)
+    this.finishInstruction(cemId, open, InstructionStatus.REVOKED)
+    this.opts.onEmitInstruction({
+      topic: 'Revoked',
+      payload: { instructionId: open.instructionId, actuatorId: open.actuatorId, operationModeId: open.operationModeId, factor: open.factor },
+      cemId
+    })
   }
 
   // -- flow inputs --
@@ -522,14 +560,18 @@ export class FRBCController {
     for (const cemId of targets) {
       this.sendStatus(cemId, { actuatorStatuses: [status], ...(timerStatuses.length > 0 ? { timerStatuses } : {}) })
       const state = this.getOrCreateCemState(cemId)
-      // The most recent open instruction this confirmation fulfils.
-      for (let i = state.openInstructions.length - 1; i >= 0; i--) {
-        const open = state.openInstructions[i]
-        if (open.actuatorId === actuator.id && open.operationModeId === mode.id && Math.abs(open.factor - factor) < 1e-9) {
-          state.openInstructions.splice(i, 1)
-          this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId: open.instructionId, status: InstructionStatus.SUCCEEDED } })
-          break
-        }
+      // Every open instruction for this actuator that asked for exactly this mode and factor is
+      // fulfilled; any older one for the actuator that asked for something else is overtaken.
+      const matches = (open: OpenInstruction): boolean =>
+        open.actuatorId === actuator.id && open.operationModeId === mode.id && Math.abs(open.factor - factor) < 1e-9
+      let lastMatch = -1
+      state.openInstructions.forEach((open, i) => { if (matches(open)) lastMatch = i })
+      if (lastMatch >= 0) {
+        state.openInstructions = state.openInstructions.filter((open, i) => {
+          if (open.actuatorId !== actuator.id || i > lastMatch) return true
+          this.finishInstruction(cemId, open, matches(open) ? InstructionStatus.SUCCEEDED : InstructionStatus.ABORTED)
+          return false
+        })
       }
     }
     this.opts.onStatus({
@@ -588,7 +630,7 @@ export class FRBCController {
     // Disconnect first, which replaces its session: FRBC is then not selected until the CEM
     // selects it again, exactly as after a Disconnect.
     if ((topic === 'Disconnected' || topic === 'Connected') && cemId) {
-      this.deselect(cemId, { reason: topic === 'Connected' ? 'reconnected' : 'disconnected' })
+      this.deselect(cemId, { reason: topic === 'Connected' ? 'reconnected' : 'disconnected' }, true)
       done()
       return
     }
