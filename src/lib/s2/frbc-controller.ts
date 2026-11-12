@@ -491,7 +491,7 @@ export class FRBCController {
       values = ['L1', 'L2', 'L3'].map(p => byCq.get(`ELECTRIC.POWER.${p}`) ?? 0)
     }
 
-    if (cemId && instructionId) {
+    if (instructionId) {
       const state = this.getOrCreateCemState(cemId)
       // An unconfirmed earlier instruction for this actuator that asked for another mode is
       // overtaken: it will not be carried out any more. One for the same mode stays open - the
