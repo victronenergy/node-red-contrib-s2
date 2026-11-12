@@ -51,7 +51,8 @@
           clearTimeout(validateTimer)
           validateTimer = setTimeout(function () {
             editor.validateConfig($sd.typedInput('value'), $lb.typedInput('value'), function (result) {
-              if (seq !== validateSeq) return
+              // A dialog closed meanwhile: Update now belongs to another one.
+              if (seq !== validateSeq || !$.contains(document, $sd[0])) return
               setGate(!!result.valid, result.errors)
             })
           }, 400)
