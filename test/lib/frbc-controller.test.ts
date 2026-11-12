@@ -508,6 +508,18 @@ describe('FRBCController - forecasts, target profiles and timers', () => {
     expect(commands[1].frbc).toEqual({ fillLevelTargetProfile: { startTime: '2030-01-01T00:00:00.000Z', elements } })
   })
 
+  it('withdraws a stored target profile on revoke: true, so it is no longer replayed, and warns', () => {
+    const { input, select, commands, warnings, context } = setup()
+    const elements = [{ duration: 3600000, fill_level_range: { start_of_range: 50, end_of_range: 60 } }]
+    input({ topic: 'FillLevelTargetProfile', payload: { startTime: '2030-01-01T00:00:00.000Z', elements } })
+    const done = input({ topic: 'FillLevelTargetProfile', payload: { revoke: true } })
+    expect(done).toHaveBeenCalledWith()
+    expect(context.s2FrbcState).not.toHaveProperty('fillLevelTargetProfile')
+    expect(warnings).toEqual(['FillLevelTargetProfile withdrawn: it is no longer sent on selection, but S2 has no message to revoke it, so a CEM keeps the one it has until it ends'])
+    select('cem-1')
+    expect(commands.filter(c => c.command === 'UpdateStatus')).toEqual([])
+  })
+
   it('ignores a usage forecast with a warning when the storage does not declare one', () => {
     const { input, select, commands, warnings } = setup()
     select('cem-1')

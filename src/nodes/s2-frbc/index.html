@@ -59,10 +59,11 @@
     <dd>Current fill level in the storage's fill-level units. Only sent to the CEM when it changed.</dd>
     <dt>ActuatorConfirmation <span class="property-type">{ actuator, operationMode, factor? }</span></dt>
     <dd>The actuator is now in this mode. <code>actuator</code> and <code>operationMode</code> may each be an id, a 0-based index or a diagnostic label; <code>factor</code> defaults to 1. An <code>ActuatorInstruction</code> payload can be wired back unchanged. Sends <code>FRBC.ActuatorStatus</code>, starts the timers of the transition taken (<code>FRBC.TimerStatus</code>), and reports every open instruction for that actuator with this mode and factor as <code>SUCCEEDED</code> (see <i>Instruction status</i> below).</dd>
-    <dt>UsageForecast <span class="property-type">{ startTime?, elements }</span></dt>
+    <dt>UsageForecast <span class="property-type">{ startTime?, elements } | { revoke: true }</span></dt>
     <dd><code>FRBC.UsageForecast</code> elements (<code>duration</code> in ms, <code>usage_rate_expected</code>, ...). <code>startTime</code> defaults to now. Only accepted when <code>storage.provides_usage_forecast</code> is true.</dd>
-    <dt>FillLevelTargetProfile <span class="property-type">{ startTime?, elements }</span></dt>
+    <dt>FillLevelTargetProfile <span class="property-type">{ startTime?, elements } | { revoke: true }</span></dt>
     <dd><code>FRBC.FillLevelTargetProfile</code> elements (<code>duration</code> in ms, <code>fill_level_range</code>). Only accepted when <code>storage.provides_fill_level_target_profile</code> is true.</dd>
+    <dd>For both: <code>{ revoke: true }</code> withdraws the last one sent, so it is no longer sent when a CEM selects FRBC. S2 has no message to revoke it, so a CEM that already has it keeps it until it ends.</dd>
     <dt>TimerStatus <span class="property-type">{ actuator, timerId, finishedAt }</span></dt>
     <dd>For a timer your flow manages itself. <code>finishedAt</code> as ISO 8601 or ms since the epoch.</dd>
     <dt>cemId <span class="property-type">string</span></dt>

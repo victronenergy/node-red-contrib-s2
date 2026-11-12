@@ -146,6 +146,10 @@ On an `ActuatorConfirmation`, `s2-frbc` SHALL send `InstructionStatus SUCCEEDED`
 - **WHEN** a `UsageForecast` message arrives and `storage.provides_usage_forecast` is false
 - **THEN** nothing is sent and the node warns that the system description does not declare a usage forecast
 
+#### Scenario: Profile withdrawn
+- **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message has `payload.revoke` true
+- **THEN** the stored profile of that kind is removed, so it is not replayed on selection, and the node warns that a CEM keeps the one it has, because S2 JSON has no message to revoke it
+
 #### Scenario: Profile that is not valid S2
 - **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message would not pass S2 schema validation, such as an element without `duration` or a `startTime` that is not a date-time
 - **THEN** the input fails with an error naming the problem, and the profile is neither stored nor sent

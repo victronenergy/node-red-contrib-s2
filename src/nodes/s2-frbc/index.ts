@@ -25,8 +25,8 @@ interface S2FrbcNodeConfig extends NodeConfig {
  * Input from the flow ({ topic, payload, cemId? }):
  *   StorageStatus          { fillLevel }
  *   ActuatorConfirmation   { actuator, operationMode, factor? }   (an ActuatorInstruction payload works as-is)
- *   UsageForecast          { startTime?, elements }
- *   FillLevelTargetProfile { startTime?, elements }
+ *   UsageForecast          { startTime?, elements } | { revoke: true }
+ *   FillLevelTargetProfile { startTime?, elements } | { revoke: true }
  *   TimerStatus            { actuator, timerId, finishedAt }
  *
  * Output port 1:

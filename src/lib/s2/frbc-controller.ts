@@ -697,6 +697,15 @@ export class FRBCController {
       this.opts.onWarn(`${kind} ignored: the system description's storage.${flag} is not true`)
       return
     }
+    if (payload.revoke === true) {
+      // S2 JSON has no RevokeObject type for these (s2-json up to v1.0.0), so only stop replaying it.
+      const device = this.getDeviceState()
+      if (kind === 'UsageForecast') delete device.usageForecast
+      else delete device.fillLevelTargetProfile
+      this.setDeviceState(device)
+      this.opts.onWarn(`${kind} withdrawn: it is no longer sent on selection, but S2 has no message to revoke it, so a CEM keeps the one it has until it ends`)
+      return
+    }
     if (!Array.isArray(payload.elements) || payload.elements.length === 0) {
       throw new Error(`${kind} requires a non-empty payload.elements array`)
     }
