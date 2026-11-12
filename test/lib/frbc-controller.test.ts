@@ -272,6 +272,13 @@ describe('FRBCController - instructions', () => {
     expect(instructions[instructions.length - 1].payload).toMatchObject({ fillRate: 4, values: 1000 })
   })
 
+  it('keeps fractional power, as for a flow rate in litres per second', () => {
+    const { select, instruct, instructions } = setup()
+    select('cem-1')
+    instruct('cem-1', { actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 0.0001 })
+    expect(instructions[instructions.length - 1].payload).toMatchObject({ values: 0.2 })
+  })
+
   it('falls back to the first element with a warning when the fill level is unknown', () => {
     const { select, instruct, instructions, warnings } = setup()
     select('cem-1')

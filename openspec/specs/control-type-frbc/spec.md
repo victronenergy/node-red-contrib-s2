@@ -57,7 +57,7 @@ When `s2-frbc` observes on `s2-rm`'s "from CEM" output that a CEM selected `FILL
 - **THEN** `s2-frbc` emits `Deselected` for that CEM
 
 ### Requirement: Instruction resolution into actionable output
-On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (else the first element, with a warning), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`.
+On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (else the first element, with a warning), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`, without rounding.
 
 #### Scenario: Instruction for a known actuator and mode
 - **WHEN** an `FRBC.Instruction` for a configured actuator selects a mode whose element for the current fill level has `fill_rate` 0..10 and a 3-phase-symmetric power range 0..2000, with `operation_mode_factor` 0.5

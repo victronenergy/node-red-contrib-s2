@@ -447,7 +447,7 @@ export class FRBCController {
         : `FRBC.Instruction ${instructionId}: fill level ${fillLevel} is outside every element of mode "${label(mode)}" - using its first element`)
     }
 
-    const commodityPower = element.power_ranges.map(r => ({ commodity_quantity: r.commodity_quantity, value: Math.round(interpolate(r, factor)) }))
+    const commodityPower = element.power_ranges.map(r => ({ commodity_quantity: r.commodity_quantity, value: interpolate(r, factor) }))
     const byCq = new Map(commodityPower.map(p => [p.commodity_quantity, p.value]))
     let values: number | number[] | undefined
     if (byCq.has('ELECTRIC.POWER.3_PHASE_SYMMETRIC')) {
