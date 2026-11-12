@@ -78,6 +78,26 @@ function profileEndMs (profile: Required<FRBCProfileConfig>): number {
   return new Date(profile.startTime).getTime() + total
 }
 
+// Arrays whose entries must be objects. The vendored S2 schemas don't say so ("type": "object"),
+// so `actuators: [null]` would pass schema validation.
+const OBJECT_ARRAYS = new Set(['actuators', 'operation_modes', 'elements', 'power_ranges', 'transitions', 'timers'])
+
+/** JSON pointers of entries in OBJECT_ARRAYS that are not objects, anywhere below value. */
+function nonObjectEntries (value: unknown, path = ''): string[] {
+  if (typeof value !== 'object' || value === null) return []
+  const problems: string[] = []
+  for (const [key, child] of Object.entries(value)) {
+    const at = `${path}/${key}`
+    if (OBJECT_ARRAYS.has(key) && Array.isArray(child)) {
+      child.forEach((entry, i) => {
+        if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) problems.push(`${at}/${i} must be an object`)
+      })
+    }
+    problems.push(...nonObjectEntries(child, at))
+  }
+  return problems
+}
+
 /**
  * Cross-reference checks on an FRBC configuration that the S2 JSON schema can't express:
  * unique ids, transitions and timers that refer to things that exist within the same actuator,
@@ -176,8 +196,12 @@ export function validateFRBCConfig (config: FRBCConfig): string[] {
     const lb = validateS2Message(makeFRBCLeakageBehaviour(config.leakageBehaviour))
     if (!lb.valid) errors.push(...(lb.errors ?? []).map(e => `Leakage behaviour: ${e}`))
   }
+  if (errors.length === 0) {
+    errors.push(...nonObjectEntries(config.systemDescription).map(e => `System description: ${e}`))
+    if (config.leakageBehaviour) errors.push(...nonObjectEntries(config.leakageBehaviour).map(e => `Leakage behaviour: ${e}`))
+  }
   // Cross-reference checks assume the shape is right; reporting them on a broken shape only
-  // adds noise to the schema errors above.
+  // adds noise to the errors above.
   if (errors.length === 0) errors.push(...frbcConfigProblems(config))
   return errors
 }

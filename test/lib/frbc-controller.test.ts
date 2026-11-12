@@ -140,6 +140,21 @@ describe('validateFRBCConfig', () => {
     expect(errors.every(e => e.startsWith('System description: '))).toBe(true)
     expect(errors.join(' ')).toContain('fill_level_range')
   })
+
+  it('reports entries that must be objects but are not, which the S2 schema lets through', () => {
+    const config = makeConfig()
+    const actuators = config.systemDescription.actuators as Array<Record<string, unknown>>
+    ;(actuators[0].operation_modes as unknown[])[0] = null
+    ;((actuators[1].operation_modes as Array<Record<string, unknown>>)[0].elements as unknown[]).push(5)
+    actuators.push(null as unknown as Record<string, unknown>)
+    ;(config.leakageBehaviour!.elements as unknown[]).push('x')
+    expect(validateFRBCConfig(config)).toEqual([
+      'System description: /actuators/2 must be an object',
+      'System description: /actuators/0/operation_modes/0 must be an object',
+      'System description: /actuators/1/operation_modes/0/elements/1 must be an object',
+      'Leakage behaviour: /elements/1 must be an object'
+    ])
+  })
 })
 
 describe('parseFRBCConfig', () => {
