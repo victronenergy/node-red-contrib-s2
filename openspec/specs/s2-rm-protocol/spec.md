@@ -33,11 +33,19 @@ The RM SHALL acknowledge `SelectControlType` and SHALL NOT itself send any contr
 - **THEN** the RM sends `ReceptionStatus(OK)` and forwards the message on its "from CEM" output, without sending a system description or status message itself
 
 ### Requirement: Instruction acknowledgment and routing
-On receiving any instruction message, the RM SHALL send `ReceptionStatus(OK)` and `InstructionStatusUpdate(ACCEPTED)` (unless status updates are configured off), then emit the instruction on its "from CEM" output as a raw S2 message, the same as any other CEM message. An instruction with a future `execution_time` is queued and emitted then, with `InstructionStatusUpdate(STARTED)`, but only while its CEM's session lasts and the control type selected when it arrived is still selected. When the CEM switches to another control type, its queued instructions SHALL be reported `ABORTED` at once, also if it switches back before they are due; after a disconnect or reconnect they SHALL be dropped.
+On receiving any instruction message, the RM SHALL send `ReceptionStatus(OK)` and `InstructionStatusUpdate(ACCEPTED)` (unless status updates are configured off), then emit the instruction on its "from CEM" output as a raw S2 message, the same as any other CEM message. An instruction with a future `execution_time` SHALL be queued and emitted then, with `InstructionStatusUpdate(STARTED)`, unless its selection or session ended first.
 
 #### Scenario: Instruction received for a known control type
 - **WHEN** the CEM sends an instruction message for a supported control type
 - **THEN** the RM acknowledges it and emits it on the "from CEM" output with `msg.payload` set to the raw S2 instruction and `msg.topic` set to its `message_type` (e.g. `OMBC.Instruction`, `PEBC.Instruction`); downstream control-type nodes identify their own instructions by this `message_type` prefix
+
+#### Scenario: Queued instruction after a control-type switch
+- **WHEN** an instruction with a future `execution_time` is queued and the CEM selects another control type, even if it selects the original one again before the instruction is due
+- **THEN** the RM reports it `ABORTED` at the switch and never emits it
+
+#### Scenario: Queued instruction after the session ends
+- **WHEN** the CEM disconnects or reconnects before a queued instruction is due
+- **THEN** the RM drops it without emitting it
 
 ### Requirement: Fixed two-output contract
 The RM SHALL expose exactly two outputs - to transport, and from CEM (including instructions) - regardless of which control types are configured or connected. No control-type-specific output port SHALL exist on this node.

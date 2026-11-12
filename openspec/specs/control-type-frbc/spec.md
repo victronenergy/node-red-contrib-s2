@@ -13,7 +13,7 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 - **THEN** its system description and leakage fields hold an example that passes validation
 
 ### Requirement: FRBC configuration validated on save
-`s2-frbc-config`'s editor SHALL refuse to save a configuration that fails S2 schema validation or the cross-reference checks: unique actuator, operation mode, transition and timer ids; every transition's `from`, `to`, `start_timers` and `blocking_timers` refer to ids within the same actuator; leakage behaviour is given if and only if `storage.provides_leakage_behaviour` is true; and values the S2 schema leaves untyped are objects. `s2-frbc` SHALL refuse to start with a configuration that fails the same checks.
+`s2-frbc-config`'s editor SHALL refuse to save a configuration that fails S2 schema validation or the cross-reference checks: unique actuator, operation mode, transition and timer ids; every transition's `from`, `to`, `start_timers` and `blocking_timers` refer to ids within the same actuator; and leakage behaviour is given if and only if `storage.provides_leakage_behaviour` is true. `s2-frbc` SHALL refuse to start with a configuration that fails the same checks.
 
 #### Scenario: Update disabled while a change is being checked
 - **WHEN** the user edits either field
@@ -95,11 +95,15 @@ On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mod
 - **THEN** only the first produces an `FRBC.StorageStatus`
 
 ### Requirement: Actuator confirmation
-`s2-frbc` SHALL accept `{ topic: 'ActuatorConfirmation', payload: { actuator, operationMode, factor? } }`, where `actuator` and `operationMode` may each be an id, a 0-based index or a diagnostic label, and SHALL also accept an `ActuatorInstruction` payload wired back unchanged. It SHALL send `FRBC.ActuatorStatus`, including `previous_operation_mode_id` and `transition_timestamp` when the mode changed. `factor` defaults to 1 when omitted; any other value than a number from 0 to 1 SHALL be refused with an error, without storing or sending anything.
+`s2-frbc` SHALL accept `{ topic: 'ActuatorConfirmation', payload: { actuator, operationMode, factor? } }`, where `actuator` and `operationMode` may each be an id, a 0-based index or a diagnostic label, and SHALL also accept an `ActuatorInstruction` payload wired back unchanged. It SHALL send `FRBC.ActuatorStatus`, including `previous_operation_mode_id` and `transition_timestamp` when the mode changed. `factor` defaults to 1 when omitted.
 
 #### Scenario: Reference by label
 - **WHEN** `ActuatorConfirmation { actuator: 'Heat pump', operationMode: 'Heating' }` arrives and those are unique diagnostic labels
 - **THEN** `FRBC.ActuatorStatus` is sent with the matching actuator and mode ids
+
+#### Scenario: Factor outside 0-1
+- **WHEN** an `ActuatorConfirmation` has a `factor` that is not a number from 0 to 1, such as `2` or `"0.5"`
+- **THEN** the input fails with an error, and nothing is stored or sent
 
 ### Requirement: Transition timers started on confirmation
 When an `ActuatorConfirmation` changes an actuator's mode, `s2-frbc` SHALL send `FRBC.TimerStatus` with `finished_at` = now + duration for each `start_timers` entry of the transition from the previous to the confirmed mode.
