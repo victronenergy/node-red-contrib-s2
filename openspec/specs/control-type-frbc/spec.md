@@ -71,6 +71,10 @@ On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mod
 - **WHEN** an `FRBC.Instruction` refers to an actuator or operation mode not in the configuration
 - **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
 
+#### Scenario: Instruction with a factor outside 0-1
+- **WHEN** an `FRBC.Instruction` has an `operation_mode_factor` below 0 or above 1
+- **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
+
 #### Scenario: Instruction from a CEM without FRBC selected
 - **WHEN** an `FRBC.Instruction` arrives from a CEM that has not selected FRBC, or has since selected another control type
 - **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction

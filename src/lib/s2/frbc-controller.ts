@@ -346,6 +346,14 @@ export class FRBCController {
     this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId: open.instructionId, status } })
   }
 
+  /** Ends an instruction that will not be carried out: a warning, ABORTED, and no output. */
+  private abortInstruction (cemId: string | undefined, instructionId: string, reason: string): void {
+    this.opts.onWarn(`FRBC.Instruction ${instructionId} ${reason} - aborted`)
+    if (cemId && instructionId) {
+      this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId, status: InstructionStatus.ABORTED } })
+    }
+  }
+
   /** Forgets a CEM's FRBC selection and session state, telling the flow if it had FRBC selected. */
   // With sessionEnded the session is gone (Disconnected) or replaced (Connected), so there is no
   // one left to report to; after a switch to another control type the session remains, and open
@@ -417,10 +425,11 @@ export class FRBCController {
     const factor = typeof instr.operation_mode_factor === 'number' ? instr.operation_mode_factor : 1
 
     if (!cemId || !this.cemStates.get(cemId)?.selected) {
-      this.opts.onWarn(`FRBC.Instruction ${instructionId} from a CEM that has not selected FRBC - aborted`)
-      if (cemId && instructionId) {
-        this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId, status: InstructionStatus.ABORTED } })
-      }
+      this.abortInstruction(cemId, instructionId, 'from a CEM that has not selected FRBC')
+      return
+    }
+    if (factor < 0 || factor > 1) {
+      this.abortInstruction(cemId, instructionId, `has operation_mode_factor ${factor}, outside 0-1`)
       return
     }
 
@@ -429,11 +438,8 @@ export class FRBCController {
     const modeIndex = actuator ? actuator.operation_modes.findIndex(m => m.id === instr.operation_mode) : -1
     if (!actuator || modeIndex < 0) {
       const what = actuator ? `operation mode "${String(instr.operation_mode)}" of actuator "${actuator.id}"` : `actuator "${String(instr.actuator_id)}"`
-      this.opts.onWarn(`FRBC.Instruction ${instructionId} refers to unknown ${what} - aborted`)
+      this.abortInstruction(cemId, instructionId, `refers to unknown ${what}`)
       this.opts.onStatus({ fill: 'red', shape: 'ring', text: `instruction for unknown ${actuator ? 'operation mode' : 'actuator'} aborted` })
-      if (cemId && instructionId) {
-        this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId, status: InstructionStatus.ABORTED } })
-      }
       return
     }
     const mode = actuator.operation_modes[modeIndex]

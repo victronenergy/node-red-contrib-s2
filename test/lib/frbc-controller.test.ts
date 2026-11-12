@@ -640,6 +640,19 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
   })
 
+  it('aborts an instruction with a factor outside 0-1, without output', () => {
+    const { select, instruct, commands, instructions, warnings } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: 2 })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', operation_mode_factor: -0.5 })
+    expect(statuses(commands)).toEqual(['i1:ABORTED', 'i2:ABORTED'])
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction')).toEqual([])
+    expect(warnings).toEqual([
+      'FRBC.Instruction i1 has operation_mode_factor 2, outside 0-1 - aborted',
+      'FRBC.Instruction i2 has operation_mode_factor -0.5, outside 0-1 - aborted'
+    ])
+  })
+
   it('aborts an instruction from a CEM without FRBC selected, without output', () => {
     const { select, instruct, commands, instructions } = setup()
     instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
