@@ -1,0 +1,130 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script src="resources/node-red-contrib-s2/s2-frbc-editor.js"></script>
+<script type="text/javascript">
+  (function () {
+    const editor = window.__s2FrbcEditor
+
+    RED.nodes.registerType('s2-frbc-config', {
+      category: 'config',
+      defaults: {
+        name: { value: '' },
+        systemDescription: { value: '' },
+        leakageBehaviour: { value: '' }
+      },
+      label: function () {
+        return this.name || 'frbc-config'
+      },
+      oneditprepare: function () {
+        const $sd = $('#node-config-input-systemDescription')
+        const $lb = $('#node-config-input-leakageBehaviour')
+
+        // A new node starts from the example, so there is always something valid to edit.
+        if (!this.systemDescription) {
+          $sd.val(editor.exampleSystemDescription())
+          $lb.val(editor.exampleLeakageBehaviour())
+        }
+        $sd.typedInput({ types: ['json'] })
+        $lb.typedInput({ types: ['json'] })
+
+        // Save-time validation (served by s2-frbc-config/index.ts): Update stays disabled and the
+        // problem is shown while the configuration fails the S2 schema or its cross-reference
+        // checks, so an invalid configuration can't be saved silently.
+        let validateTimer = null
+        let validateSeq = 0
+        // This dialog's own Update button and error box: a late answer must not reach another
+        // dialog's, and must still reach these while the "..." JSON editor has the dialog detached.
+        const $ok = $('#node-config-dialog-ok')
+        const $err = $('#s2-frbc-config-error')
+
+        function setGate (valid, errors) {
+          $ok.prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
+          if (valid) {
+            $err.hide()
+          } else {
+            $err.empty()
+            ;(errors || []).forEach(function (e) { $('<div>').text(e).appendTo($err) })
+            $err.show()
+          }
+        }
+
+        function scheduleValidation () {
+          const seq = ++validateSeq
+          // No saving until these values pass.
+          $ok.prop('disabled', true).addClass('ui-state-disabled')
+          clearTimeout(validateTimer)
+          validateTimer = setTimeout(function () {
+            // val(), not typedInput('value'): the timer may fire after the dialog closed.
+            editor.validateConfig($sd.val(), $lb.val(), function (result) {
+              if (seq !== validateSeq) return
+              setGate(!!result.valid, result.errors)
+            })
+          }, 400)
+        }
+
+        $sd.on('change input', scheduleValidation)
+        $lb.on('change input', scheduleValidation)
+
+        $('#s2-frbc-config-example').on('click', function (e) {
+          e.preventDefault()
+          $sd.typedInput('value', editor.exampleSystemDescription())
+          $lb.typedInput('value', editor.exampleLeakageBehaviour())
+          scheduleValidation()
+        })
+
+        scheduleValidation()
+        window.__s2Common.initializeTooltips()
+      }
+    })
+  })()
+</script>
+
+<script type="text/html" data-template-name="s2-frbc-config">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-config-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-systemDescription"><i class="fa fa-list"></i> System Description<i class="fa fa-info-circle tooltip-icon" data-tooltip="FRBC.SystemDescription in S2 wire format, without message_type/message_id/valid_from: { actuators, storage }. Sent to the CEM by s2-frbc once FRBC is the selected control type. Click the ... button to edit it in a larger JSON editor."></i></label>
+      <input type="text" id="node-config-input-systemDescription">
+    </div>
+
+    <div class="form-row">
+      <label for="node-config-input-leakageBehaviour"><i class="fa fa-tint"></i> Leakage<i class="fa fa-info-circle tooltip-icon" data-tooltip="FRBC.LeakageBehaviour elements: { elements: [{ fill_level_range, leakage_rate }] }, leakage_rate in fill-level units per second. Required when storage.provides_leakage_behaviour is true; leave empty otherwise."></i></label>
+      <input type="text" id="node-config-input-leakageBehaviour">
+    </div>
+
+    <div class="form-row">
+      <label></label>
+      <button type="button" id="s2-frbc-config-example" class="red-ui-button red-ui-button-small"><i class="fa fa-magic"></i> Replace with example</button>
+    </div>
+
+    <div class="form-row s2-full-row">
+      <div id="s2-frbc-config-error" class="s2-ombc-advanced-warning" style="display:none;"></div>
+    </div>
+
+  </div>
+</script>
+
+<script type="text/html" data-help-name="s2-frbc-config">
+  <p>Configuration for <b>s2-frbc</b>: the Fill Rate Based Control (FRBC) system description and, optionally, the storage's leakage behaviour. <b>s2-frbc</b> sends both to the CEM once it has selected FRBC.</p>
+
+  <h3>System Description</h3>
+  <p>The <code>FRBC.SystemDescription</code> message in S2 wire format, without <code>message_type</code>, <code>message_id</code> and <code>valid_from</code> (added when sent):</p>
+  <ul>
+    <li><code>actuators</code> - one entry per actuator (e.g. a heat pump and an immersion heater on the same tank), each with <code>id</code>, <code>diagnostic_label</code>, <code>supported_commodities</code>, <code>operation_modes</code>, <code>transitions</code> and <code>timers</code>.</li>
+    <li>Each operation mode has <code>elements</code>: per fill-level range, the <code>fill_rate</code> and <code>power_ranges</code> the mode achieves there. Fill rate is in fill-level units per second.</li>
+    <li><code>storage</code> - <code>fill_level_range</code>, labels, and whether this resource provides a leakage behaviour, usage forecast or fill level target profile.</li>
+  </ul>
+  <p>A new node starts with an example: a heat pump with Off and Heating modes, a 0-100 % buffer tank and 5-minute minimum on/off timers. <b>Replace with example</b> restores it.</p>
+
+  <h3>Leakage</h3>
+  <p><code>{ elements: [{ fill_level_range, leakage_rate }] }</code>. Required when <code>storage.provides_leakage_behaviour</code> is true, and must be empty when it isn't.</p>
+
+  <h3>Validation</h3>
+  <p>While you edit, the configuration is checked against the S2 schema and for consistency: unique ids, transitions and timers that refer to existing modes and timers of the same actuator, and leakage matching <code>provides_leakage_behaviour</code>. <b>Update</b> stays disabled and the problems are listed until they're fixed.</p>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

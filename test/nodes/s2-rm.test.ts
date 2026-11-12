@@ -317,7 +317,7 @@ describe('s2-rm - pending instructions context', () => {
   beforeEach(() => { jest.useFakeTimers() })
   afterEach(() => { jest.useRealTimers() })
 
-  const PENDING_KEY = 's2PendingInstructions'
+  const PENDING_KEY = 's2PendingInstructions_node-test-id'
 
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())
@@ -748,7 +748,7 @@ describe('s2-rm - RevokeObject handling', () => {
   beforeEach(() => { jest.useFakeTimers() })
   afterEach(() => { jest.useRealTimers() })
 
-  const PENDING_KEY = 's2PendingInstructions'
+  const PENDING_KEY = 's2PendingInstructions_node-test-id'
 
   function connectCem (handlers: Record<string, (...args: unknown[]) => void>, cemId = 'cem-1'): void {
     handlers.input({ payload: { command: 'Connect', cemId, keepAliveInterval: 0 } }, jest.fn(), jest.fn())

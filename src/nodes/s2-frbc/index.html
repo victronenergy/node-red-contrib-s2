@@ -1,0 +1,104 @@
+<script src="resources/node-red-contrib-s2/s2-common.js"></script>
+<script type="text/javascript">
+  RED.nodes.registerType('s2-frbc', {
+    category: 's2',
+    color: '#ffffff',
+    defaults: {
+      name: { value: '' },
+      frbcConfig: { value: '', type: 's2-frbc-config', required: true }
+    },
+    inputs: 1,
+    outputs: 2,
+    icon: 's2-logo.svg',
+    paletteLabel: 'frbc',
+    outputLabels: ['instructions', 'to s2-rm'],
+    inputLabels: ['from s2-rm / status'],
+    label: function () {
+      return this.name || 'frbc'
+    },
+    labelStyle: function () {
+      return this.name ? 'node_label_italic' : ''
+    },
+    oneditprepare: function () {
+      window.__s2Common.initializeTooltips()
+    }
+  })
+</script>
+
+<script type="text/html" data-template-name="s2-frbc">
+  <div class="s2-form">
+
+    <div class="form-row">
+      <label for="node-input-name">
+        <i class="fa fa-tag"></i> Name
+      </label>
+      <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+      <label for="node-input-frbcConfig"><i class="fa fa-id-card"></i> FRBC Config<i class="fa fa-info-circle tooltip-icon" data-tooltip="FRBC system description (actuators, operation modes, storage) and leakage behaviour."></i></label>
+      <input type="text" id="node-input-frbcConfig">
+    </div>
+
+  </div>
+</script>
+
+<link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">
+
+<script type="text/html" data-help-name="s2-frbc">
+  <p>Owns Fill Rate Based Control (FRBC) behaviour: sends the FRBC system description to the CEM, resolves FRBC instructions, and reports fill level, actuator state, timers and forecasts back to the CEM.</p>
+  <p>Wire this node's input to <b>s2-rm</b>'s "from CEM" output, and this node's second output back to <b>s2-rm</b>'s input. Tick <b>FRBC</b> in the s2-rm-config's control types.</p>
+
+  <h3>When the CEM selects FRBC</h3>
+  <p>The node sends the system description (and leakage behaviour, if configured), then the last known fill level, actuator states, running timers, and the latest usage forecast and fill level target profile if they still cover a future time. Inputs you send before any CEM selects FRBC are kept for this. A CEM such as the Rust EMS only starts planning once it has a fill level, so send a <code>StorageStatus</code> early.</p>
+
+  <h3>Input</h3>
+  <p>S2 messages from <b>s2-rm</b>, as-is. And from your own flow, each with <code>msg.topic</code>:</p>
+  <dl class="message-properties">
+    <dt>StorageStatus <span class="property-type">{ fillLevel }</span></dt>
+    <dd>Current fill level in the storage's fill-level units. Only sent to the CEM when it changed.</dd>
+    <dt>ActuatorConfirmation <span class="property-type">{ actuator, operationMode, factor? }</span></dt>
+    <dd>The actuator is now in this mode. <code>actuator</code> and <code>operationMode</code> may each be an id, a 0-based index or a diagnostic label; <code>factor</code> defaults to 1. An <code>ActuatorInstruction</code> payload can be wired back unchanged. Sends <code>FRBC.ActuatorStatus</code>, starts the timers of the transition taken (<code>FRBC.TimerStatus</code>), and reports every open instruction for that actuator with this mode and factor as <code>SUCCEEDED</code> (see <i>Instruction status</i> below).</dd>
+    <dt>UsageForecast <span class="property-type">{ startTime?, elements }</span></dt>
+    <dd><code>FRBC.UsageForecast</code> elements (<code>duration</code> in ms, <code>usage_rate_expected</code>, ...). <code>startTime</code> defaults to now. Only accepted when <code>storage.provides_usage_forecast</code> is true.</dd>
+    <dt>FillLevelTargetProfile <span class="property-type">{ startTime?, elements }</span></dt>
+    <dd><code>FRBC.FillLevelTargetProfile</code> elements (<code>duration</code> in ms, <code>fill_level_range</code>). Only accepted when <code>storage.provides_fill_level_target_profile</code> is true.</dd>
+    <dt>TimerStatus <span class="property-type">{ actuator, timerId, finishedAt }</span></dt>
+    <dd>For a timer your flow manages itself. <code>finishedAt</code> as ISO 8601 or ms since the epoch.</dd>
+    <dt>cemId <span class="property-type">string</span></dt>
+    <dd>Optional on all of the above. Defaults to the one CEM with FRBC selected; required when there are several (a fill level is still stored then). When no CEM has FRBC selected the input is only stored.</dd>
+  </dl>
+  <p>Any other topic is ignored with a warning. Stored state the configuration no longer covers (a removed actuator, mode or timer, or a profile the storage no longer provides) is dropped when the node starts. After a partial deploy the node asks <b>s2-rm</b> which CEMs still have FRBC selected, and sends them the system description again.</p>
+
+  <h3>Instruction status</h3>
+  <p>S2 requires every instruction to end in a final status. <b>s2-rm</b> sends <code>ACCEPTED</code> on arrival, <code>STARTED</code> when it is due, and <code>REVOKED</code> if the CEM revokes it before then. Once an instruction has reached this node:</p>
+  <ul>
+    <li><code>SUCCEEDED</code> - an <code>ActuatorConfirmation</code> for its actuator, mode and factor. One confirmation closes every open instruction it fulfils, so a repeated instruction for the mode the device is already in needs one confirmation, not one each.</li>
+    <li><code>ABORTED</code> - a newer instruction for the same actuator asked for another mode before this one was confirmed; or a confirmation for a newer instruction of that actuator arrived first; or the CEM switched to another control type; or more than 50 instructions were open.</li>
+    <li><code>REVOKED</code> - the CEM revoked it; the flow gets a <code>Revoked</code> message to undo the change if needed.</li>
+  </ul>
+  <p>When the CEM disconnects or reconnects, open instructions are dropped without a status: the session they belong to is gone.</p>
+
+  <h3>Outputs</h3>
+  <ol class="node-ports">
+    <li>Instructions
+      <dl class="message-properties">
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd><code>'ActuatorInstruction'</code>, <code>'Revoked'</code> (payload <code>{ instructionId, actuatorId, operationModeId, factor }</code>) when the CEM revokes an instruction this node already passed on, or <code>'Selected'</code> / <code>'Deselected'</code> when a CEM starts or stops controlling this resource with FRBC. <code>Deselected</code>'s payload is <code>{ controlType }</code> when the CEM chose another control type, or <code>{ reason: 'disconnected' | 'reconnected' }</code> when its session ended or was replaced.</dd>
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>For <code>ActuatorInstruction</code>: <code>{ instructionId, actuatorId, actuatorLabel, actuatorIndex, operationModeId, operationModeLabel, operationModeIndex, factor, abnormalCondition, fillRate, commodityPower, values }</code>. <code>fillRate</code> and <code>commodityPower</code> are interpolated by <code>factor</code> from the mode's element for the current fill level. <code>values</code> is the electric power as a number (3-phase symmetric) or <code>[L1, L2, L3]</code>, absent when the mode has no electric power range.</dd>
+        <dt>cemId <span class="property-type">string</span></dt>
+        <dd>The CEM this message applies to.</dd>
+        <dt>rawS2Message <span class="property-type">object</span></dt>
+        <dd><code>ActuatorInstruction</code> only. The original <code>FRBC.Instruction</code>.</dd>
+      </dl>
+      Instructions for an unknown actuator or mode are reported to the CEM as <code>ABORTED</code>. Other control types' instructions are ignored, so this node can be wired in parallel with s2-ombc and s2-pebc.
+    </li>
+    <li>To s2-rm
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd><code>SystemDescription</code>, <code>UpdateStatus</code> and <code>InstructionStatus</code> commands. Wire to s2-rm's input.</dd>
+      </dl>
+    </li>
+  </ol>
+</script>

@@ -37,6 +37,17 @@ export interface S2OmbcConfigNode extends NodeRedNode {
 }
 
 /**
+ * Server-side shape of the s2-frbc-config config node.
+ * Use RED.nodes.getNode(id) and cast to this type.
+ */
+export interface S2FrbcConfigNode extends NodeRedNode {
+  /** JSON-encoded FRBCSystemDescriptionConfig: { actuators, storage } in S2 wire shape */
+  systemDescription: string
+  /** JSON-encoded FRBCLeakageBehaviourConfig: { elements }, or '' when not provided */
+  leakageBehaviour: string
+}
+
+/**
  * Server-side shape of the s2-pebc-config config node.
  * Use RED.nodes.getNode(id) and cast to this type.
  */

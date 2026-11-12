@@ -713,7 +713,7 @@
       </div>
 
       <div id="s2-resource-ct-none">
-        <p class="s2-resource-hint">No control-type UI here. This node's downstream output and input carry the same "from CEM"/command shapes s2-rm exposes today - wire your own s2-ombc/s2-pebc, or handle FRBC/DDBC/PPBC yourself.</p>
+        <p class="s2-resource-hint">No control-type UI here. This node's downstream output and input carry the same "from CEM"/command shapes s2-rm exposes today - wire your own s2-ombc/s2-pebc/s2-frbc, or handle DDBC/PPBC yourself.</p>
       </div>
     </div>
 
@@ -740,7 +740,7 @@
   <p>A <code>ModeRequest</code> means no operation mode is known yet: its payload is <code>{ message, modes }</code>, listing the configured modes as <code>{ id, index, label }</code>, and the node waits for a <code>ModeConfirmation</code> with the current one (see the <b>s2-ombc</b> help). Nodes added before this behaviour existed send <code>null</code> instead; the Control tab offers <b>Update to latest</b>.</p>
   <p><b>Default mode</b> is confirmed automatically at deploy time, so a CEM selecting OMBC gets an initial <code>OMBC.Status</code> without needing a separate Inject/Confirm node wired in for the common "always start in this mode" case. A later confirmation (from the CEM, or a manually-wired one) still overrides it as normal.</p>
   <p><b>Auto-confirm mode-switch requests (OMBC.Instruction)</b> (off by default) - <code>OMBC.Instruction</code> is the S2 message a CEM sends to ask this resource to switch to a specific operation mode. Left unchecked, this node waits for a <code>ModeConfirmation</code> from the flow before reporting the mode active (<code>OMBC.Status</code>) - your flow confirming based on real device state (e.g. after actually switching a relay) is more reliable than assuming the switch happened, so that's the recommended default. Check it only for a resource with no independent way to report its own hardware state back to the flow, so this node reports the requested mode active immediately instead of waiting for a confirmation that would never come.</p>
-  <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (PEBC, or FRBC/DDBC/PPBC handled yourself).</p>
+  <p><b>None</b> exposes the same "from CEM"/command input+output pair <b>s2-rm</b> has today, for wiring a dedicated control-type node instead (s2-pebc or s2-frbc, or DDBC/PPBC handled yourself).</p>
 
   <h3>Ports</h3>
   <p>The input is always present and has two deliberate interfaces. Lower-level Resource Manager/transport messages use <code>payload.command</code>, while public convenience/control-flow messages use topics such as <code>'ModeConfirmation'</code>, <code>'PowerMeasurement'</code>, and <code>'ControlTypes'</code> with their data in <code>payload</code>. It figures out which by shape: a <code>command</code> field means "for the RM"; the topic <code>'ControlTypes'</code> is also accepted as a convenience shortcut; the older <code>'SetAvailableControlTypes'</code> topic remains an alias; anything else goes to the built-in OMBC controller, if any). With <b>Transport: External</b> and <b>Control type: None</b>, this node's ports and every message shape are identical to <b>s2-rm</b>'s.</p>

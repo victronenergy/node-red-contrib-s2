@@ -7,6 +7,8 @@ interface PendingInstruction {
   instructionId: string | undefined
   instruction: Record<string, unknown>
   cemId: string
+  /** The control type the CEM had selected when it sent the instruction. */
+  controlType: string
   executionTimeMs: number
 }
 
@@ -88,12 +90,18 @@ export class S2ResourceManager {
     this.pollTimer = setInterval(() => this.pollPending(), this.pollIntervalMs).unref()
   }
 
+  // One queue per resource manager: several of them can share a tab's flow context, and every
+  // transport names its CEM 'cem'.
+  private get pendingKey (): string {
+    return `${PENDING_INSTRUCTIONS_KEY}_${this.opts.nodeId}`
+  }
+
   private getPending (): PendingInstruction[] {
-    return (this.opts.getContextValue(PENDING_INSTRUCTIONS_KEY) as PendingInstruction[] | undefined) || []
+    return (this.opts.getContextValue(this.pendingKey) as PendingInstruction[] | undefined) || []
   }
 
   private setPending (pending: PendingInstruction[]): void {
-    this.opts.setContextValue(PENDING_INSTRUCTIONS_KEY, pending)
+    this.opts.setContextValue(this.pendingKey, pending)
   }
 
   private addToPending (item: PendingInstruction): void {
@@ -107,6 +115,11 @@ export class S2ResourceManager {
     this.setPending(pending)
   }
 
+  /** Instructions queued in a session are void once it ends. */
+  private dropPending (cemId: string): void {
+    this.setPending(this.getPending().filter(p => p.cemId !== cemId))
+  }
+
   private pollPending (): void {
     const pending = this.getPending()
     if (pending.length === 0) return
@@ -117,12 +130,13 @@ export class S2ResourceManager {
       const expired = item.executionTimeMs + PRUNE_GRACE_MS < now
       if (expired) { changed = true; continue }
       if (item.executionTimeMs <= now) {
+        changed = true
         const session = this.sessions.get(item.cemId)
-        if (session && item.instructionId && !this.isSkipInstructionStatus) {
+        if (!session) continue
+        if (item.instructionId && !this.isSkipInstructionStatus) {
           session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
         }
         this.opts.onEmitToCem({ payload: item.instruction, cemId: item.cemId, topic: item.instruction.message_type as string })
-        changed = true
         continue
       }
       remaining.push(item)
@@ -208,6 +222,14 @@ export class S2ResourceManager {
         this.opts.onEmitToCem({ payload: msg, cemId, topic: msg.message_type })
         if (msg.message_type === MessageType.SELECT_CONTROL_TYPE) {
           const controlType = (msg.control_type as string) || ControlType.NO_SELECTION
+          // A switch to another control type ends the instructions queued under the previous one,
+          // also when the CEM switches back before they are due.
+          const pending = this.getPending()
+          const obsolete = pending.filter(p => p.cemId === cemId && p.controlType !== controlType)
+          if (obsolete.length > 0) {
+            this.setPending(pending.filter(p => !obsolete.includes(p)))
+            for (const p of obsolete) if (p.instructionId) this.sessions.get(cemId)?.sendInstructionStatus(p.instructionId, InstructionStatus.ABORTED)
+          }
           const isActive = controlType !== ControlType.NO_SELECTION && controlType !== ControlType.NOT_CONTROLABLE
           this.opts.onSendToTransport({ payload: { 'S2/0/Active': isActive ? 1 : 0 } })
           if ((this.rmDetails.providesPowerMeasurementTypes || []).length > 0) {
@@ -250,6 +272,7 @@ export class S2ResourceManager {
               instructionId,
               instruction: rawMsg,
               cemId,
+              controlType: this.sessions.get(cemId)?.selectedControlType ?? ControlType.NO_SELECTION,
               executionTimeMs
             })
           }
@@ -306,6 +329,29 @@ export class S2ResourceManager {
       this.pendingPEBCConstraints = constraints
       for (const session of this.sessions.values()) {
         session.setPEBCPowerConstraints(constraints)
+      }
+      done()
+      return
+    }
+
+    // ReplaySelection lets a control-type node that restarted while s2-rm kept its sessions (a
+    // modified-nodes deploy) learn which CEMs still have its control type selected: the
+    // selection is re-emitted on the "from CEM" output, marked replay: true, only for those
+    // CEMs. Nothing is sent to any CEM.
+    if (command === 'ReplaySelection') {
+      const { controlType } = msg.payload as { controlType?: unknown }
+      if (typeof controlType !== 'string' || !controlType) {
+        done(new Error('ReplaySelection requires a controlType string'))
+        return
+      }
+      for (const [sessionCemId, session] of this.sessions) {
+        if (session.state === State.CONNECTED && session.selectedControlType === controlType) {
+          this.opts.onEmitToCem({
+            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: controlType, replay: true },
+            cemId: sessionCemId,
+            topic: MessageType.SELECT_CONTROL_TYPE
+          })
+        }
       }
       done()
       return
@@ -374,6 +420,7 @@ export class S2ResourceManager {
           this.sessions.get(cemId)!.dispose()
           this.sessions.delete(cemId)
         }
+        this.dropPending(cemId)
         const session = this.createSession(cemId)
         session.start()
         this.opts.onEmitToCem({ topic: 'Connected', cemId })
@@ -446,6 +493,7 @@ export class S2ResourceManager {
       case 'Disconnect': {
         this.sessions.get(cemId)?.dispose()
         this.sessions.delete(cemId)
+        this.dropPending(cemId)
         this.opts.onEmitToCem({ topic: 'Disconnected', cemId, reason: 'cem_initiated' })
         this.opts.onLog(`CEM ${cemId} disconnected`)
         this.updateStatus()

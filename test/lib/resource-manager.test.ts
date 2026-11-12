@@ -139,6 +139,37 @@ describe('S2ResourceManager - UpdateStatus / SystemDescription commands', () => 
     expect(sysDesc).toBeDefined()
   })
 
+  it('relays FRBC SystemDescription and UpdateStatus commands to the CEM', () => {
+    const { rm, transportMsgs } = setup()
+    connectAndHandshake(rm)
+    transportMsgs.length = 0
+    const range = (start: number, end: number) => ({ start_of_range: start, end_of_range: end })
+
+    rm.handleInput({
+      payload: {
+        command: 'SystemDescription',
+        cemId: 'cem-1',
+        controlType: 'FILL_RATE_BASED_CONTROL',
+        frbc: {
+          systemDescription: {
+            actuators: [{
+              id: 'hp',
+              supported_commodities: ['ELECTRICITY'],
+              operation_modes: [{ id: 'hp-on', abnormal_condition_only: false, elements: [{ fill_level_range: range(0, 100), fill_rate: range(0, 1), power_ranges: [{ commodity_quantity: 'ELECTRIC.POWER.3_PHASE_SYMMETRIC', ...range(0, 1000) }] }] }],
+              transitions: [],
+              timers: []
+            }],
+            storage: { provides_leakage_behaviour: false, provides_fill_level_target_profile: false, provides_usage_forecast: false, fill_level_range: range(0, 100) }
+          }
+        }
+      }
+    }, jest.fn())
+    rm.handleInput({ payload: { command: 'UpdateStatus', cemId: 'cem-1', controlType: 'FILL_RATE_BASED_CONTROL', frbc: { storageStatus: { presentFillLevel: 12 } } } }, jest.fn())
+
+    const sent = transportMsgs.map(m => (m?.payload as { message?: { message_type?: string } }).message?.message_type)
+    expect(sent).toEqual([MessageType.FRBC_SYSTEM_DESCRIPTION, MessageType.FRBC_STORAGE_STATUS])
+  })
+
   it('warns and does not throw when a command targets an unknown CEM', () => {
     const { rm, warnings } = setup()
     const done = jest.fn()
@@ -147,6 +178,43 @@ describe('S2ResourceManager - UpdateStatus / SystemDescription commands', () => 
 
     expect(done).toHaveBeenCalledWith()
     expect(warnings.length).toBeGreaterThan(0)
+  })
+})
+
+describe('S2ResourceManager - ReplaySelection', () => {
+  function select (rm: S2ResourceManager, cemId: string, controlType: string): void {
+    rm.handleInput({ payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: `sct-${cemId}`, control_type: controlType }) } }, jest.fn())
+  }
+
+  it('re-emits SelectControlType, marked replay, only for connected CEMs with that control type selected', () => {
+    const { rm, cemMsgs, transportMsgs } = setup()
+    connectAndHandshake(rm, 'cem-1')
+    connectAndHandshake(rm, 'cem-2')
+    connectAndHandshake(rm, 'cem-3')
+    select(rm, 'cem-1', 'FILL_RATE_BASED_CONTROL')
+    select(rm, 'cem-2', 'OPERATION_MODE_BASED_CONTROL')
+    cemMsgs.length = 0
+    transportMsgs.length = 0
+
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, done)
+
+    expect(done).toHaveBeenCalledWith()
+    expect(cemMsgs).toEqual([{
+      payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: 'FILL_RATE_BASED_CONTROL', replay: true },
+      cemId: 'cem-1',
+      topic: MessageType.SELECT_CONTROL_TYPE
+    }])
+    expect(transportMsgs).toEqual([]) // nothing goes to any CEM
+  })
+
+  it('replays nothing without sessions, and requires a controlType', () => {
+    const { rm, cemMsgs } = setup()
+    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, jest.fn())
+    expect(cemMsgs).toEqual([])
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'ReplaySelection' } }, done)
+    expect(done).toHaveBeenCalledWith(new Error('ReplaySelection requires a controlType string'))
   })
 })
 
@@ -172,9 +240,97 @@ describe('S2ResourceManager - pending instruction context', () => {
       }
     }, jest.fn())
 
-    const pending = contextStore.s2PendingInstructions as unknown[]
+    const pending = contextStore['s2PendingInstructions_node-test-id'] as unknown[]
     expect(Array.isArray(pending)).toBe(true)
     expect(pending.length).toBe(1)
+  })
+})
+
+describe('S2ResourceManager - queued instruction at its execution time', () => {
+  const message = (cemId: string, msg: Record<string, unknown>) => ({ payload: { command: 'Message', cemId, message: serialize(msg) } })
+  const select = (controlType: string) => message('cem-1', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: `sct-${controlType}`, control_type: controlType })
+
+  afterEach(() => jest.useRealTimers())
+
+  it.each([
+    { what: 'is forwarded with STARTED while its control type is still selected', after: [], forwarded: true, status: 'STARTED' },
+    { what: 'is ABORTED after a switch to another control type', after: [select('NOT_CONTROLABLE')], forwarded: false, status: 'ABORTED' },
+    { what: 'stays ABORTED when the CEM switches back before it is due', after: [select('NOT_CONTROLABLE'), select('OPERATION_MODE_BASED_CONTROL')], forwarded: false, status: 'ABORTED' },
+    { what: 'is dropped after a disconnect', after: [{ payload: { command: 'Disconnect', cemId: 'cem-1' } }], forwarded: false, status: undefined },
+    { what: 'is dropped after a reconnect, even when the same control type is selected again', after: [{ payload: { command: 'Connect', cemId: 'cem-1' } }, message('cem-1', { message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr2', selected_protocol_version: '0.0.2-beta' }), select('OPERATION_MODE_BASED_CONTROL')], forwarded: false, status: undefined }
+  ])('$what', ({ after, forwarded, status }) => {
+    jest.useFakeTimers()
+    const { rm, cemMsgs, transportMsgs } = setup({ pollIntervalMs: 1000 })
+    connectAndHandshake(rm)
+    rm.handleInput(select('OPERATION_MODE_BASED_CONTROL'), jest.fn())
+    rm.handleInput(message('cem-1', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 5000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    cemMsgs.length = 0
+    transportMsgs.length = 0
+    for (const msg of after) rm.handleInput(msg, jest.fn())
+
+    jest.advanceTimersByTime(6000)
+
+    expect(cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(forwarded)
+    const statuses = transportMsgs
+      .map(m => (m?.payload as { message?: Record<string, unknown> })?.message)
+      .filter(m => m?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE)
+      .map(m => m!.status_type)
+    expect(statuses).toEqual(status ? [status] : [])
+  })
+
+  it('keeps the queues of two resource managers that share one flow context apart', () => {
+    jest.useFakeTimers()
+    const shared: Record<string, unknown> = {}
+    const store = { getContextValue: (key: string) => shared[key], setContextValue: (key: string, value: unknown) => { shared[key] = value } }
+    const a = setup({ ...store, nodeId: 'rm-a', pollIntervalMs: 1000 })
+    const b = setup({ ...store, nodeId: 'rm-b', pollIntervalMs: 1000 })
+    connectAndHandshake(a.rm, 'cem')
+    connectAndHandshake(b.rm, 'cem')
+    a.rm.handleInput(message('cem', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-a', control_type: 'OPERATION_MODE_BASED_CONTROL' }), jest.fn())
+    a.rm.handleInput(message('cem', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 5000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    // b reconnects and switches control type: neither may touch a's queue.
+    connectAndHandshake(b.rm, 'cem')
+    b.rm.handleInput(message('cem', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-b', control_type: 'NOT_CONTROLABLE' }), jest.fn())
+    a.cemMsgs.length = 0
+    b.cemMsgs.length = 0
+
+    jest.advanceTimersByTime(6000)
+
+    expect(a.cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(true)
+    expect(b.cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(false)
+  })
+
+  it('forgets a CEM\'s queued instructions as soon as it disconnects', () => {
+    const { rm, contextStore } = setup()
+    connectAndHandshake(rm)
+    rm.handleInput(message('cem-1', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 60000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    expect(contextStore['s2PendingInstructions_node-test-id']).toHaveLength(1)
+    rm.handleInput({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn())
+    expect(contextStore['s2PendingInstructions_node-test-id']).toEqual([])
   })
 })
 
