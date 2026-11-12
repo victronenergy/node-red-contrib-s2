@@ -285,6 +285,23 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
       .map(m => m!.status_type)
     expect(statuses).toEqual(status ? [status] : [])
   })
+
+  it('forgets a CEM\'s queued instructions as soon as it disconnects', () => {
+    const { rm, contextStore } = setup()
+    connectAndHandshake(rm)
+    rm.handleInput(message('cem-1', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 60000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    expect(contextStore.s2PendingInstructions).toHaveLength(1)
+    rm.handleInput({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn())
+    expect(contextStore.s2PendingInstructions).toEqual([])
+  })
 })
 
 describe('S2ResourceManager - close', () => {

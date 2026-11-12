@@ -109,6 +109,11 @@ export class S2ResourceManager {
     this.setPending(pending)
   }
 
+  /** Instructions queued in a session are void once it ends. */
+  private dropPending (cemId: string): void {
+    this.setPending(this.getPending().filter(p => p.cemId !== cemId))
+  }
+
   private pollPending (): void {
     const pending = this.getPending()
     if (pending.length === 0) return
@@ -409,8 +414,7 @@ export class S2ResourceManager {
           this.sessions.get(cemId)!.dispose()
           this.sessions.delete(cemId)
         }
-        // Instructions queued in an earlier session for this CEM are void in the new one.
-        this.setPending(this.getPending().filter(p => p.cemId !== cemId))
+        this.dropPending(cemId)
         const session = this.createSession(cemId)
         session.start()
         this.opts.onEmitToCem({ topic: 'Connected', cemId })
@@ -483,6 +487,7 @@ export class S2ResourceManager {
       case 'Disconnect': {
         this.sessions.get(cemId)?.dispose()
         this.sessions.delete(cemId)
+        this.dropPending(cemId)
         this.opts.onEmitToCem({ topic: 'Disconnected', cemId, reason: 'cem_initiated' })
         this.opts.onLog(`CEM ${cemId} disconnected`)
         this.updateStatus()
