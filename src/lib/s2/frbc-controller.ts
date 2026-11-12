@@ -10,8 +10,10 @@ import {
   FRBCStatusPayload,
   FRBCSystemDescriptionConfig,
   FRBCTimerStatusConfig,
+  makeFRBCFillLevelTargetProfile,
   makeFRBCLeakageBehaviour,
-  makeFRBCSystemDescription
+  makeFRBCSystemDescription,
+  makeFRBCUsageForecast
 } from './messages'
 import { validateS2Message } from './schema-validation'
 
@@ -637,6 +639,9 @@ export class FRBCController {
       throw new Error(`${kind} requires a non-empty payload.elements array`)
     }
     const profile = { startTime: typeof payload.startTime === 'string' ? payload.startTime : new Date().toISOString(), elements: payload.elements }
+    // Checked before it is stored: an invalid profile would otherwise be replayed on every selection.
+    const check = validateS2Message(kind === 'UsageForecast' ? makeFRBCUsageForecast(profile) : makeFRBCFillLevelTargetProfile(profile))
+    if (!check.valid) throw new Error(`${kind} is not valid S2: ${(check.errors ?? []).join('; ')}`)
     const device = this.getDeviceState()
     if (kind === 'UsageForecast') device.usageForecast = profile
     else device.fillLevelTargetProfile = profile

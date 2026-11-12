@@ -477,6 +477,18 @@ describe('FRBCController - forecasts, target profiles and timers', () => {
       .toHaveBeenCalledWith(new Error('FillLevelTargetProfile requires a non-empty payload.elements array'))
   })
 
+  it.each([
+    ['an element without its required fields', { elements: [{ foo: 1 }] }],
+    ['a start time that is not a date-time', { startTime: 'tomorrow', elements: [{ duration: 1000, fill_level_range: { start_of_range: 50, end_of_range: 60 } }] }]
+  ])('rejects a profile with %s, without storing or sending it', (_what, payload) => {
+    const { input, select, commands, context } = setup()
+    select('cem-1')
+    const done = input({ topic: 'FillLevelTargetProfile', payload })
+    expect(String(done.mock.calls[0][0])).toMatch(/^Error: FillLevelTargetProfile is not valid S2: /)
+    expect(commands).toHaveLength(1)
+    expect(context.s2FrbcState).toBeUndefined()
+  })
+
   it('sends a flow-managed TimerStatus, accepting epoch milliseconds', () => {
     const { input, select, commands } = setup()
     select('cem-1')

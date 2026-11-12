@@ -126,6 +126,10 @@ On an `ActuatorConfirmation`, `s2-frbc` SHALL send `InstructionStatus SUCCEEDED`
 - **WHEN** a `UsageForecast` message arrives and `storage.provides_usage_forecast` is false
 - **THEN** nothing is sent and the node warns that the system description does not declare a usage forecast
 
+#### Scenario: Profile that is not valid S2
+- **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message would not pass S2 schema validation, such as an element without `duration` or a `startTime` that is not a date-time
+- **THEN** the input fails with an error naming the problem, and the profile is neither stored nor sent
+
 ### Requirement: Inputs while FRBC is not selected
 Status, forecast, target profile and timer inputs received while no CEM has FRBC selected SHALL be stored and SHALL NOT be sent; they are replayed on selection per "System description pushed on FRBC selection". When `cemId` is omitted it SHALL resolve to the single CEM with FRBC selected, and SHALL be an error if more than one CEM has FRBC selected.
 
