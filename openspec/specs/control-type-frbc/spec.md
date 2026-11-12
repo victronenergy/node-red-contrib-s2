@@ -205,3 +205,8 @@ When the CEM revokes an `FRBC.Instruction` that `s2-frbc` already emitted and th
 #### Scenario: CEM stops FRBC control
 - **WHEN** an instruction is open and the CEM selects `NOT_CONTROLABLE`
 - **THEN** that instruction is reported `ABORTED`
+
+#### Scenario: s2-frbc alone redeployed
+- **WHEN** an instruction is open, only `s2-frbc` is redeployed, and `s2-rm` replays the FRBC selection
+- **THEN** the open instruction is restored from node context, and the next matching `ActuatorConfirmation` reports it `SUCCEEDED`; if the new configuration no longer has its actuator or mode, it is reported `ABORTED` on the replayed selection
+

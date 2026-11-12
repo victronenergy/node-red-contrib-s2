@@ -57,6 +57,9 @@ interface CemState {
 }
 
 const DEVICE_STATE_KEY = 's2FrbcState'
+// Open instructions per CEM, kept in node context so they still get a final status after s2-frbc
+// alone is redeployed (s2-rm keeps its sessions then).
+const OPEN_INSTRUCTIONS_KEY = 's2FrbcOpenInstructions'
 // Bounds openInstructions when a CEM keeps instructing without the flow ever confirming.
 const MAX_OPEN_INSTRUCTIONS = 50
 const FLOW_TOPICS = ['StorageStatus', 'ActuatorConfirmation', 'UsageForecast', 'FillLevelTargetProfile', 'TimerStatus']
@@ -266,7 +269,16 @@ export class FRBCController {
     this.actuators = opts.config.systemDescription.actuators as Actuator[]
     this.storage = opts.config.systemDescription.storage as Storage
     this.reconcileStoredState()
+    const open = this.opts.getContextValue(OPEN_INSTRUCTIONS_KEY) as Record<string, OpenInstruction[]> | undefined
+    for (const [cemId, openInstructions] of Object.entries(open ?? {})) {
+      this.cemStates.set(cemId, { selected: false, openInstructions })
+    }
     this.refreshStatus()
+  }
+
+  private saveOpenInstructions (): void {
+    const open = [...this.cemStates].filter(([, s]) => s.openInstructions.length > 0).map(([id, s]) => [id, s.openInstructions])
+    this.opts.setContextValue(OPEN_INSTRUCTIONS_KEY, Object.fromEntries(open))
   }
 
   /**
@@ -415,13 +427,17 @@ export class FRBCController {
   // FRBC instructions get ABORTED - they will no longer be carried out.
   private deselect (cemId: string, reason: Record<string, unknown>, sessionEnded: boolean): void {
     const state = this.cemStates.get(cemId)
-    if (state?.selected) {
-      state.selected = false
-      state.lastSentFillLevel = undefined
+    // Also for a CEM restored from context that has not been selected again yet.
+    if (state && state.openInstructions.length > 0) {
       if (!sessionEnded) {
         for (const open of state.openInstructions) this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
       }
       state.openInstructions = []
+      this.saveOpenInstructions()
+    }
+    if (state?.selected) {
+      state.selected = false
+      state.lastSentFillLevel = undefined
       this.opts.onEmitInstruction({ topic: 'Deselected', payload: reason, cemId })
     }
     this.refreshStatus()
@@ -441,6 +457,14 @@ export class FRBCController {
     state.selected = true
     state.lastSentFillLevel = undefined
     // Open instructions stay open when FRBC is selected again: the device may still carry them out.
+    // Those restored after a redeploy whose actuator or mode the configuration no longer has can't
+    // be confirmed any more.
+    state.openInstructions = state.openInstructions.filter(open => {
+      if (this.actuators.find(a => a.id === open.actuatorId)?.operation_modes.some(m => m.id === open.operationModeId)) return true
+      this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
+      return false
+    })
+    this.saveOpenInstructions()
     this.opts.onSendCommand({
       payload: {
         command: 'SystemDescription',
@@ -539,6 +563,7 @@ export class FRBCController {
       if (state.openInstructions.length > MAX_OPEN_INSTRUCTIONS) {
         this.finishInstruction(cemId, state.openInstructions.shift()!, InstructionStatus.ABORTED)
       }
+      this.saveOpenInstructions()
     }
 
     this.opts.onStatus({ fill: 'green', shape: 'dot', text: `instructed: ${label(actuator)} → ${label(mode)}` })
@@ -574,6 +599,7 @@ export class FRBCController {
     const index = state.openInstructions.findIndex(i => i.instructionId === payload.object_id)
     if (index < 0) return
     const [open] = state.openInstructions.splice(index, 1)
+    this.saveOpenInstructions()
     this.finishInstruction(cemId, open, InstructionStatus.REVOKED)
     this.opts.onEmitInstruction({
       topic: 'Revoked',
@@ -653,6 +679,7 @@ export class FRBCController {
           this.finishInstruction(cemId, open, matches(open) ? InstructionStatus.SUCCEEDED : InstructionStatus.ABORTED)
           return false
         })
+        this.saveOpenInstructions()
       }
     }
     const selected = this.selectedCemIds().length > 0

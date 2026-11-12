@@ -786,6 +786,44 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     expect(instructions.filter(m => m.topic === 'ActuatorInstruction')).toEqual([])
   })
 
+  describe('after s2-frbc alone restarts (open instructions kept in node context)', () => {
+    const before = () => {
+      const first = setup()
+      first.select('cem-1')
+      first.instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+      return first.context
+    }
+
+    it('finishes an instruction emitted before the restart once the selection is replayed', () => {
+      const { select, input, commands, context } = setup(makeConfig(), before())
+      select('cem-1')
+      confirm(input, 'hp-on')
+      expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
+      expect(context.s2FrbcOpenInstructions).toEqual({})
+    })
+
+    it('aborts it on the replayed selection when the configuration no longer has its mode', () => {
+      const config = makeConfig()
+      const hp = config.systemDescription.actuators[0] as { operation_modes: Array<{ id: string }>, transitions: unknown[] }
+      hp.operation_modes = hp.operation_modes.filter(m => m.id !== 'hp-on')
+      hp.transitions = []
+      const { select, commands } = setup(config, before())
+      select('cem-1')
+      expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    })
+
+    it('aborts it when the CEM selects another control type instead, and drops it when the session ends', () => {
+      const switched = setup(makeConfig(), before())
+      switched.select('cem-1', 'NOT_CONTROLABLE')
+      expect(statuses(switched.commands)).toEqual(['i1:ABORTED'])
+
+      const ended = setup(makeConfig(), before())
+      ended.input({ topic: 'Connected', cemId: 'cem-1', payload: undefined })
+      expect(statuses(ended.commands)).toEqual([])
+      expect(ended.context.s2FrbcOpenInstructions).toEqual({})
+    })
+  })
+
   it('aborts the oldest open instruction when more than 50 are open', () => {
     const { select, instruct, commands } = setup()
     select('cem-1')
