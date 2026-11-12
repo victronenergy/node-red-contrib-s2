@@ -31,10 +31,13 @@
         // checks, so an invalid configuration can't be saved silently.
         let validateTimer = null
         let validateSeq = 0
+        // This dialog's own Update button and error box: a late answer must not reach another
+        // dialog's, and must still reach these while the "..." JSON editor has the dialog detached.
+        const $ok = $('#node-config-dialog-ok')
+        const $err = $('#s2-frbc-config-error')
 
         function setGate (valid, errors) {
-          $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-          const $err = $('#s2-frbc-config-error')
+          $ok.prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
           if (valid) {
             $err.hide()
           } else {
@@ -47,12 +50,12 @@
         function scheduleValidation () {
           const seq = ++validateSeq
           // No saving until these values pass.
-          $('#node-config-dialog-ok').prop('disabled', true).addClass('ui-state-disabled')
+          $ok.prop('disabled', true).addClass('ui-state-disabled')
           clearTimeout(validateTimer)
           validateTimer = setTimeout(function () {
-            editor.validateConfig($sd.typedInput('value'), $lb.typedInput('value'), function (result) {
-              // A dialog closed meanwhile: Update now belongs to another one.
-              if (seq !== validateSeq || !$.contains(document, $sd[0])) return
+            // val(), not typedInput('value'): the timer may fire after the dialog closed.
+            editor.validateConfig($sd.val(), $lb.val(), function (result) {
+              if (seq !== validateSeq) return
               setGate(!!result.valid, result.errors)
             })
           }, 400)
