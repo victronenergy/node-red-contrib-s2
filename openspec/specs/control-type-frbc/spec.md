@@ -31,6 +31,14 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 - **WHEN** `storage`, a `fill_level_range`, `fill_rate` or `running_costs`, or an entry of `actuators`, `operation_modes`, `elements`, `power_ranges`, `transitions` or `timers` is not an object, such as `null`
 - **THEN** the editor shows an error naming its path, and does not save
 
+#### Scenario: Fill level ranges that don't line up
+- **WHEN** the elements of an operation mode or of the leakage behaviour have a `fill_level_range` that doesn't start below its end, or doesn't start where the previous element's ends
+- **THEN** the editor shows an error naming the mode or leakage behaviour and the element, and does not save
+
+#### Scenario: Two power ranges for one commodity quantity
+- **WHEN** an operation mode element has more than one power range for the same `commodity_quantity`
+- **THEN** the editor shows an error naming the element and the commodity quantity, and does not save
+
 #### Scenario: Leakage flag and leakage JSON disagree
 - **WHEN** `storage.provides_leakage_behaviour` is false but leakage behaviour JSON is given
 - **THEN** the editor shows an error and does not save

@@ -115,6 +115,25 @@ describe('frbcConfigProblems', () => {
     expect(problems).toContain('actuator "hp": duplicate operation mode id "hp-off"')
   })
 
+  it('reports fill level ranges that are empty or do not line up, in modes and leakage', () => {
+    const config = makeConfig()
+    const hpOn = (config.systemDescription.actuators[0] as { operation_modes: Array<{ elements: unknown[] }> }).operation_modes[1]
+    hpOn.elements = [element(0, 70, 0, 10, 0, 2000), element(80, 100, 0, 4, 0, 1000), element(100, 100, 0, 0, 0, 0)]
+    config.leakageBehaviour!.elements.push({ fill_level_range: { start_of_range: 90, end_of_range: 110 }, leakage_rate: 0.003 })
+    expect(frbcConfigProblems(config)).toEqual([
+      'actuator "hp", mode "hp-on", element 1: fill_level_range must start where element 0\'s ends',
+      'actuator "hp", mode "hp-on", element 2: fill_level_range must start below its end',
+      'leakage behaviour, element 1: fill_level_range must start where element 0\'s ends'
+    ])
+  })
+
+  it('reports more than one power range for the same commodity quantity', () => {
+    const config = makeConfig()
+    const el = (config.systemDescription.actuators[0] as { operation_modes: Array<{ elements: Array<{ power_ranges: unknown[] }> }> }).operation_modes[1].elements[0]
+    el.power_ranges.push({ commodity_quantity: SYM, start_of_range: 0, end_of_range: 1 }, { commodity_quantity: SYM, start_of_range: 0, end_of_range: 1 })
+    expect(frbcConfigProblems(config)).toEqual([`actuator "hp", mode "hp-on", element 0: more than one power range for ${SYM}`])
+  })
+
   it('reports leakage configured without provides_leakage_behaviour, and the reverse', () => {
     const withoutFlag = makeConfig()
     withoutFlag.systemDescription.storage.provides_leakage_behaviour = false

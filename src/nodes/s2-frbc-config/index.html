@@ -124,7 +124,7 @@
   <p><code>{ elements: [{ fill_level_range, leakage_rate }] }</code>. Required when <code>storage.provides_leakage_behaviour</code> is true, and must be empty when it isn't.</p>
 
   <h3>Validation</h3>
-  <p>While you edit, the configuration is checked against the S2 schema and for consistency: unique ids, transitions and timers that refer to existing modes and timers of the same actuator, and leakage matching <code>provides_leakage_behaviour</code>. <b>Update</b> stays disabled and the problems are listed until they're fixed.</p>
+  <p>While you edit, the configuration is checked against the S2 schema and for consistency: unique ids, transitions and timers that refer to existing modes and timers of the same actuator, leakage matching <code>provides_leakage_behaviour</code>, element fill level ranges that each start below their end and line up end to end, and at most one power range per commodity quantity. <b>Update</b> stays disabled and the problems are listed until they're fixed.</p>
 </script>
 
 <link rel="stylesheet" href="resources/node-red-contrib-s2/s2-styles.css">

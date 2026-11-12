@@ -104,6 +104,19 @@ function nonObjectEntries (value: unknown, path = ''): string[] {
   return problems
 }
 
+/** Element fill level ranges must each start below their end, and line up end to end in order. */
+function fillLevelRangeProblems (elements: Array<{ fill_level_range: NumberRange }>, where: string): string[] {
+  const problems: string[] = []
+  elements.forEach((element, i) => {
+    const range = element.fill_level_range
+    if (!(range.start_of_range < range.end_of_range)) problems.push(`${where}, element ${i}: fill_level_range must start below its end`)
+    if (i > 0 && range.start_of_range !== elements[i - 1].fill_level_range.end_of_range) {
+      problems.push(`${where}, element ${i}: fill_level_range must start where element ${i - 1}'s ends`)
+    }
+  })
+  return problems
+}
+
 /**
  * Cross-reference checks on an FRBC configuration that the S2 JSON schema can't express:
  * unique ids, transitions and timers that refer to things that exist within the same actuator,
@@ -126,6 +139,14 @@ export function frbcConfigProblems (config: FRBCConfig): string[] {
     for (const mode of Array.isArray(actuator.operation_modes) ? actuator.operation_modes : []) {
       if (modeIds.has(mode.id)) problems.push(`${where}: duplicate operation mode id "${mode.id}"`)
       modeIds.add(mode.id)
+      const mWhere = `${where}, mode "${mode.id}"`
+      problems.push(...fillLevelRangeProblems(mode.elements, mWhere))
+      mode.elements.forEach((element, i) => {
+        const quantities = element.power_ranges.map(r => r.commodity_quantity)
+        for (const cq of new Set(quantities.filter((q, j) => quantities.indexOf(q) !== j))) {
+          problems.push(`${mWhere}, element ${i}: more than one power range for ${cq}`)
+        }
+      })
     }
     const timerIds = new Set<string>()
     for (const timer of Array.isArray(actuator.timers) ? actuator.timers : []) {
@@ -145,6 +166,10 @@ export function frbcConfigProblems (config: FRBCConfig): string[] {
         }
       }
     }
+  }
+
+  if (config.leakageBehaviour) {
+    problems.push(...fillLevelRangeProblems(config.leakageBehaviour.elements as Array<{ fill_level_range: NumberRange }>, 'leakage behaviour'))
   }
 
   const providesLeakage = (config.systemDescription?.storage as Storage | undefined)?.provides_leakage_behaviour === true
