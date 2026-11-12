@@ -122,11 +122,6 @@ export class S2ResourceManager {
         changed = true
         const session = this.sessions.get(item.cemId)
         if (!session) continue
-        if (session.selectedControlType !== item.controlType) {
-          // The CEM switched to another control type: this instruction will not be carried out.
-          if (item.instructionId) session.sendInstructionStatus(item.instructionId, InstructionStatus.ABORTED)
-          continue
-        }
         if (item.instructionId && !this.isSkipInstructionStatus) {
           session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
         }
@@ -216,6 +211,14 @@ export class S2ResourceManager {
         this.opts.onEmitToCem({ payload: msg, cemId, topic: msg.message_type })
         if (msg.message_type === MessageType.SELECT_CONTROL_TYPE) {
           const controlType = (msg.control_type as string) || ControlType.NO_SELECTION
+          // A switch to another control type ends the instructions queued under the previous one,
+          // also when the CEM switches back before they are due.
+          const pending = this.getPending()
+          const obsolete = pending.filter(p => p.cemId === cemId && p.controlType !== controlType)
+          if (obsolete.length > 0) {
+            this.setPending(pending.filter(p => !obsolete.includes(p)))
+            for (const p of obsolete) if (p.instructionId) this.sessions.get(cemId)?.sendInstructionStatus(p.instructionId, InstructionStatus.ABORTED)
+          }
           const isActive = controlType !== ControlType.NO_SELECTION && controlType !== ControlType.NOT_CONTROLABLE
           this.opts.onSendToTransport({ payload: { 'S2/0/Active': isActive ? 1 : 0 } })
           if ((this.rmDetails.providesPowerMeasurementTypes || []).length > 0) {

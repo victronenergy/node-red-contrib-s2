@@ -255,6 +255,7 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
   it.each([
     { what: 'is forwarded with STARTED while its control type is still selected', after: [], forwarded: true, status: 'STARTED' },
     { what: 'is ABORTED after a switch to another control type', after: [select('NOT_CONTROLABLE')], forwarded: false, status: 'ABORTED' },
+    { what: 'stays ABORTED when the CEM switches back before it is due', after: [select('NOT_CONTROLABLE'), select('OPERATION_MODE_BASED_CONTROL')], forwarded: false, status: 'ABORTED' },
     { what: 'is dropped after a disconnect', after: [{ payload: { command: 'Disconnect', cemId: 'cem-1' } }], forwarded: false, status: undefined },
     { what: 'is dropped after a reconnect, even when the same control type is selected again', after: [{ payload: { command: 'Connect', cemId: 'cem-1' } }, message('cem-1', { message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr2', selected_protocol_version: '0.0.2-beta' }), select('OPERATION_MODE_BASED_CONTROL')], forwarded: false, status: undefined }
   ])('$what', ({ after, forwarded, status }) => {
@@ -271,9 +272,9 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
       operation_mode_factor: 1,
       abnormal_condition: false
     }), jest.fn())
-    for (const msg of after) rm.handleInput(msg, jest.fn())
     cemMsgs.length = 0
     transportMsgs.length = 0
+    for (const msg of after) rm.handleInput(msg, jest.fn())
 
     jest.advanceTimersByTime(6000)
 
