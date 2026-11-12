@@ -240,7 +240,7 @@ describe('S2ResourceManager - pending instruction context', () => {
       }
     }, jest.fn())
 
-    const pending = contextStore.s2PendingInstructions as unknown[]
+    const pending = contextStore['s2PendingInstructions_node-test-id'] as unknown[]
     expect(Array.isArray(pending)).toBe(true)
     expect(pending.length).toBe(1)
   })
@@ -286,6 +286,36 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
     expect(statuses).toEqual(status ? [status] : [])
   })
 
+  it('keeps the queues of two resource managers that share one flow context apart', () => {
+    jest.useFakeTimers()
+    const shared: Record<string, unknown> = {}
+    const store = { getContextValue: (key: string) => shared[key], setContextValue: (key: string, value: unknown) => { shared[key] = value } }
+    const a = setup({ ...store, nodeId: 'rm-a', pollIntervalMs: 1000 })
+    const b = setup({ ...store, nodeId: 'rm-b', pollIntervalMs: 1000 })
+    connectAndHandshake(a.rm, 'cem')
+    connectAndHandshake(b.rm, 'cem')
+    a.rm.handleInput(message('cem', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-a', control_type: 'OPERATION_MODE_BASED_CONTROL' }), jest.fn())
+    a.rm.handleInput(message('cem', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 5000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    // b reconnects and switches control type: neither may touch a's queue.
+    connectAndHandshake(b.rm, 'cem')
+    b.rm.handleInput(message('cem', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: 'sct-b', control_type: 'NOT_CONTROLABLE' }), jest.fn())
+    a.cemMsgs.length = 0
+    b.cemMsgs.length = 0
+
+    jest.advanceTimersByTime(6000)
+
+    expect(a.cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(true)
+    expect(b.cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(false)
+  })
+
   it('forgets a CEM\'s queued instructions as soon as it disconnects', () => {
     const { rm, contextStore } = setup()
     connectAndHandshake(rm)
@@ -298,9 +328,9 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
       operation_mode_factor: 1,
       abnormal_condition: false
     }), jest.fn())
-    expect(contextStore.s2PendingInstructions).toHaveLength(1)
+    expect(contextStore['s2PendingInstructions_node-test-id']).toHaveLength(1)
     rm.handleInput({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn())
-    expect(contextStore.s2PendingInstructions).toEqual([])
+    expect(contextStore['s2PendingInstructions_node-test-id']).toEqual([])
   })
 })
 

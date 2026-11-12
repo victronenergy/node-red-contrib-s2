@@ -90,12 +90,18 @@ export class S2ResourceManager {
     this.pollTimer = setInterval(() => this.pollPending(), this.pollIntervalMs).unref()
   }
 
+  // One queue per resource manager: several of them can share a tab's flow context, and every
+  // transport names its CEM 'cem'.
+  private get pendingKey (): string {
+    return `${PENDING_INSTRUCTIONS_KEY}_${this.opts.nodeId}`
+  }
+
   private getPending (): PendingInstruction[] {
-    return (this.opts.getContextValue(PENDING_INSTRUCTIONS_KEY) as PendingInstruction[] | undefined) || []
+    return (this.opts.getContextValue(this.pendingKey) as PendingInstruction[] | undefined) || []
   }
 
   private setPending (pending: PendingInstruction[]): void {
-    this.opts.setContextValue(PENDING_INSTRUCTIONS_KEY, pending)
+    this.opts.setContextValue(this.pendingKey, pending)
   }
 
   private addToPending (item: PendingInstruction): void {
