@@ -551,8 +551,8 @@ export class FRBCController {
 
   // -- flow inputs --
 
-  // Takes the targets lazily: the fill level describes the device, so it is stored even when no
-  // single CEM can be determined to send it to (several with FRBC selected and no msg.cemId).
+  // Flow inputs take their targets lazily: they describe the device, so they are stored even when
+  // no single CEM can be determined to send them to (several with FRBC selected and no msg.cemId).
   private handleStorageStatus (payload: Record<string, unknown>, targets: () => string[]): void {
     const fillLevel = payload.fillLevel
     if (typeof fillLevel !== 'number' || !Number.isFinite(fillLevel)) {
@@ -570,7 +570,7 @@ export class FRBCController {
     }
   }
 
-  private handleActuatorConfirmation (payload: Record<string, unknown>, targets: string[]): void {
+  private handleActuatorConfirmation (payload: Record<string, unknown>, targets: () => string[]): void {
     const actuator = this.resolveRef(this.actuators, payload.actuator ?? payload.actuatorId, 'actuator')
     const mode = this.resolveRef(actuator.operation_modes, payload.operationMode ?? payload.operationModeId, 'operation mode')
     const factor = payload.factor === undefined ? 1 : payload.factor
@@ -604,7 +604,8 @@ export class FRBCController {
     ]
     this.setDeviceState(device)
 
-    for (const cemId of targets) {
+    const cemIds = targets()
+    for (const cemId of cemIds) {
       this.sendStatus(cemId, { actuatorStatuses: [status], ...(timerStatuses.length > 0 ? { timerStatuses } : {}) })
       const state = this.getOrCreateCemState(cemId)
       // Every open instruction for this actuator that asked for exactly this mode and factor is
@@ -622,13 +623,13 @@ export class FRBCController {
       }
     }
     this.opts.onStatus({
-      fill: targets.length > 0 ? 'green' : 'grey',
-      shape: targets.length > 0 ? 'dot' : 'ring',
-      text: `${label(actuator)}: ${label(mode)}${targets.length > 0 ? '' : ' (stored, FRBC not selected)'}`
+      fill: cemIds.length > 0 ? 'green' : 'grey',
+      shape: cemIds.length > 0 ? 'dot' : 'ring',
+      text: `${label(actuator)}: ${label(mode)}${cemIds.length > 0 ? '' : ' (stored, FRBC not selected)'}`
     })
   }
 
-  private handleProfile (kind: 'UsageForecast' | 'FillLevelTargetProfile', payload: Record<string, unknown>, targets: string[]): void {
+  private handleProfile (kind: 'UsageForecast' | 'FillLevelTargetProfile', payload: Record<string, unknown>, targets: () => string[]): void {
     const declared = kind === 'UsageForecast' ? this.storage.provides_usage_forecast : this.storage.provides_fill_level_target_profile
     if (declared !== true) {
       const flag = kind === 'UsageForecast' ? 'provides_usage_forecast' : 'provides_fill_level_target_profile'
@@ -646,12 +647,12 @@ export class FRBCController {
     if (kind === 'UsageForecast') device.usageForecast = profile
     else device.fillLevelTargetProfile = profile
     this.setDeviceState(device)
-    for (const cemId of targets) {
+    for (const cemId of targets()) {
       this.sendStatus(cemId, kind === 'UsageForecast' ? { usageForecast: profile } : { fillLevelTargetProfile: profile })
     }
   }
 
-  private handleTimerStatus (payload: Record<string, unknown>, targets: string[]): void {
+  private handleTimerStatus (payload: Record<string, unknown>, targets: () => string[]): void {
     const actuator = this.resolveRef(this.actuators, payload.actuator ?? payload.actuatorId, 'actuator')
     const timer = this.resolveRef(actuator.timers, payload.timerId ?? payload.timer, 'timer')
     const finishedAtRaw = payload.finishedAt
@@ -663,7 +664,7 @@ export class FRBCController {
     const device = this.getDeviceState()
     device.timers = [...device.timers.filter(t => !(t.actuatorId === status.actuatorId && t.timerId === status.timerId)), status]
     this.setDeviceState(device)
-    for (const cemId of targets) {
+    for (const cemId of targets()) {
       this.sendStatus(cemId, { timerStatuses: [status] })
     }
   }
@@ -695,9 +696,9 @@ export class FRBCController {
       try {
         const targets = (): string[] => this.targetCemIds(msg.cemId)
         if (topic === 'StorageStatus') this.handleStorageStatus(payload, targets)
-        else if (topic === 'ActuatorConfirmation') this.handleActuatorConfirmation(payload, targets())
-        else if (topic === 'UsageForecast' || topic === 'FillLevelTargetProfile') this.handleProfile(topic, payload, targets())
-        else this.handleTimerStatus(payload, targets())
+        else if (topic === 'ActuatorConfirmation') this.handleActuatorConfirmation(payload, targets)
+        else if (topic === 'UsageForecast' || topic === 'FillLevelTargetProfile') this.handleProfile(topic, payload, targets)
+        else this.handleTimerStatus(payload, targets)
       } catch (err) {
         done(err as Error)
         return

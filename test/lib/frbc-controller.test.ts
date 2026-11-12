@@ -381,6 +381,24 @@ describe('FRBCController - StorageStatus', () => {
     input({ topic: 'StorageStatus', payload: { fillLevel: 1 }, cemId: 'cem-2' })
     expect(commands).toEqual([{ command: 'UpdateStatus', cemId: 'cem-2', controlType: 'FILL_RATE_BASED_CONTROL', frbc: { storageStatus: { presentFillLevel: 1 } } }])
   })
+
+  it('stores the other flow inputs too when two CEMs have FRBC selected and cemId is missing', () => {
+    const { input, select, commands, context } = setup()
+    select('cem-1')
+    select('cem-2')
+    commands.length = 0
+    const error = new Error('More than one CEM has FRBC selected - set msg.cemId to say which one this is for')
+    const elements = [{ duration: 3600000, fill_level_range: { start_of_range: 50, end_of_range: 60 } }]
+    expect(input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp', operationMode: 'hp-on' } })).toHaveBeenCalledWith(error)
+    expect(input({ topic: 'TimerStatus', payload: { actuator: 'hp', timerId: 'min-on', finishedAt: '2030-01-01T00:00:00.000Z' } })).toHaveBeenCalledWith(error)
+    expect(input({ topic: 'FillLevelTargetProfile', payload: { startTime: '2030-01-01T00:00:00.000Z', elements } })).toHaveBeenCalledWith(error)
+    expect(commands).toEqual([])
+    expect(context.s2FrbcState).toMatchObject({
+      actuators: { hp: { actuatorId: 'hp', activeOperationModeId: 'hp-on' } },
+      timers: [{ actuatorId: 'hp', timerId: 'min-on', finishedAt: '2030-01-01T00:00:00.000Z' }],
+      fillLevelTargetProfile: { startTime: '2030-01-01T00:00:00.000Z', elements }
+    })
+  })
 })
 
 describe('FRBCController - ActuatorConfirmation', () => {
