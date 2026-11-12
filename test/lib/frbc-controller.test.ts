@@ -426,6 +426,16 @@ describe('FRBCController - ActuatorConfirmation', () => {
     expect(input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp' } }))
       .toHaveBeenCalledWith(new Error('operation mode is required (an id, a 0-based index or a diagnostic label)'))
   })
+
+  it.each([2, -1, '0.5', null])('rejects factor %p without storing or sending anything', (factor) => {
+    const { input, select, commands, context } = setup()
+    select('cem-1')
+    const before = commands.length
+    expect(input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp', operationMode: 'hp-on', factor } }))
+      .toHaveBeenCalledWith(new Error(`ActuatorConfirmation factor must be a number from 0 to 1, got ${JSON.stringify(factor)}`))
+    expect(commands).toHaveLength(before)
+    expect(context.s2FrbcState).toBeUndefined()
+  })
 })
 
 describe('FRBCController - forecasts, target profiles and timers', () => {

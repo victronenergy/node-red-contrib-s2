@@ -91,7 +91,7 @@ On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mod
 - **THEN** only the first produces an `FRBC.StorageStatus`
 
 ### Requirement: Actuator confirmation
-`s2-frbc` SHALL accept `{ topic: 'ActuatorConfirmation', payload: { actuator, operationMode, factor? } }`, where `actuator` and `operationMode` may each be an id, a 0-based index or a diagnostic label, and SHALL also accept an `ActuatorInstruction` payload wired back unchanged. It SHALL send `FRBC.ActuatorStatus`, including `previous_operation_mode_id` and `transition_timestamp` when the mode changed. `factor` defaults to 1.
+`s2-frbc` SHALL accept `{ topic: 'ActuatorConfirmation', payload: { actuator, operationMode, factor? } }`, where `actuator` and `operationMode` may each be an id, a 0-based index or a diagnostic label, and SHALL also accept an `ActuatorInstruction` payload wired back unchanged. It SHALL send `FRBC.ActuatorStatus`, including `previous_operation_mode_id` and `transition_timestamp` when the mode changed. `factor` defaults to 1 when omitted; any other value than a number from 0 to 1 SHALL be refused with an error, without storing or sending anything.
 
 #### Scenario: Reference by label
 - **WHEN** `ActuatorConfirmation { actuator: 'Heat pump', operationMode: 'Heating' }` arrives and those are unique diagnostic labels

@@ -567,7 +567,10 @@ export class FRBCController {
   private handleActuatorConfirmation (payload: Record<string, unknown>, targets: string[]): void {
     const actuator = this.resolveRef(this.actuators, payload.actuator ?? payload.actuatorId, 'actuator')
     const mode = this.resolveRef(actuator.operation_modes, payload.operationMode ?? payload.operationModeId, 'operation mode')
-    const factor = typeof payload.factor === 'number' ? payload.factor : 1
+    const factor = payload.factor === undefined ? 1 : payload.factor
+    if (typeof factor !== 'number' || !(factor >= 0 && factor <= 1)) {
+      throw new Error(`ActuatorConfirmation factor must be a number from 0 to 1, got ${JSON.stringify(payload.factor)}`)
+    }
 
     const device = this.getDeviceState()
     const previous = device.actuators[actuator.id]
