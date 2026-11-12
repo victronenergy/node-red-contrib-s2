@@ -46,6 +46,8 @@
 
         function scheduleValidation () {
           const seq = ++validateSeq
+          // No saving until these values pass.
+          $('#node-config-dialog-ok').prop('disabled', true).addClass('ui-state-disabled')
           clearTimeout(validateTimer)
           validateTimer = setTimeout(function () {
             editor.validateConfig($sd.typedInput('value'), $lb.typedInput('value'), function (result) {

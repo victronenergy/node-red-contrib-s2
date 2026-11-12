@@ -15,6 +15,10 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 ### Requirement: FRBC configuration validated on save
 `s2-frbc-config`'s editor SHALL refuse to save a configuration that fails S2 schema validation or the cross-reference checks: unique actuator, operation mode, transition and timer ids; every transition's `from`, `to`, `start_timers` and `blocking_timers` refer to ids within the same actuator; and leakage behaviour is given if and only if `storage.provides_leakage_behaviour` is true. `s2-frbc` SHALL refuse to start with a configuration that fails the same checks.
 
+#### Scenario: Update disabled while a change is being checked
+- **WHEN** the user edits either field
+- **THEN** **Update** is disabled until the new values pass the checks
+
 #### Scenario: Valid configuration saves
 - **WHEN** the user saves `s2-frbc-config` with a system description whose `FRBC.SystemDescription` passes schema validation and the cross-reference checks
 - **THEN** the configuration is saved without errors
