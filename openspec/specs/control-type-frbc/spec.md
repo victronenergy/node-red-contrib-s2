@@ -65,7 +65,7 @@ When `s2-frbc` observes on `s2-rm`'s "from CEM" output that a CEM selected `FILL
 - **THEN** `s2-frbc` emits `Deselected` for that CEM
 
 ### Requirement: Instruction resolution into actionable output
-On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (else the first element, with a warning), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`, without rounding.
+On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (the first element, with a warning, while the fill level is unknown), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`, without rounding.
 
 #### Scenario: Instruction for a known actuator and mode
 - **WHEN** an `FRBC.Instruction` for a configured actuator selects a mode whose element for the current fill level has `fill_rate` 0..10 and a 3-phase-symmetric power range 0..2000, with `operation_mode_factor` 0.5
@@ -73,6 +73,14 @@ On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mod
 
 #### Scenario: Instruction for an unknown actuator or mode
 - **WHEN** an `FRBC.Instruction` refers to an actuator or operation mode not in the configuration
+- **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
+
+#### Scenario: Mode not available at the current fill level
+- **WHEN** an `FRBC.Instruction` selects a mode none of whose elements covers the last known fill level
+- **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
+
+#### Scenario: Abnormal-condition-only mode outside an abnormal condition
+- **WHEN** an `FRBC.Instruction` with `abnormal_condition` false selects a mode with `abnormal_condition_only` true
 - **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
 
 #### Scenario: Instruction with a factor outside 0-1

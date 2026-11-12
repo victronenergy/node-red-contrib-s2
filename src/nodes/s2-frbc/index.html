@@ -92,7 +92,7 @@
         <dt>rawS2Message <span class="property-type">object</span></dt>
         <dd><code>ActuatorInstruction</code> only. The original <code>FRBC.Instruction</code>.</dd>
       </dl>
-      Instructions for an unknown actuator or mode are reported to the CEM as <code>ABORTED</code>. Other control types' instructions are ignored, so this node can be wired in parallel with s2-ombc and s2-pebc.
+      Instructions for an unknown actuator or mode, for a mode that has no element for the current fill level, or for an abnormal-condition-only mode outside an abnormal condition are reported to the CEM as <code>ABORTED</code>. Other control types' instructions are ignored, so this node can be wired in parallel with s2-ombc and s2-pebc.
     </li>
     <li>To s2-rm
       <dl class="message-properties">

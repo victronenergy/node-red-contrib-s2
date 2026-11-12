@@ -719,6 +719,31 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
   })
 
+  it('aborts an instruction for a mode that is not available at the current fill level', () => {
+    const config = makeConfig()
+    const hpOn = ((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<{ elements: unknown[] }>)[1]
+    hpOn.elements = [element(0, 80, 0, 10, 0, 2000)] // e.g. fast heating only up to 80 %
+    const { input, select, instruct, commands, instructions, warnings } = setup(config)
+    input({ topic: 'StorageStatus', payload: { fillLevel: 90 } })
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction')).toEqual([])
+    expect(warnings).toEqual(['FRBC.Instruction i1 selects mode "Heating", which is not available at fill level 90 - aborted'])
+  })
+
+  it('carries out a mode for abnormal conditions only when the instruction says it is one', () => {
+    const config = makeConfig()
+    ;((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<Record<string, unknown>>)[1].abnormal_condition_only = true
+    const { select, instruct, commands, instructions, warnings } = setup(config)
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', abnormal_condition: false })
+    expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    expect(warnings).toEqual(['FRBC.Instruction i1 selects mode "Heating", which is for abnormal conditions only - aborted'])
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', abnormal_condition: true })
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction').map(m => (m.payload as { instructionId: string }).instructionId)).toEqual(['i2'])
+  })
+
   it('aborts an instruction with a factor outside 0-1, without output', () => {
     const { select, instruct, commands, instructions, warnings } = setup()
     select('cem-1')

@@ -20,7 +20,7 @@ import { validateS2Message } from './schema-validation'
 type NumberRange = { start_of_range: number, end_of_range: number }
 type PowerRange = NumberRange & { commodity_quantity: string }
 type OperationModeElement = { fill_level_range: NumberRange, fill_rate: NumberRange, power_ranges: PowerRange[] }
-type OperationMode = { id: string, diagnostic_label?: string, elements: OperationModeElement[] }
+type OperationMode = { id: string, diagnostic_label?: string, elements: OperationModeElement[], abnormal_condition_only?: boolean }
 type Transition = { id: string, from: string, to: string, start_timers: string[], blocking_timers: string[] }
 type Timer = { id: string, diagnostic_label?: string, duration: number }
 type Actuator = { id: string, diagnostic_label?: string, operation_modes: OperationMode[], transitions: Transition[], timers: Timer[] }
@@ -472,14 +472,23 @@ export class FRBCController {
       return
     }
     const mode = actuator.operation_modes[modeIndex]
+    if (mode.abnormal_condition_only === true && instr.abnormal_condition !== true) {
+      this.abortInstruction(cemId, instructionId, `selects mode "${label(mode)}", which is for abnormal conditions only`)
+      return
+    }
 
     const fillLevel = this.getDeviceState().fillLevel
-    let element = fillLevel === undefined ? undefined : mode.elements.find(e => inRange(fillLevel, e.fill_level_range))
-    if (!element) {
+    let element: OperationModeElement | undefined
+    if (fillLevel === undefined) {
       element = mode.elements[0]
-      this.opts.onWarn(fillLevel === undefined
-        ? `FRBC.Instruction ${instructionId}: fill level unknown - using the first element of mode "${label(mode)}"`
-        : `FRBC.Instruction ${instructionId}: fill level ${fillLevel} is outside every element of mode "${label(mode)}" - using its first element`)
+      this.opts.onWarn(`FRBC.Instruction ${instructionId}: fill level unknown - using the first element of mode "${label(mode)}"`)
+    } else {
+      element = mode.elements.find(e => inRange(fillLevel, e.fill_level_range))
+      if (!element) {
+        // S2 lets a mode cover only part of the fill level range, e.g. fast charging up to 80 %.
+        this.abortInstruction(cemId, instructionId, `selects mode "${label(mode)}", which is not available at fill level ${fillLevel}`)
+        return
+      }
     }
 
     const commodityPower = element.power_ranges.map(r => ({ commodity_quantity: r.commodity_quantity, value: interpolate(r, factor) }))
