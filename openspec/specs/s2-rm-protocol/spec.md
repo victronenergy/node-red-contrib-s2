@@ -33,7 +33,7 @@ The RM SHALL acknowledge `SelectControlType` and SHALL NOT itself send any contr
 - **THEN** the RM sends `ReceptionStatus(OK)` and forwards the message on its "from CEM" output, without sending a system description or status message itself
 
 ### Requirement: Instruction acknowledgment and routing
-On receiving any instruction message, the RM SHALL send `ReceptionStatus(OK)` and `InstructionStatusUpdate(ACCEPTED)` (unless status updates are configured off), then emit the instruction on its "from CEM" output as a raw S2 message, the same as any other CEM message.
+On receiving any instruction message, the RM SHALL send `ReceptionStatus(OK)` and `InstructionStatusUpdate(ACCEPTED)` (unless status updates are configured off), then emit the instruction on its "from CEM" output as a raw S2 message, the same as any other CEM message. An instruction with a future `execution_time` is queued and emitted then, with `InstructionStatusUpdate(STARTED)`, but only while its CEM's session lasts and the control type selected when it arrived is still selected. After a switch to another control type it SHALL be reported `ABORTED` instead; after a disconnect or reconnect it SHALL be dropped.
 
 #### Scenario: Instruction received for a known control type
 - **WHEN** the CEM sends an instruction message for a supported control type

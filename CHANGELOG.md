@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- `s2-rm` emitted an instruction queued for a later `execution_time` even after the CEM had disconnected or switched to another control type. Now it reports such an instruction `ABORTED` after a switch, and drops it after a disconnect or reconnect.
 - `MessageType.FRBC_LEAKAGE_BEHAVIOUR`, exported by the package's library entry point, was `'FRBC.LeakagebBehaviour'`; it is now the S2 message type `'FRBC.LeakageBehaviour'`.
 
 ## [1.0.0]

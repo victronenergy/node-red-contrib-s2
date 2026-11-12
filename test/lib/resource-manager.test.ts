@@ -246,6 +246,46 @@ describe('S2ResourceManager - pending instruction context', () => {
   })
 })
 
+describe('S2ResourceManager - queued instruction at its execution time', () => {
+  const message = (cemId: string, msg: Record<string, unknown>) => ({ payload: { command: 'Message', cemId, message: serialize(msg) } })
+  const select = (controlType: string) => message('cem-1', { message_type: MessageType.SELECT_CONTROL_TYPE, message_id: `sct-${controlType}`, control_type: controlType })
+
+  afterEach(() => jest.useRealTimers())
+
+  it.each([
+    { what: 'is forwarded with STARTED while its control type is still selected', after: [], forwarded: true, status: 'STARTED' },
+    { what: 'is ABORTED after a switch to another control type', after: [select('NOT_CONTROLABLE')], forwarded: false, status: 'ABORTED' },
+    { what: 'is dropped after a disconnect', after: [{ payload: { command: 'Disconnect', cemId: 'cem-1' } }], forwarded: false, status: undefined },
+    { what: 'is dropped after a reconnect, even when the same control type is selected again', after: [{ payload: { command: 'Connect', cemId: 'cem-1' } }, message('cem-1', { message_type: MessageType.HANDSHAKE_RESPONSE, message_id: 'hr2', selected_protocol_version: '0.0.2-beta' }), select('OPERATION_MODE_BASED_CONTROL')], forwarded: false, status: undefined }
+  ])('$what', ({ after, forwarded, status }) => {
+    jest.useFakeTimers()
+    const { rm, cemMsgs, transportMsgs } = setup({ pollIntervalMs: 1000 })
+    connectAndHandshake(rm)
+    rm.handleInput(select('OPERATION_MODE_BASED_CONTROL'), jest.fn())
+    rm.handleInput(message('cem-1', {
+      message_type: MessageType.OMBC_INSTRUCTION,
+      message_id: 'msg-1',
+      id: 'instr-1',
+      execution_time: new Date(Date.now() + 5000).toISOString(),
+      operation_mode_id: 'mode-1',
+      operation_mode_factor: 1,
+      abnormal_condition: false
+    }), jest.fn())
+    for (const msg of after) rm.handleInput(msg, jest.fn())
+    cemMsgs.length = 0
+    transportMsgs.length = 0
+
+    jest.advanceTimersByTime(6000)
+
+    expect(cemMsgs.some(m => m?.topic === MessageType.OMBC_INSTRUCTION)).toBe(forwarded)
+    const statuses = transportMsgs
+      .map(m => (m?.payload as { message?: Record<string, unknown> })?.message)
+      .filter(m => m?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE)
+      .map(m => m!.status_type)
+    expect(statuses).toEqual(status ? [status] : [])
+  })
+})
+
 describe('S2ResourceManager - close', () => {
   it('disposes sessions without throwing', () => {
     const { rm } = setup()

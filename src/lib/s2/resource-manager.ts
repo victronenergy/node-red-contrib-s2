@@ -7,6 +7,8 @@ interface PendingInstruction {
   instructionId: string | undefined
   instruction: Record<string, unknown>
   cemId: string
+  /** The control type the CEM had selected when it sent the instruction. */
+  controlType: string
   executionTimeMs: number
 }
 
@@ -117,12 +119,18 @@ export class S2ResourceManager {
       const expired = item.executionTimeMs + PRUNE_GRACE_MS < now
       if (expired) { changed = true; continue }
       if (item.executionTimeMs <= now) {
+        changed = true
         const session = this.sessions.get(item.cemId)
-        if (session && item.instructionId && !this.isSkipInstructionStatus) {
+        if (!session) continue
+        if (session.selectedControlType !== item.controlType) {
+          // The CEM switched to another control type: this instruction will not be carried out.
+          if (item.instructionId) session.sendInstructionStatus(item.instructionId, InstructionStatus.ABORTED)
+          continue
+        }
+        if (item.instructionId && !this.isSkipInstructionStatus) {
           session.sendInstructionStatus(item.instructionId, InstructionStatus.STARTED)
         }
         this.opts.onEmitToCem({ payload: item.instruction, cemId: item.cemId, topic: item.instruction.message_type as string })
-        changed = true
         continue
       }
       remaining.push(item)
@@ -250,6 +258,7 @@ export class S2ResourceManager {
               instructionId,
               instruction: rawMsg,
               cemId,
+              controlType: this.sessions.get(cemId)?.selectedControlType ?? ControlType.NO_SELECTION,
               executionTimeMs
             })
           }
@@ -397,6 +406,8 @@ export class S2ResourceManager {
           this.sessions.get(cemId)!.dispose()
           this.sessions.delete(cemId)
         }
+        // Instructions queued in an earlier session for this CEM are void in the new one.
+        this.setPending(this.getPending().filter(p => p.cemId !== cemId))
         const session = this.createSession(cemId)
         session.start()
         this.opts.onEmitToCem({ topic: 'Connected', cemId })

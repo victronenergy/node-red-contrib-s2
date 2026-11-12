@@ -416,6 +416,14 @@ export class FRBCController {
     const instructionId = instr.id as string
     const factor = typeof instr.operation_mode_factor === 'number' ? instr.operation_mode_factor : 1
 
+    if (!cemId || !this.cemStates.get(cemId)?.selected) {
+      this.opts.onWarn(`FRBC.Instruction ${instructionId} from a CEM that has not selected FRBC - aborted`)
+      if (cemId && instructionId) {
+        this.opts.onSendCommand({ payload: { command: 'InstructionStatus', cemId, instructionId, status: InstructionStatus.ABORTED } })
+      }
+      return
+    }
+
     const actuatorIndex = this.actuators.findIndex(a => a.id === instr.actuator_id)
     const actuator = this.actuators[actuatorIndex]
     const modeIndex = actuator ? actuator.operation_modes.findIndex(m => m.id === instr.operation_mode) : -1
