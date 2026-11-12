@@ -450,6 +450,15 @@ describe('FRBCController - ActuatorConfirmation', () => {
     expect((commands[1].frbc as Record<string, unknown>).actuatorStatuses).toEqual([{ actuatorId: 'heater', activeOperationModeId: 'heater-on', operationModeFactor: 1 }])
   })
 
+  it('shows FRBC as selected after a confirmation for another CEM, and keeps that status after an aborted instruction', () => {
+    const { input, select, instruct, statuses } = setup()
+    select('cem-1')
+    input({ topic: 'ActuatorConfirmation', payload: { actuator: 'hp', operationMode: 'hp-on' }, cemId: 'cem-2' })
+    expect(statuses[statuses.length - 1]).toMatchObject({ fill: 'green', text: 'Heat pump: Heating' })
+    instruct('cem-1', { actuator_id: 'boiler', operation_mode: 'x' })
+    expect(statuses[statuses.length - 1]).toMatchObject({ fill: 'green', text: 'Heat pump: Heating' })
+  })
+
   it('rejects unknown references with a message naming them', () => {
     const { input } = setup()
     expect(input({ topic: 'ActuatorConfirmation', payload: { actuator: 'boiler', operationMode: 0 } }))

@@ -469,7 +469,6 @@ export class FRBCController {
     if (!actuator || modeIndex < 0) {
       const what = actuator ? `operation mode "${String(instr.operation_mode)}" of actuator "${actuator.id}"` : `actuator "${String(instr.actuator_id)}"`
       this.abortInstruction(cemId, instructionId, `refers to unknown ${what}`)
-      this.opts.onStatus({ fill: 'red', shape: 'ring', text: `instruction for unknown ${actuator ? 'operation mode' : 'actuator'} aborted` })
       return
     }
     const mode = actuator.operation_modes[modeIndex]
@@ -622,10 +621,11 @@ export class FRBCController {
         })
       }
     }
+    const selected = this.selectedCemIds().length > 0
     this.opts.onStatus({
-      fill: cemIds.length > 0 ? 'green' : 'grey',
-      shape: cemIds.length > 0 ? 'dot' : 'ring',
-      text: `${label(actuator)}: ${label(mode)}${cemIds.length > 0 ? '' : ' (stored, FRBC not selected)'}`
+      fill: selected ? 'green' : 'grey',
+      shape: selected ? 'dot' : 'ring',
+      text: `${label(actuator)}: ${label(mode)}${selected ? '' : ' (stored, FRBC not selected)'}`
     })
   }
 
