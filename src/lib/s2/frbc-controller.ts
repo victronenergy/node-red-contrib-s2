@@ -78,20 +78,24 @@ function profileEndMs (profile: Required<FRBCProfileConfig>): number {
   return new Date(profile.startTime).getTime() + total
 }
 
-// Arrays whose entries must be objects. The vendored S2 schemas don't say so ("type": "object"),
-// so `actuators: [null]` would pass schema validation.
+// Keys whose value must be an object, and arrays whose entries must be objects. The vendored S2
+// schemas don't say so ("type": "object"), so `storage: null` or `actuators: [null]` would pass.
+const OBJECT_KEYS = new Set(['storage', 'fill_level_range', 'fill_rate', 'running_costs'])
 const OBJECT_ARRAYS = new Set(['actuators', 'operation_modes', 'elements', 'power_ranges', 'transitions', 'timers'])
 
-/** JSON pointers of entries in OBJECT_ARRAYS that are not objects, anywhere below value. */
+function isObject (value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** JSON pointers of values in OBJECT_KEYS or entries in OBJECT_ARRAYS that are not objects. */
 function nonObjectEntries (value: unknown, path = ''): string[] {
   if (typeof value !== 'object' || value === null) return []
   const problems: string[] = []
   for (const [key, child] of Object.entries(value)) {
     const at = `${path}/${key}`
+    if (OBJECT_KEYS.has(key) && !isObject(child)) problems.push(`${at} must be an object`)
     if (OBJECT_ARRAYS.has(key) && Array.isArray(child)) {
-      child.forEach((entry, i) => {
-        if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) problems.push(`${at}/${i} must be an object`)
-      })
+      child.forEach((entry, i) => { if (!isObject(entry)) problems.push(`${at}/${i} must be an object`) })
     }
     problems.push(...nonObjectEntries(child, at))
   }

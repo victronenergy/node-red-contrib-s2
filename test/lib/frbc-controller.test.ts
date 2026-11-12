@@ -155,6 +155,21 @@ describe('validateFRBCConfig', () => {
       'Leakage behaviour: /elements/1 must be an object'
     ])
   })
+
+  it('reports single values that must be objects but are not', () => {
+    const config = makeConfig()
+    const element = ((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<{ elements: Array<Record<string, unknown>> }>)[0].elements[0]
+    element.fill_level_range = null
+    element.fill_rate = 'x'
+    expect(validateFRBCConfig(config)).toEqual([
+      'System description: /actuators/0/operation_modes/0/elements/0/fill_level_range must be an object',
+      'System description: /actuators/0/operation_modes/0/elements/0/fill_rate must be an object'
+    ])
+    const noStorage = makeConfig()
+    noStorage.systemDescription.storage = null as unknown as Record<string, unknown>
+    noStorage.leakageBehaviour = undefined
+    expect(validateFRBCConfig(noStorage)).toEqual(['System description: /storage must be an object'])
+  })
 })
 
 describe('parseFRBCConfig', () => {

@@ -13,7 +13,7 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 - **THEN** its system description and leakage fields hold an example that passes validation
 
 ### Requirement: FRBC configuration validated on save
-`s2-frbc-config`'s editor SHALL refuse to save a configuration that fails S2 schema validation or the cross-reference checks: unique actuator, operation mode, transition and timer ids; every transition's `from`, `to`, `start_timers` and `blocking_timers` refer to ids within the same actuator; leakage behaviour is given if and only if `storage.provides_leakage_behaviour` is true; and every entry of `actuators`, `operation_modes`, `elements`, `power_ranges`, `transitions` and `timers` is an object. `s2-frbc` SHALL refuse to start with a configuration that fails the same checks.
+`s2-frbc-config`'s editor SHALL refuse to save a configuration that fails S2 schema validation or the cross-reference checks: unique actuator, operation mode, transition and timer ids; every transition's `from`, `to`, `start_timers` and `blocking_timers` refer to ids within the same actuator; leakage behaviour is given if and only if `storage.provides_leakage_behaviour` is true; and values the S2 schema leaves untyped are objects. `s2-frbc` SHALL refuse to start with a configuration that fails the same checks.
 
 #### Scenario: Update disabled while a change is being checked
 - **WHEN** the user edits either field
@@ -26,6 +26,10 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 #### Scenario: Transition refers to an unknown mode
 - **WHEN** the user saves a system description in which a transition's `to` is not an operation mode id of that actuator
 - **THEN** the editor shows an error naming the transition and the unknown id, and does not save
+
+#### Scenario: Value that must be an object is not
+- **WHEN** `storage`, a `fill_level_range`, `fill_rate` or `running_costs`, or an entry of `actuators`, `operation_modes`, `elements`, `power_ranges`, `transitions` or `timers` is not an object, such as `null`
+- **THEN** the editor shows an error naming its path, and does not save
 
 #### Scenario: Leakage flag and leakage JSON disagree
 - **WHEN** `storage.provides_leakage_behaviour` is false but leakage behaviour JSON is given
