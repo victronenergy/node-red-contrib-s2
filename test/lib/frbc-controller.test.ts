@@ -623,6 +623,16 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     expect(statuses(disconnected.commands)).toEqual([])
   })
 
+  it('keeps open instructions when the CEM selects FRBC again', () => {
+    const { select, instruct, input, commands } = setup()
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    select('cem-1')
+    expect(statuses(commands)).toEqual([])
+    confirm(input, 'hp-on')
+    expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
+  })
+
   it('aborts the oldest open instruction when more than 50 are open', () => {
     const { select, instruct, commands } = setup()
     select('cem-1')

@@ -160,7 +160,7 @@ When the CEM revokes an `FRBC.Instruction` that `s2-frbc` already emitted and th
 - **THEN** the CEM receives `REVOKED` for it and the flow receives a `Revoked` message
 
 ### Requirement: Open instructions aborted when FRBC control ends
-`s2-frbc` SHALL send `ABORTED` for its open instructions when the CEM selects another control type, and for the oldest open instruction when more than 50 are open. When the session ends (`Disconnected`, `Connected`) it SHALL drop open instructions without a status.
+`s2-frbc` SHALL send `ABORTED` for its open instructions when the CEM selects another control type, and for the oldest open instruction when more than 50 are open. Selecting FRBC again SHALL leave open instructions open. When the session ends (`Disconnected`, `Connected`) it SHALL drop open instructions without a status.
 
 #### Scenario: CEM stops FRBC control
 - **WHEN** an instruction is open and the CEM selects `NOT_CONTROLABLE`

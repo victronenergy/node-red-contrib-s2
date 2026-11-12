@@ -377,7 +377,7 @@ export class FRBCController {
 
     state.selected = true
     state.lastSentFillLevel = undefined
-    state.openInstructions = []
+    // Open instructions stay open when FRBC is selected again: the device may still carry them out.
     this.opts.onSendCommand({
       payload: {
         command: 'SystemDescription',
