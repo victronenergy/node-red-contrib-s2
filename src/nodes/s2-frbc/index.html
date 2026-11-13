@@ -63,7 +63,7 @@
     <dd><code>FRBC.UsageForecast</code> elements (<code>duration</code> in ms, <code>usage_rate_expected</code>, ...). <code>startTime</code> defaults to now. Only accepted when <code>storage.provides_usage_forecast</code> is true.</dd>
     <dt>FillLevelTargetProfile <span class="property-type">{ startTime?, elements } | { revoke: true }</span></dt>
     <dd><code>FRBC.FillLevelTargetProfile</code> elements (<code>duration</code> in ms, <code>fill_level_range</code>). Only accepted when <code>storage.provides_fill_level_target_profile</code> is true.</dd>
-    <dd>For both: <code>{ revoke: true }</code> withdraws the last one sent, so it is no longer sent when a CEM selects FRBC. S2 has no message to revoke it, so a CEM that already has it keeps it until it ends.</dd>
+    <dd>For both: <code>{ revoke: true }</code> withdraws the last one sent, so it is no longer sent when a CEM selects FRBC. S2 has no message to revoke it, so a CEM that already has it keeps it until it ends. <code>revoke</code> can't be combined with <code>elements</code>.</dd>
     <dt>TimerStatus <span class="property-type">{ actuator, timerId, finishedAt }</span></dt>
     <dd>For a timer your flow manages itself. <code>finishedAt</code> as ISO 8601 or ms since the epoch.</dd>
     <dt>cemId <span class="property-type">string</span></dt>
@@ -93,7 +93,7 @@
         <dt>rawS2Message <span class="property-type">object</span></dt>
         <dd><code>ActuatorInstruction</code> only. The original <code>FRBC.Instruction</code>.</dd>
       </dl>
-      Instructions for an unknown actuator or mode, for a mode that has no element for the current fill level, or for an abnormal-condition-only mode outside an abnormal condition are reported to the CEM as <code>ABORTED</code>. Other control types' instructions are ignored, so this node can be wired in parallel with s2-ombc and s2-pebc.
+      Instructions for an unknown actuator or mode, for a mode that has no element for the current fill level (unless that fill level is outside the storage's range, or the instruction is for an abnormal condition: then the nearest element is used), or for an abnormal-condition-only mode outside an abnormal condition are reported to the CEM as <code>ABORTED</code>. Other control types' instructions are ignored, so this node can be wired in parallel with s2-ombc and s2-pebc.
     </li>
     <li>To s2-rm
       <dl class="message-properties">
