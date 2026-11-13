@@ -783,7 +783,7 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
   it('uses the nearest element when the fill level is outside the storage range, or in an abnormal condition', () => {
     const config = makeConfig()
     const hpOn = ((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<{ elements: unknown[] }>)[1]
-    hpOn.elements = [element(0, 80, 0, 10, 0, 2000)]
+    hpOn.elements = [element(0, 40, 0, 5, 0, 1000), element(40, 80, 0, 10, 0, 2000)] // the nearest is not the first
     const { input, select, instruct, commands, instructions, warnings } = setup(config)
     input({ topic: 'StorageStatus', payload: { fillLevel: 105 } }) // a sensor overshooting the 0-100 range
     select('cem-1')
