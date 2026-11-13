@@ -20,11 +20,11 @@ import { validateS2Message } from './schema-validation'
 type NumberRange = { start_of_range: number, end_of_range: number }
 type PowerRange = NumberRange & { commodity_quantity: string }
 type OperationModeElement = { fill_level_range: NumberRange, fill_rate: NumberRange, power_ranges: PowerRange[] }
-type OperationMode = { id: string, diagnostic_label?: string, elements: OperationModeElement[] }
+type OperationMode = { id: string, diagnostic_label?: string, elements: OperationModeElement[], abnormal_condition_only?: boolean }
 type Transition = { id: string, from: string, to: string, start_timers: string[], blocking_timers: string[] }
 type Timer = { id: string, diagnostic_label?: string, duration: number }
 type Actuator = { id: string, diagnostic_label?: string, operation_modes: OperationMode[], transitions: Transition[], timers: Timer[] }
-type Storage = { provides_leakage_behaviour?: boolean, provides_fill_level_target_profile?: boolean, provides_usage_forecast?: boolean }
+type Storage = { fill_level_range: NumberRange, provides_leakage_behaviour?: boolean, provides_fill_level_target_profile?: boolean, provides_usage_forecast?: boolean }
 
 /** s2-frbc-config's two JSON fields, parsed. */
 export interface FRBCConfig {
@@ -57,6 +57,9 @@ interface CemState {
 }
 
 const DEVICE_STATE_KEY = 's2FrbcState'
+// Open instructions per CEM, kept in node context so they still get a final status after s2-frbc
+// alone is redeployed (s2-rm keeps its sessions then).
+const OPEN_INSTRUCTIONS_KEY = 's2FrbcOpenInstructions'
 // Bounds openInstructions when a CEM keeps instructing without the flow ever confirming.
 const MAX_OPEN_INSTRUCTIONS = 50
 const FLOW_TOPICS = ['StorageStatus', 'ActuatorConfirmation', 'UsageForecast', 'FillLevelTargetProfile', 'TimerStatus']
@@ -67,6 +70,12 @@ function label (item: { id: string, diagnostic_label?: string }): string {
 
 function inRange (value: number, range: NumberRange): boolean {
   return value >= range.start_of_range && value <= range.end_of_range
+}
+
+function nearestElement (elements: OperationModeElement[], fillLevel: number): OperationModeElement {
+  const distance = (e: OperationModeElement): number =>
+    Math.max(e.fill_level_range.start_of_range - fillLevel, fillLevel - e.fill_level_range.end_of_range)
+  return elements.reduce((best, e) => distance(e) < distance(best) ? e : best)
 }
 
 function interpolate (range: NumberRange, factor: number): number {
@@ -104,6 +113,22 @@ function nonObjectEntries (value: unknown, path = ''): string[] {
   return problems
 }
 
+/** Element fill level ranges must each start below their end, and be contiguous (in any order). */
+function fillLevelRangeProblems (elements: Array<{ fill_level_range: NumberRange }>, where: string): string[] {
+  const problems: string[] = []
+  elements.forEach((element, i) => {
+    const range = element.fill_level_range
+    if (!(range.start_of_range < range.end_of_range)) problems.push(`${where}, element ${i}: fill_level_range must start below its end`)
+  })
+  const ranges = elements.map(e => e.fill_level_range).sort((a, b) => a.start_of_range - b.start_of_range)
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i].start_of_range !== ranges[i - 1].end_of_range) {
+      problems.push(`${where}: fill_level_ranges must be contiguous, but one ends at ${ranges[i - 1].end_of_range} and the next starts at ${ranges[i].start_of_range}`)
+    }
+  }
+  return problems
+}
+
 /**
  * Cross-reference checks on an FRBC configuration that the S2 JSON schema can't express:
  * unique ids, transitions and timers that refer to things that exist within the same actuator,
@@ -126,6 +151,14 @@ export function frbcConfigProblems (config: FRBCConfig): string[] {
     for (const mode of Array.isArray(actuator.operation_modes) ? actuator.operation_modes : []) {
       if (modeIds.has(mode.id)) problems.push(`${where}: duplicate operation mode id "${mode.id}"`)
       modeIds.add(mode.id)
+      const mWhere = `${where}, mode "${mode.id}"`
+      problems.push(...fillLevelRangeProblems(mode.elements, mWhere))
+      mode.elements.forEach((element, i) => {
+        const quantities = element.power_ranges.map(r => r.commodity_quantity)
+        for (const cq of new Set(quantities.filter((q, j) => quantities.indexOf(q) !== j))) {
+          problems.push(`${mWhere}, element ${i}: more than one power range for ${cq}`)
+        }
+      })
     }
     const timerIds = new Set<string>()
     for (const timer of Array.isArray(actuator.timers) ? actuator.timers : []) {
@@ -145,6 +178,10 @@ export function frbcConfigProblems (config: FRBCConfig): string[] {
         }
       }
     }
+  }
+
+  if (config.leakageBehaviour) {
+    problems.push(...fillLevelRangeProblems(config.leakageBehaviour.elements as Array<{ fill_level_range: NumberRange }>, 'leakage behaviour'))
   }
 
   const providesLeakage = (config.systemDescription?.storage as Storage | undefined)?.provides_leakage_behaviour === true
@@ -241,7 +278,20 @@ export class FRBCController {
     this.actuators = opts.config.systemDescription.actuators as Actuator[]
     this.storage = opts.config.systemDescription.storage as Storage
     this.reconcileStoredState()
+    const open = this.opts.getContextValue(OPEN_INSTRUCTIONS_KEY) as Record<string, OpenInstruction[]> | undefined
+    for (const [cemId, openInstructions] of Object.entries(open ?? {})) {
+      this.cemStates.set(cemId, { selected: false, openInstructions })
+    }
     this.refreshStatus()
+  }
+
+  private hasMode (actuatorId: string, modeId: string | undefined): boolean {
+    return modeId !== undefined && !!this.actuators.find(a => a.id === actuatorId)?.operation_modes.some(m => m.id === modeId)
+  }
+
+  private saveOpenInstructions (): void {
+    const open = [...this.cemStates].filter(([, s]) => s.openInstructions.length > 0).map(([id, s]) => [id, s.openInstructions])
+    this.opts.setContextValue(OPEN_INSTRUCTIONS_KEY, Object.fromEntries(open))
   }
 
   /**
@@ -255,13 +305,11 @@ export class FRBCController {
     if (!stored) return
     const device = this.getDeviceState()
     const actuatorById = new Map(this.actuators.map(a => [a.id, a]))
-    const hasMode = (actuatorId: string, modeId: string | undefined): boolean =>
-      modeId !== undefined && !!actuatorById.get(actuatorId)?.operation_modes.some(m => m.id === modeId)
 
     const actuators: Record<string, FRBCActuatorStatusConfig> = {}
     for (const status of Object.values(device.actuators)) {
-      if (!hasMode(status.actuatorId, status.activeOperationModeId)) continue
-      if (status.previousOperationModeId !== undefined && !hasMode(status.actuatorId, status.previousOperationModeId)) {
+      if (!this.hasMode(status.actuatorId, status.activeOperationModeId)) continue
+      if (status.previousOperationModeId !== undefined && !this.hasMode(status.actuatorId, status.previousOperationModeId)) {
         actuators[status.actuatorId] = { actuatorId: status.actuatorId, activeOperationModeId: status.activeOperationModeId, operationModeFactor: status.operationModeFactor }
       } else {
         actuators[status.actuatorId] = status
@@ -390,13 +438,17 @@ export class FRBCController {
   // FRBC instructions get ABORTED - they will no longer be carried out.
   private deselect (cemId: string, reason: Record<string, unknown>, sessionEnded: boolean): void {
     const state = this.cemStates.get(cemId)
-    if (state?.selected) {
-      state.selected = false
-      state.lastSentFillLevel = undefined
+    // Also for a CEM restored from context that has not been selected again yet.
+    if (state && state.openInstructions.length > 0) {
       if (!sessionEnded) {
         for (const open of state.openInstructions) this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
       }
       state.openInstructions = []
+      this.saveOpenInstructions()
+    }
+    if (state?.selected) {
+      state.selected = false
+      state.lastSentFillLevel = undefined
       this.opts.onEmitInstruction({ topic: 'Deselected', payload: reason, cemId })
     }
     this.refreshStatus()
@@ -416,6 +468,15 @@ export class FRBCController {
     state.selected = true
     state.lastSentFillLevel = undefined
     // Open instructions stay open when FRBC is selected again: the device may still carry them out.
+    // Those restored after a redeploy whose actuator or mode the configuration no longer has can't
+    // be confirmed any more.
+    const openCount = state.openInstructions.length
+    state.openInstructions = state.openInstructions.filter(open => {
+      if (this.hasMode(open.actuatorId, open.operationModeId)) return true
+      this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
+      return false
+    })
+    if (state.openInstructions.length !== openCount) this.saveOpenInstructions()
     this.opts.onSendCommand({
       payload: {
         command: 'SystemDescription',
@@ -472,14 +533,29 @@ export class FRBCController {
       return
     }
     const mode = actuator.operation_modes[modeIndex]
+    if (mode.abnormal_condition_only === true && instr.abnormal_condition !== true) {
+      this.abortInstruction(cemId, instructionId, `selects mode "${label(mode)}", which is for abnormal conditions only`)
+      return
+    }
 
     const fillLevel = this.getDeviceState().fillLevel
-    let element = fillLevel === undefined ? undefined : mode.elements.find(e => inRange(fillLevel, e.fill_level_range))
-    if (!element) {
+    let element: OperationModeElement | undefined
+    if (fillLevel === undefined) {
       element = mode.elements[0]
-      this.opts.onWarn(fillLevel === undefined
-        ? `FRBC.Instruction ${instructionId}: fill level unknown - using the first element of mode "${label(mode)}"`
-        : `FRBC.Instruction ${instructionId}: fill level ${fillLevel} is outside every element of mode "${label(mode)}" - using its first element`)
+      this.opts.onWarn(`FRBC.Instruction ${instructionId}: fill level unknown - using the first element of mode "${label(mode)}"`)
+    } else {
+      element = mode.elements.find(e => inRange(fillLevel, e.fill_level_range))
+      if (!element) {
+        // S2 lets a mode cover only part of the fill level range, e.g. fast charging up to 80 %. A
+        // fill level outside the storage's range (a sensor overshooting), or an abnormal condition,
+        // must not stop the CEM from switching the device: use the nearest element then.
+        if (inRange(fillLevel, this.storage.fill_level_range) && instr.abnormal_condition !== true) {
+          this.abortInstruction(cemId, instructionId, `selects mode "${label(mode)}", which is not available at fill level ${fillLevel}`)
+          return
+        }
+        element = nearestElement(mode.elements, fillLevel)
+        this.opts.onWarn(`FRBC.Instruction ${instructionId}: no element of mode "${label(mode)}" covers fill level ${fillLevel} - using the nearest one`)
+      }
     }
 
     const commodityPower = element.power_ranges.map(r => ({ commodity_quantity: r.commodity_quantity, value: interpolate(r, factor) }))
@@ -505,6 +581,7 @@ export class FRBCController {
       if (state.openInstructions.length > MAX_OPEN_INSTRUCTIONS) {
         this.finishInstruction(cemId, state.openInstructions.shift()!, InstructionStatus.ABORTED)
       }
+      this.saveOpenInstructions()
     }
 
     this.opts.onStatus({ fill: 'green', shape: 'dot', text: `instructed: ${label(actuator)} → ${label(mode)}` })
@@ -540,6 +617,7 @@ export class FRBCController {
     const index = state.openInstructions.findIndex(i => i.instructionId === payload.object_id)
     if (index < 0) return
     const [open] = state.openInstructions.splice(index, 1)
+    this.saveOpenInstructions()
     this.finishInstruction(cemId, open, InstructionStatus.REVOKED)
     this.opts.onEmitInstruction({
       topic: 'Revoked',
@@ -603,10 +681,11 @@ export class FRBCController {
     ]
     this.setDeviceState(device)
 
-    const cemIds = targets()
-    for (const cemId of cemIds) {
+    for (const cemId of targets()) {
       this.sendStatus(cemId, { actuatorStatuses: [status], ...(timerStatuses.length > 0 ? { timerStatuses } : {}) })
-      const state = this.getOrCreateCemState(cemId)
+    }
+    // Also for a CEM restored after a redeploy whose selection hasn't been replayed yet.
+    for (const [cemId, state] of this.cemStates) {
       // Every open instruction for this actuator that asked for exactly this mode and factor is
       // fulfilled; any older one for the actuator that asked for something else is overtaken.
       const matches = (open: OpenInstruction): boolean =>
@@ -619,6 +698,7 @@ export class FRBCController {
           this.finishInstruction(cemId, open, matches(open) ? InstructionStatus.SUCCEEDED : InstructionStatus.ABORTED)
           return false
         })
+        this.saveOpenInstructions()
       }
     }
     const selected = this.selectedCemIds().length > 0
@@ -634,6 +714,22 @@ export class FRBCController {
     if (declared !== true) {
       const flag = kind === 'UsageForecast' ? 'provides_usage_forecast' : 'provides_fill_level_target_profile'
       this.opts.onWarn(`${kind} ignored: the system description's storage.${flag} is not true`)
+      return
+    }
+    if (payload.revoke !== undefined) {
+      if (payload.revoke !== true || payload.elements !== undefined) {
+        throw new Error(`${kind} takes either payload.elements or payload.revoke: true, not both`)
+      }
+      // S2 JSON has no RevokeObject type for these (s2-json up to v1.0.0), so only stop replaying it.
+      const device = this.getDeviceState()
+      const key = kind === 'UsageForecast' ? 'usageForecast' : 'fillLevelTargetProfile'
+      if (!device[key]) {
+        this.opts.onWarn(`${kind} revoke ignored: none was sent`)
+        return
+      }
+      delete device[key]
+      this.setDeviceState(device)
+      this.opts.onWarn(`${kind} withdrawn: it is no longer sent on selection, but S2 has no message to revoke it, so a CEM keeps the one it has until it ends`)
       return
     }
     if (!Array.isArray(payload.elements) || payload.elements.length === 0) {

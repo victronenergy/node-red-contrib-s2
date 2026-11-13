@@ -31,6 +31,14 @@ Defines the behaviour of the `s2-frbc` node and its `s2-frbc-config`: declaring 
 - **WHEN** `storage`, a `fill_level_range`, `fill_rate` or `running_costs`, or an entry of `actuators`, `operation_modes`, `elements`, `power_ranges`, `transitions` or `timers` is not an object, such as `null`
 - **THEN** the editor shows an error naming its path, and does not save
 
+#### Scenario: Fill level ranges that are not contiguous
+- **WHEN** the elements of an operation mode or of the leakage behaviour have a `fill_level_range` that doesn't start below its end, or their ranges, in any order, leave a gap or overlap
+- **THEN** the editor shows an error naming the mode or leakage behaviour, and does not save
+
+#### Scenario: Two power ranges for one commodity quantity
+- **WHEN** an operation mode element has more than one power range for the same `commodity_quantity`
+- **THEN** the editor shows an error naming the element and the commodity quantity, and does not save
+
 #### Scenario: Leakage flag and leakage JSON disagree
 - **WHEN** `storage.provides_leakage_behaviour` is false but leakage behaviour JSON is given
 - **THEN** the editor shows an error and does not save
@@ -65,7 +73,7 @@ When `s2-frbc` observes on `s2-rm`'s "from CEM" output that a CEM selected `FILL
 - **THEN** `s2-frbc` emits `Deselected` for that CEM
 
 ### Requirement: Instruction resolution into actionable output
-On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (else the first element, with a warning), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`, without rounding.
+On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mode, choose the mode's element whose `fill_level_range` contains the last known fill level (the first element, with a warning, while the fill level is unknown), and emit an `ActuatorInstruction` carrying the instruction id, the actuator's and mode's id, label and index, `factor`, `abnormalCondition`, `fillRate`, `commodityPower` and `values` - ranges interpolated as `start + factor x (end - start)`, without rounding.
 
 #### Scenario: Instruction for a known actuator and mode
 - **WHEN** an `FRBC.Instruction` for a configured actuator selects a mode whose element for the current fill level has `fill_rate` 0..10 and a 3-phase-symmetric power range 0..2000, with `operation_mode_factor` 0.5
@@ -73,6 +81,18 @@ On an `FRBC.Instruction`, `s2-frbc` SHALL resolve its actuator and operation mod
 
 #### Scenario: Instruction for an unknown actuator or mode
 - **WHEN** an `FRBC.Instruction` refers to an actuator or operation mode not in the configuration
+- **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
+
+#### Scenario: Mode not available at the current fill level
+- **WHEN** an `FRBC.Instruction` with `abnormal_condition` false selects a mode none of whose elements covers the last known fill level, and that fill level is inside the storage's `fill_level_range`
+- **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
+
+#### Scenario: Fill level outside the storage range, or an abnormal condition
+- **WHEN** no element of the selected mode covers the last known fill level, and that fill level is outside the storage's `fill_level_range` or the instruction has `abnormal_condition` true
+- **THEN** `s2-frbc` warns and emits the `ActuatorInstruction` using the mode's nearest element, so the CEM can still switch the device
+
+#### Scenario: Abnormal-condition-only mode outside an abnormal condition
+- **WHEN** an `FRBC.Instruction` with `abnormal_condition` false selects a mode with `abnormal_condition_only` true
 - **THEN** `s2-frbc` emits nothing on its instruction output, warns, and sends an `InstructionStatus` command with status `ABORTED` for that instruction
 
 #### Scenario: Instruction with a factor outside 0-1
@@ -129,6 +149,14 @@ On an `ActuatorConfirmation`, `s2-frbc` SHALL send `InstructionStatus SUCCEEDED`
 #### Scenario: Usage forecast not declared
 - **WHEN** a `UsageForecast` message arrives and `storage.provides_usage_forecast` is false
 - **THEN** nothing is sent and the node warns that the system description does not declare a usage forecast
+
+#### Scenario: Profile withdrawn
+- **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message has `payload.revoke` true
+- **THEN** the stored profile of that kind is removed, so it is not replayed on selection, and the node warns that a CEM keeps the one it has, because S2 JSON has no message to revoke it; with nothing stored, the node only warns that there is nothing to revoke
+
+#### Scenario: Revoke together with elements
+- **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message has both `payload.revoke` and `payload.elements`, or a `payload.revoke` other than true
+- **THEN** the input fails with an error, and the stored profile is left as it is
 
 #### Scenario: Profile that is not valid S2
 - **WHEN** a `UsageForecast` or `FillLevelTargetProfile` message would not pass S2 schema validation, such as an element without `duration` or a `startTime` that is not a date-time
@@ -189,3 +217,8 @@ When the CEM revokes an `FRBC.Instruction` that `s2-frbc` already emitted and th
 #### Scenario: CEM stops FRBC control
 - **WHEN** an instruction is open and the CEM selects `NOT_CONTROLABLE`
 - **THEN** that instruction is reported `ABORTED`
+
+#### Scenario: s2-frbc alone redeployed
+- **WHEN** an instruction is open, only `s2-frbc` is redeployed, and `s2-rm` replays the FRBC selection
+- **THEN** the open instruction is restored from node context, and the next matching `ActuatorConfirmation` reports it `SUCCEEDED`, also when it arrives before the selection is replayed; if the new configuration no longer has its actuator or mode, it is reported `ABORTED` on the replayed selection
+

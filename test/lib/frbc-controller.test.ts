@@ -115,6 +115,32 @@ describe('frbcConfigProblems', () => {
     expect(problems).toContain('actuator "hp": duplicate operation mode id "hp-off"')
   })
 
+  it('reports fill level ranges that are empty or not contiguous, in modes and leakage', () => {
+    const config = makeConfig()
+    const hpOn = (config.systemDescription.actuators[0] as { operation_modes: Array<{ elements: unknown[] }> }).operation_modes[1]
+    hpOn.elements = [element(0, 70, 0, 10, 0, 2000), element(80, 100, 0, 4, 0, 1000), element(100, 100, 0, 0, 0, 0)]
+    config.leakageBehaviour!.elements.push({ fill_level_range: { start_of_range: 90, end_of_range: 110 }, leakage_rate: 0.003 })
+    expect(frbcConfigProblems(config)).toEqual([
+      'actuator "hp", mode "hp-on", element 2: fill_level_range must start below its end',
+      'actuator "hp", mode "hp-on": fill_level_ranges must be contiguous, but one ends at 70 and the next starts at 80',
+      'leakage behaviour: fill_level_ranges must be contiguous, but one ends at 100 and the next starts at 90'
+    ])
+  })
+
+  it('accepts contiguous fill level ranges in descending order', () => {
+    const config = makeConfig()
+    const hpOn = (config.systemDescription.actuators[0] as { operation_modes: Array<{ elements: unknown[] }> }).operation_modes[1]
+    hpOn.elements = [element(50, 100, 0, 4, 0, 1000), element(0, 50, 0, 10, 0, 2000)]
+    expect(frbcConfigProblems(config)).toEqual([])
+  })
+
+  it('reports more than one power range for the same commodity quantity', () => {
+    const config = makeConfig()
+    const el = (config.systemDescription.actuators[0] as { operation_modes: Array<{ elements: Array<{ power_ranges: unknown[] }> }> }).operation_modes[1].elements[0]
+    el.power_ranges.push({ commodity_quantity: SYM, start_of_range: 0, end_of_range: 1 }, { commodity_quantity: SYM, start_of_range: 0, end_of_range: 1 })
+    expect(frbcConfigProblems(config)).toEqual([`actuator "hp", mode "hp-on", element 0: more than one power range for ${SYM}`])
+  })
+
   it('reports leakage configured without provides_leakage_behaviour, and the reverse', () => {
     const withoutFlag = makeConfig()
     withoutFlag.systemDescription.storage.provides_leakage_behaviour = false
@@ -489,6 +515,28 @@ describe('FRBCController - forecasts, target profiles and timers', () => {
     expect(commands[1].frbc).toEqual({ fillLevelTargetProfile: { startTime: '2030-01-01T00:00:00.000Z', elements } })
   })
 
+  it('refuses revoke together with elements, and ignores a revoke when nothing was sent', () => {
+    const { input, warnings, context } = setup()
+    const elements = [{ duration: 3600000, fill_level_range: { start_of_range: 50, end_of_range: 60 } }]
+    const done = input({ topic: 'FillLevelTargetProfile', payload: { revoke: true, elements } })
+    expect(done).toHaveBeenCalledWith(new Error('FillLevelTargetProfile takes either payload.elements or payload.revoke: true, not both'))
+    expect(context.s2FrbcState).toBeUndefined()
+    input({ topic: 'FillLevelTargetProfile', payload: { revoke: true } })
+    expect(warnings).toEqual(['FillLevelTargetProfile revoke ignored: none was sent'])
+  })
+
+  it('withdraws a stored target profile on revoke: true, so it is no longer replayed, and warns', () => {
+    const { input, select, commands, warnings, context } = setup()
+    const elements = [{ duration: 3600000, fill_level_range: { start_of_range: 50, end_of_range: 60 } }]
+    input({ topic: 'FillLevelTargetProfile', payload: { startTime: '2030-01-01T00:00:00.000Z', elements } })
+    const done = input({ topic: 'FillLevelTargetProfile', payload: { revoke: true } })
+    expect(done).toHaveBeenCalledWith()
+    expect(context.s2FrbcState).not.toHaveProperty('fillLevelTargetProfile')
+    expect(warnings).toEqual(['FillLevelTargetProfile withdrawn: it is no longer sent on selection, but S2 has no message to revoke it, so a CEM keeps the one it has until it ends'])
+    select('cem-1')
+    expect(commands.filter(c => c.command === 'UpdateStatus')).toEqual([])
+  })
+
   it('ignores a usage forecast with a warning when the storage does not declare one', () => {
     const { input, select, commands, warnings } = setup()
     select('cem-1')
@@ -719,6 +767,50 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
   })
 
+  it('aborts an instruction for a mode that is not available at the current fill level', () => {
+    const config = makeConfig()
+    const hpOn = ((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<{ elements: unknown[] }>)[1]
+    hpOn.elements = [element(0, 80, 0, 10, 0, 2000)] // e.g. fast heating only up to 80 %
+    const { input, select, instruct, commands, instructions, warnings } = setup(config)
+    input({ topic: 'StorageStatus', payload: { fillLevel: 90 } })
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction')).toEqual([])
+    expect(warnings).toEqual(['FRBC.Instruction i1 selects mode "Heating", which is not available at fill level 90 - aborted'])
+  })
+
+  it('uses the nearest element when the fill level is outside the storage range, or in an abnormal condition', () => {
+    const config = makeConfig()
+    const hpOn = ((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<{ elements: unknown[] }>)[1]
+    hpOn.elements = [element(0, 40, 0, 5, 0, 1000), element(40, 80, 0, 10, 0, 2000)] // the nearest is not the first
+    const { input, select, instruct, commands, instructions, warnings } = setup(config)
+    input({ topic: 'StorageStatus', payload: { fillLevel: 105 } }) // a sensor overshooting the 0-100 range
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+    input({ topic: 'StorageStatus', payload: { fillLevel: 90 } })
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', abnormal_condition: true })
+    expect(statuses(commands)).toEqual([])
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction').map(m => (m.payload as { commodityPower: unknown }).commodityPower))
+      .toEqual([[{ commodity_quantity: SYM, value: 2000 }], [{ commodity_quantity: SYM, value: 2000 }]])
+    expect(warnings).toEqual([
+      'FRBC.Instruction i1: no element of mode "Heating" covers fill level 105 - using the nearest one',
+      'FRBC.Instruction i2: no element of mode "Heating" covers fill level 90 - using the nearest one'
+    ])
+  })
+
+  it('carries out a mode for abnormal conditions only when the instruction says it is one', () => {
+    const config = makeConfig()
+    ;((config.systemDescription.actuators as Array<Record<string, unknown>>)[0].operation_modes as Array<Record<string, unknown>>)[1].abnormal_condition_only = true
+    const { select, instruct, commands, instructions, warnings } = setup(config)
+    select('cem-1')
+    instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on', abnormal_condition: false })
+    expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    expect(warnings).toEqual(['FRBC.Instruction i1 selects mode "Heating", which is for abnormal conditions only - aborted'])
+    instruct('cem-1', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on', abnormal_condition: true })
+    expect(instructions.filter(m => m.topic === 'ActuatorInstruction').map(m => (m.payload as { instructionId: string }).instructionId)).toEqual(['i2'])
+  })
+
   it('aborts an instruction with a factor outside 0-1, without output', () => {
     const { select, instruct, commands, instructions, warnings } = setup()
     select('cem-1')
@@ -740,6 +832,51 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
     instruct('cem-2', { id: 'i2', actuator_id: 'hp', operation_mode: 'hp-on' })
     expect(statuses(commands)).toEqual(['i1:ABORTED', 'i2:ABORTED'])
     expect(instructions.filter(m => m.topic === 'ActuatorInstruction')).toEqual([])
+  })
+
+  describe('after s2-frbc alone restarts (open instructions kept in node context)', () => {
+    const before = () => {
+      const first = setup()
+      first.select('cem-1')
+      first.instruct('cem-1', { id: 'i1', actuator_id: 'hp', operation_mode: 'hp-on' })
+      return first.context
+    }
+
+    it('finishes an instruction emitted before the restart once the selection is replayed', () => {
+      const { select, input, commands, context } = setup(makeConfig(), before())
+      select('cem-1')
+      confirm(input, 'hp-on')
+      expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
+      expect(context.s2FrbcOpenInstructions).toEqual({})
+    })
+
+    it('finishes it on a confirmation that arrives before the selection is replayed', () => {
+      const { input, commands, context } = setup(makeConfig(), before())
+      confirm(input, 'hp-on')
+      expect(statuses(commands)).toEqual(['i1:SUCCEEDED'])
+      expect(context.s2FrbcOpenInstructions).toEqual({})
+    })
+
+    it('aborts it on the replayed selection when the configuration no longer has its mode', () => {
+      const config = makeConfig()
+      const hp = config.systemDescription.actuators[0] as { operation_modes: Array<{ id: string }>, transitions: unknown[] }
+      hp.operation_modes = hp.operation_modes.filter(m => m.id !== 'hp-on')
+      hp.transitions = []
+      const { select, commands } = setup(config, before())
+      select('cem-1')
+      expect(statuses(commands)).toEqual(['i1:ABORTED'])
+    })
+
+    it('aborts it when the CEM selects another control type instead, and drops it when the session ends', () => {
+      const switched = setup(makeConfig(), before())
+      switched.select('cem-1', 'NOT_CONTROLABLE')
+      expect(statuses(switched.commands)).toEqual(['i1:ABORTED'])
+
+      const ended = setup(makeConfig(), before())
+      ended.input({ topic: 'Connected', cemId: 'cem-1', payload: undefined })
+      expect(statuses(ended.commands)).toEqual([])
+      expect(ended.context.s2FrbcOpenInstructions).toEqual({})
+    })
   })
 
   it('aborts the oldest open instruction when more than 50 are open', () => {
