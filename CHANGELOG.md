@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `s2-ombc-config`, `s2-pebc-config` and `s2-resource`: pressing Cancel or Done just after an edit could enable or disable the Update or Done button of the next dialog, and logged `cannot call methods on typedInput prior to initialization` in the browser console. The button now also stays disabled while the edit is being checked, and errors show one per line. (#102)
+
 ## [1.1.0]
 
 ### Added
