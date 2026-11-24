@@ -144,9 +144,7 @@ export class S2ResourceManager {
     if (changed) this.setPending(remaining)
   }
 
-  // S2 is a 1:1 CEM<->RM relationship, so the common case (one session) gets a
-  // singular status naming the connected CEM. Multiple concurrent sessions are
-  // technically possible (the map is keyed by cemId), so that case still shows a count.
+  // S2 is a 1:1 CEM<->RM relationship, so the status names the connected CEM.
   //
   // The currently-advertised control types are appended as a suffix (rather than woven into
   // the sentence) so SetAvailableControlTypes' effect is visible in node.status without
@@ -411,6 +409,12 @@ export class S2ResourceManager {
 
     switch (command) {
       case 'Connect': {
+        // S2 allows a resource manager one CEM at a time (EN 50491-12-2 §7.6.1).
+        const [connectedCemId] = this.sessions.keys()
+        if (connectedCemId !== undefined && connectedCemId !== cemId) {
+          done(new Error(`CEM ${cemId} refused: CEM ${connectedCemId} is already connected, and S2 allows one CEM per resource manager`))
+          return
+        }
         if (this.sessions.has(cemId)) {
           this.opts.onWarn(`CEM ${cemId} connected again without prior Disconnect - replacing session`)
           this.sessions.get(cemId)!.dispose()

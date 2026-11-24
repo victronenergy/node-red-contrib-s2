@@ -25,6 +25,17 @@ The RM SHALL initiate the S2 handshake when a CEM connects, and SHALL send its `
 - **WHEN** a `Connect` command is received for a CEM and that CEM replies with `HandshakeResponse`
 - **THEN** the RM sends `ResourceManagerDetails` to the CEM and the session is marked connected
 
+### Requirement: One CEM at a time
+The RM SHALL have a session with at most one CEM at a time (EN 50491-12-2 §7.6.1). A `Connect` for another `cemId` while a session exists SHALL be refused with an error naming both CEMs, and SHALL NOT create a session.
+
+#### Scenario: Second CEM connects
+- **WHEN** a `Connect` command is received for a CEM while another CEM has a session
+- **THEN** the RM reports an error naming both CEMs, creates no session, and treats the second CEM's messages like those of any unknown CEM
+
+#### Scenario: Same CEM connects again
+- **WHEN** a `Connect` command is received for the CEM that already has a session
+- **THEN** the RM replaces that session, as before
+
 ### Requirement: Control-type selection without control-type-specific behavior
 The RM SHALL acknowledge `SelectControlType` and SHALL NOT itself send any control-type-specific system description or status message. Providing those is the responsibility of a dedicated control-type node (see `control-type-ombc`, `control-type-pebc`).
 
@@ -133,10 +144,6 @@ In either form, once the new list is determined, the RM SHALL re-send `ResourceM
 #### Scenario: Command received before any CEM connects
 - **WHEN** a `SetAvailableControlTypes` command is received before any CEM has connected
 - **THEN** the next CEM to complete the handshake receives a `ResourceManagerDetails` reflecting the updated list
-
-#### Scenario: Multiple connected CEMs
-- **WHEN** a `SetAvailableControlTypes` command is received while more than one CEM session is connected
-- **THEN** each connected CEM receives its own updated `ResourceManagerDetails` reflecting the new list
 
 #### Scenario: isControllable false preserves the initial Not Controllable choice
 - **WHEN** a `SetAvailableControlTypes` command `{ isControllable: false }` is received

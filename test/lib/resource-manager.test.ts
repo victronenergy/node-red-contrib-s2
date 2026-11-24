@@ -498,18 +498,15 @@ describe('S2ResourceManager - available control types', () => {
     expect(rmdMessages(transportMsgs).length).toBe(0)
   })
 
-  it('resends ResourceManagerDetails to every connected CEM', () => {
+  it('resends ResourceManagerDetails to the connected CEM', () => {
     const { rm, transportMsgs } = setup()
     connectAndHandshake(rm, 'cem-1')
-    connectAndHandshake(rm, 'cem-2')
     transportMsgs.length = 0
 
     rm.handleInput({ payload: { command: 'SetAvailableControlTypes', availableControlTypes: ['POWER_ENVELOPE_BASED_CONTROL'] } }, jest.fn())
 
-    const resent = rmdMessages(transportMsgs)
-    expect(resent.length).toBe(2)
     const cemIds = transportMsgs.filter(m => rmdMessages([m]).length > 0).map(m => m?.cemId)
-    expect(cemIds.sort()).toEqual(['cem-1', 'cem-2'])
+    expect(cemIds).toEqual(['cem-1'])
   })
 
   it('does not force a deselect or disconnect when the CEM\'s active control type becomes unavailable', () => {
@@ -549,5 +546,30 @@ describe('S2ResourceManager - available control types', () => {
     expect(resentRmd.instruction_processing_delay).toBe(initialRmd.instruction_processing_delay)
     expect(resentRmd.provides_forecast).toBe(initialRmd.provides_forecast)
     expect(resentRmd.provides_power_measurement_types).toEqual(initialRmd.provides_power_measurement_types)
+  })
+})
+
+describe('S2ResourceManager - one CEM at a time', () => {
+  it('refuses a second CEM while another is connected', () => {
+    const { rm, cemMsgs, statuses } = setup()
+    connectAndHandshake(rm, 'cem-1')
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'Connect', cemId: 'cem-2', keepAliveInterval: 0 } }, done)
+    expect(done.mock.calls[0][0].message).toMatch(/CEM cem-2 refused: CEM cem-1 is already connected/)
+    expect(cemMsgs).not.toContainEqual(expect.objectContaining({ topic: 'Connected', cemId: 'cem-2' }))
+    expect(statuses[statuses.length - 1]).toMatchObject({ text: expect.stringContaining('CEM connected (cem-1)') })
+    const messageDone = jest.fn()
+    rm.handleInput({ payload: { command: 'Message', cemId: 'cem-2', message: '{}' } }, messageDone)
+    expect(messageDone.mock.calls[0][0].message).toMatch(/No session for CEM cem-2/)
+  })
+
+  it('accepts another CEM once the first one disconnected', () => {
+    const { rm, cemMsgs } = setup()
+    connectAndHandshake(rm, 'cem-1')
+    rm.handleInput({ payload: { command: 'Disconnect', cemId: 'cem-1' } }, jest.fn())
+    const done = jest.fn()
+    rm.handleInput({ payload: { command: 'Connect', cemId: 'cem-2', keepAliveInterval: 0 } }, done)
+    expect(done).toHaveBeenCalledWith()
+    expect(cemMsgs).toContainEqual(expect.objectContaining({ topic: 'Connected', cemId: 'cem-2' }))
   })
 })
