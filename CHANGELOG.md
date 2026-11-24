@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `s2-rm` and `s2-resource` accepted a `Connect` for a second CEM while another was connected, and ran both sessions. S2 allows one CEM per resource manager, so they now refuse the second CEM with an error naming both. The transports in this package always connect as one CEM, so only a custom transport or an injected `Connect` can hit this. (#103)
+
 ## [1.1.0]
 
 ### Added
