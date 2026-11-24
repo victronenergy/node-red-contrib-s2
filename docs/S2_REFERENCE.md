@@ -202,7 +202,7 @@ An instruction whose `execution_time` is in the future is queued (in flow contex
 On forwarding, the RM sends `InstructionStatusUpdate(STARTED)`, unless "Skip instruction status updates" is
 checked in the RM config. A `RevokeObject` for a queued instruction removes it and sends `REVOKED`;
 one for an unknown or finished instruction is rejected with `PERMANENT_ERROR`. PEBC instructions skip
-this queue: `s2-pebc` schedules them itself.
+this queue: `s2-pebc` schedules them itself, keeps them across sessions and answers their revokes.
 
 ### 5. Disconnect
 

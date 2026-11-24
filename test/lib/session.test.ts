@@ -809,6 +809,7 @@ describe('S2Session RevokeObject', () => {
     { what: 'a REVOKED instruction', before: ['REVOKED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
     { what: 'a SUCCEEDED instruction', before: ['STARTED', 'SUCCEEDED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
     { what: 'an ABORTED instruction', before: ['ABORTED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'a PEBC instruction from an earlier session', before: null, type: 'PEBC.Instruction', status: 'OK' },
     { what: 'an object that is not an instruction', before: null, type: 'PEBC.PowerConstraints', status: 'OK' }
   ] as const)('answers a RevokeObject for $what with $status, and forwards it only when OK', ({ before, type, status }) => {
     const { session, onSend, onMessage } = connectedSession()

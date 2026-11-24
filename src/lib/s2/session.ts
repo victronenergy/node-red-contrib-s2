@@ -255,7 +255,9 @@ export class S2Session {
       }
 
       case MessageType.REVOKE_OBJECT:
-        if ((msg.object_type as string).endsWith('Instruction') && !this._openInstructions.has(msg.object_id as string)) {
+        // s2-pebc keeps its schedules across sessions, so it decides on a PEBC instruction itself.
+        if ((msg.object_type as string).endsWith('Instruction') && msg.object_type !== MessageType.PEBC_INSTRUCTION &&
+            !this._openInstructions.has(msg.object_id as string)) {
           this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.PERMANENT_ERROR, `No open instruction ${msg.object_id as string}`))
           break
         }
