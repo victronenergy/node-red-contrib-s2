@@ -236,11 +236,11 @@ The editor SHALL mark an `s2-rm` node invalid, with a message saying another `s2
 - **THEN** the pasted `s2-rm` is marked invalid in the editor before deploy, with a message saying another `s2-rm` uses the same `s2-rm-config`; the original is marked as well the next time the editor validates it (e.g. when the flows are reloaded)
 
 ### Requirement: Selection replay command
-The RM SHALL accept a `ReplaySelection` command with a `controlType` and no `cemId`. For every connected CEM whose selected control type equals it, the RM SHALL emit `SelectControlType` with that control type and `replay: true` on its "from CEM" output, and SHALL send nothing to any CEM. Without a `controlType` the command SHALL be rejected.
+The RM SHALL accept a `ReplaySelection` command without a `cemId`. For every connected CEM, the RM SHALL emit `SelectControlType` with the control type that CEM has selected, of any type, and `replay: true` on its "from CEM" output, and SHALL send nothing to any CEM. A `controlType` in the command SHALL be ignored.
 
-#### Scenario: One of two CEMs has FRBC selected
-- **WHEN** CEM A has FRBC selected, CEM B has OMBC selected, and `{ command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' }` arrives
-- **THEN** the RM emits one `SelectControlType` for A with `replay: true`, and nothing for B or to either CEM
+#### Scenario: CEM with another control type selected
+- **WHEN** the connected CEM has OMBC selected and `{ command: 'ReplaySelection' }` arrives
+- **THEN** the RM emits `SelectControlType` OMBC with `replay: true`, and sends nothing to the CEM
 
 #### Scenario: No sessions after a full deploy
 - **WHEN** `ReplaySelection` arrives and no CEM is connected

@@ -510,7 +510,8 @@ export class OMBCController {
     }
 
     if (payload.message_type === MessageType.SELECT_CONTROL_TYPE) {
-      this.handleSelectControlType(msg)
+      // s2-frbc asks for replays; acting on one would resend the OMBC system description.
+      if (!payload.replay) this.handleSelectControlType(msg)
       done()
       return
     }

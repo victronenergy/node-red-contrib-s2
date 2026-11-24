@@ -333,19 +333,15 @@ export class S2ResourceManager {
     }
 
     // ReplaySelection lets a control-type node that restarted while s2-rm kept its sessions (a
-    // modified-nodes deploy) learn which CEMs still have its control type selected: the
-    // selection is re-emitted on the "from CEM" output, marked replay: true, only for those
-    // CEMs. Nothing is sent to any CEM.
+    // modified-nodes deploy) learn each connected CEM's current selection: it is re-emitted on
+    // the "from CEM" output, marked replay: true. Selections of every control type are
+    // replayed: a node that restarted may have missed a switch away from its type. Nothing is
+    // sent to any CEM.
     if (command === 'ReplaySelection') {
-      const { controlType } = msg.payload as { controlType?: unknown }
-      if (typeof controlType !== 'string' || !controlType) {
-        done(new Error('ReplaySelection requires a controlType string'))
-        return
-      }
       for (const [sessionCemId, session] of this.sessions) {
-        if (session.state === State.CONNECTED && session.selectedControlType === controlType) {
+        if (session.state === State.CONNECTED) {
           this.opts.onEmitToCem({
-            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: controlType, replay: true },
+            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: session.selectedControlType, replay: true },
             cemId: sessionCemId,
             topic: MessageType.SELECT_CONTROL_TYPE
           })

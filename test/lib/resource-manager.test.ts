@@ -186,33 +186,37 @@ describe('S2ResourceManager - ReplaySelection', () => {
     rm.handleInput({ payload: { command: 'Message', cemId, message: serialize({ message_type: MessageType.SELECT_CONTROL_TYPE, message_id: `sct-${cemId}`, control_type: controlType }) } }, jest.fn())
   }
 
-  it('re-emits SelectControlType, marked replay, only when the connected CEM has that control type selected', () => {
+  it.each([
+    { selected: 'FILL_RATE_BASED_CONTROL', replayed: 'FILL_RATE_BASED_CONTROL', controlType: 'FILL_RATE_BASED_CONTROL' },
+    { selected: 'OPERATION_MODE_BASED_CONTROL', replayed: 'OPERATION_MODE_BASED_CONTROL', controlType: 'FILL_RATE_BASED_CONTROL' },
+    { selected: null, replayed: 'NO_SELECTION', controlType: undefined }
+  ])('re-emits the connected CEM\'s selection, $replayed, marked replay', ({ selected, replayed, controlType }) => {
     const { rm, cemMsgs, transportMsgs } = setup()
     connectAndHandshake(rm, 'cem-1')
-    select(rm, 'cem-1', 'FILL_RATE_BASED_CONTROL')
+    if (selected) select(rm, 'cem-1', selected)
     cemMsgs.length = 0
     transportMsgs.length = 0
 
     const done = jest.fn()
-    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, done)
-    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'OPERATION_MODE_BASED_CONTROL' } }, jest.fn())
+    rm.handleInput({ payload: { command: 'ReplaySelection', controlType } }, done)
 
     expect(done).toHaveBeenCalledWith()
     expect(cemMsgs).toEqual([{
-      payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: 'FILL_RATE_BASED_CONTROL', replay: true },
+      payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: replayed, replay: true },
       cemId: 'cem-1',
       topic: MessageType.SELECT_CONTROL_TYPE
     }])
     expect(transportMsgs).toEqual([]) // nothing goes to any CEM
   })
 
-  it('replays nothing without sessions, and requires a controlType', () => {
+  it('replays nothing without a CEM that completed the handshake', () => {
     const { rm, cemMsgs } = setup()
-    rm.handleInput({ payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }, jest.fn())
+    rm.handleInput({ payload: { command: 'ReplaySelection' } }, jest.fn())
     expect(cemMsgs).toEqual([])
-    const done = jest.fn()
-    rm.handleInput({ payload: { command: 'ReplaySelection' } }, done)
-    expect(done).toHaveBeenCalledWith(new Error('ReplaySelection requires a controlType string'))
+    rm.handleInput({ payload: { command: 'Connect', cemId: 'cem-1', keepAliveInterval: 0 } }, jest.fn())
+    cemMsgs.length = 0
+    rm.handleInput({ payload: { command: 'ReplaySelection' } }, jest.fn())
+    expect(cemMsgs).toEqual([])
   })
 })
 

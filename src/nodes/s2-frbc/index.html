@@ -69,7 +69,7 @@
     <dt>cemId <span class="property-type">string</span></dt>
     <dd>Optional on all of the above. Defaults to the one CEM with FRBC selected; required when there are several (a fill level is still stored then). When no CEM has FRBC selected the input is only stored.</dd>
   </dl>
-  <p>Any other topic is ignored with a warning. Stored state the configuration no longer covers (a removed actuator, mode or timer, or a profile the storage no longer provides) is dropped when the node starts. After a partial deploy the node asks <b>s2-rm</b> which CEMs still have FRBC selected, and sends them the system description again.</p>
+  <p>Any other topic is ignored with a warning. Stored state the configuration no longer covers (a removed actuator, mode or timer, or a profile the storage no longer provides) is dropped when the node starts. After a partial deploy the node asks <b>s2-rm</b> what each connected CEM has selected now. A CEM with FRBC selected gets the system description again. For a CEM that selected another control type meanwhile, the instructions still open are reported <code>ABORTED</code> and the flow gets <code>Deselected</code>.</p>
 
   <h3>Instruction status</h3>
   <p>S2 requires every instruction to end in a final status. <b>s2-rm</b> sends <code>ACCEPTED</code> on arrival, <code>STARTED</code> when it is due, and <code>REVOKED</code> if the CEM revokes it before then. Once an instruction has reached this node:</p>

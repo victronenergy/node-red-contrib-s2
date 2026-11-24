@@ -19,7 +19,7 @@ This topic-based interface is intentionally distinct from the lower-level `paylo
 - **THEN** `s2-ombc` converts it to the lower-level `PowerMeasurement` command for the Resource Manager
 
 ### Requirement: OMBC system description from configuration
-`s2-ombc` SHALL derive the OMBC system description (operation modes and transitions) from its `s2-ombc-config` node. When it observes, on `s2-rm`'s "from CEM" output, that a CEM has selected `OPERATION_MODE_BASED_CONTROL`, it SHALL push that system description back to `s2-rm` via a `SystemDescription` command for `s2-rm` to send to that CEM.
+`s2-ombc` SHALL derive the OMBC system description (operation modes and transitions) from its `s2-ombc-config` node. When it observes, on `s2-rm`'s "from CEM" output, that a CEM has selected `OPERATION_MODE_BASED_CONTROL`, it SHALL push that system description back to `s2-rm` via a `SystemDescription` command for `s2-rm` to send to that CEM. A `SelectControlType` marked `replay: true` (s2-rm's answer to a `ReplaySelection` from `s2-frbc`) SHALL be ignored.
 
 #### Scenario: OMBC becomes the active control type
 - **WHEN** the CEM selects `OPERATION_MODE_BASED_CONTROL` as its control type

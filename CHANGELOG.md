@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- After a partial deploy that restarted `s2-frbc`, instructions it restored from context stayed open when the CEM had switched to another control type meanwhile. `s2-rm`'s `ReplaySelection` now replays every connected CEM's selection, of any control type, and no longer needs `controlType`. `s2-frbc` then reports those instructions `ABORTED` and tells the flow `Deselected`. If the CEM disconnects or reconnects first, the instructions are dropped and the flow still gets `Deselected`. `s2-ombc` ignores a replayed selection; a flow on the "from CEM" output can tell one apart by `payload.replay`. (#106)
 - `s2-rm` and `s2-resource` accepted a `Connect` for a second CEM while another was connected, and ran both sessions. S2 allows one CEM per resource manager, so they now refuse the second CEM with an error naming both. The transports in this package always connect as one CEM, so only a custom transport or an injected `Connect` can hit this. (#103)
 
 ## [1.1.0]

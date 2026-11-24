@@ -72,7 +72,7 @@ describe('s2-frbc', () => {
       const { node } = setupNode()
       expect(node.send).not.toHaveBeenCalled()
       jest.runAllTimers()
-      expect(node.send).toHaveBeenCalledWith([null, { payload: { command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' } }])
+      expect(node.send).toHaveBeenCalledWith([null, { payload: { command: 'ReplaySelection' } }])
 
       const second = setupNode()
       const closed = jest.fn()
