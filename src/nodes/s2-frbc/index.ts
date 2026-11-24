@@ -44,7 +44,7 @@ interface S2FrbcNodeConfig extends NodeConfig {
  *   { payload: { command: 'SystemDescription', cemId, controlType, frbc } }
  *   { payload: { command: 'UpdateStatus', cemId, controlType, frbc } }
  *   { payload: { command: 'InstructionStatus', cemId, instructionId, status } }
- *   { payload: { command: 'ReplaySelection', controlType } }   (once, right after the node starts)
+ *   { payload: { command: 'ReplaySelection' } }   (once, right after the node starts)
  */
 export = function (RED: NodeRedApp): void {
   function S2FrbcNode (this: NodeRedNode, config: S2FrbcNodeConfig): void {
@@ -88,7 +88,7 @@ export = function (RED: NodeRedApp): void {
     })
 
     // After a modified-nodes deploy s2-rm keeps its sessions while this node starts from scratch,
-    // so ask it which CEMs still have FRBC selected (deferred until the deploy has started every
+    // so ask it what each CEM has selected now (deferred until the deploy has started every
     // node). After a full deploy or a restart s2-rm has no sessions yet and replays nothing.
     const replayTimer = setTimeout(() => controller.requestSelectionReplay(), 0)
 

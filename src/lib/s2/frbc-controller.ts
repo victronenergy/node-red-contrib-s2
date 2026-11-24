@@ -323,13 +323,14 @@ export class FRBCController {
   }
 
   /**
-   * Asks s2-rm to re-emit SelectControlType for every CEM that currently has FRBC selected. A
-   * restarted s2-frbc (e.g. after its config changed) starts without knowing the selection, while
-   * s2-rm's sessions - and the CEM's choice of FRBC - survive a modified-nodes deploy; the replay
-   * makes this node send its (new) system description and state again.
+   * Asks s2-rm to re-emit SelectControlType for every connected CEM. A restarted s2-frbc (e.g.
+   * after its config changed) starts without knowing the selection, while s2-rm's sessions - and
+   * the CEM's choice - survive a modified-nodes deploy; a replayed FRBC selection makes this node
+   * send its (new) system description and state again, and another one aborts the open
+   * instructions restored from context.
    */
   requestSelectionReplay (): void {
-    this.opts.onSendCommand({ payload: { command: 'ReplaySelection', controlType: ControlType.FRBC } })
+    this.opts.onSendCommand({ payload: { command: 'ReplaySelection' } })
   }
 
   // -- state --
@@ -432,13 +433,14 @@ export class FRBCController {
     }
   }
 
-  /** Forgets a CEM's FRBC selection and session state, telling the flow if it had FRBC selected. */
+  /** Forgets a CEM's FRBC selection and session state, telling the flow if it saw FRBC selected. */
   // With sessionEnded the session is gone (Disconnected) or replaced (Connected), so there is no
   // one left to report to; after a switch to another control type the session remains, and open
   // FRBC instructions get ABORTED - they will no longer be carried out.
   private deselect (cemId: string, reason: Record<string, unknown>, sessionEnded: boolean): void {
     const state = this.cemStates.get(cemId)
-    // Also for a CEM restored from context that has not been selected again yet.
+    // Open instructions restored from context prove the flow saw FRBC selected before the restart.
+    const flowSawSelected = !!state && (state.selected || state.openInstructions.length > 0)
     if (state && state.openInstructions.length > 0) {
       if (!sessionEnded) {
         for (const open of state.openInstructions) this.finishInstruction(cemId, open, InstructionStatus.ABORTED)
@@ -446,7 +448,7 @@ export class FRBCController {
       state.openInstructions = []
       this.saveOpenInstructions()
     }
-    if (state?.selected) {
+    if (flowSawSelected) {
       state.selected = false
       state.lastSentFillLevel = undefined
       this.opts.onEmitInstruction({ topic: 'Deselected', payload: reason, cemId })
