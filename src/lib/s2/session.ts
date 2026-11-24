@@ -41,6 +41,16 @@ export const State = Object.freeze({
 
 export type StateValue = (typeof State)[keyof typeof State]
 
+// A control type may never report a final status (s2-ombc doesn't), so only the newest are kept.
+const MAX_OPEN_INSTRUCTIONS = 1000
+
+const FINAL_INSTRUCTION_STATUSES: InstructionStatusValue[] = [
+  InstructionStatus.REJECTED,
+  InstructionStatus.REVOKED,
+  InstructionStatus.SUCCEEDED,
+  InstructionStatus.ABORTED
+]
+
 /** Control-type-namespaced status payload, e.g. `{ ombc: OMBCStatusConfig }`. */
 export interface StatusPayload {
   ombc?: OMBCStatusConfig
@@ -102,6 +112,7 @@ export class S2Session {
   private readonly _sentMessages: Map<string, { msg: object, retryCount: number }>
   private readonly _retryTimers: Map<string, ReturnType<typeof setTimeout>>
   private readonly _warnedNullFields: Set<string>
+  private readonly _openInstructions: Set<string>
   private _state: StateValue
   private _selectedControlType: ControlTypeValue | string
   private _lastKeepAlive: Date | null
@@ -120,6 +131,7 @@ export class S2Session {
     this._sentMessages = new Map()
     this._retryTimers = new Map()
     this._warnedNullFields = new Set()
+    this._openInstructions = new Set()
 
     this._state = State.HANDSHAKING
     this._selectedControlType = ControlType.NO_SELECTION
@@ -243,8 +255,15 @@ export class S2Session {
       }
 
       case MessageType.REVOKE_OBJECT:
-        this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
+        if ((msg.object_type as string).endsWith('Instruction') && !this._openInstructions.has(msg.object_id as string)) {
+          this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.PERMANENT_ERROR, `No open instruction ${msg.object_id as string}`))
+          break
+        }
+        // Forward before the OK: s2-rm sends REVOKED for an instruction it still holds, and
+        // EN 50491-12-2 §9.6.10 requires that status by the time the CEM gets the OK. For one
+        // already passed on to the flow, the control-type node's REVOKED follows the OK.
         this._onMessage(msg)
+        this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
         break
 
       case MessageType.INSTRUCTION:
@@ -367,6 +386,7 @@ export class S2Session {
    * @param status - one of InstructionStatus values
    */
   sendInstructionStatus (instructionId: string, status: InstructionStatusValue): void {
+    if (FINAL_INSTRUCTION_STATUSES.includes(status)) this._openInstructions.delete(instructionId)
     this._send(makeInstructionStatusUpdate(instructionId, status))
   }
 
@@ -436,6 +456,8 @@ export class S2Session {
     // this one is a single cheap message per instruction, unlike the higher-frequency STARTED
     // updates that flag is meant to reduce.
     if (typeof instructionId === 'string') {
+      if (this._openInstructions.size >= MAX_OPEN_INSTRUCTIONS) this._openInstructions.delete(this._openInstructions.values().next().value as string)
+      this._openInstructions.add(instructionId)
       this._send(makeInstructionStatusUpdate(instructionId, InstructionStatus.ACCEPTED))
     }
     this._onInstruction(msg)

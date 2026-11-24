@@ -288,6 +288,24 @@ describe('S2ResourceManager - queued instruction at its execution time', () => {
     expect(statuses).toEqual(status ? [status] : [])
   })
 
+  it.each([
+    { what: 'an OMBC instruction', skipInstructionStatus: false, instruction: { message_type: MessageType.OMBC_INSTRUCTION, operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false } },
+    { what: 'an OMBC instruction, with skipInstructionStatus', skipInstructionStatus: true, instruction: { message_type: MessageType.OMBC_INSTRUCTION, operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false } },
+    { what: 'a PPBC schedule instruction', skipInstructionStatus: false, instruction: { message_type: MessageType.PPBC_SCHEDULE_INSTRUCTION, power_profile_id: 'profile-1', sequence_container_id: 'container-1', power_sequence_id: 'sequence-1', abnormal_condition: false } }
+  ])('answers a revoke of $what with REVOKED, then OK, and never forwards the instruction', ({ skipInstructionStatus, instruction }) => {
+    jest.useFakeTimers()
+    const { rm, cemMsgs, transportMsgs } = setup({ pollIntervalMs: 1000, skipInstructionStatus })
+    connectAndHandshake(rm)
+    rm.handleInput(message('cem-1', { ...instruction, message_id: 'msg-1', id: 'instr-1', execution_time: new Date(Date.now() + 5000).toISOString() }), jest.fn())
+    transportMsgs.length = 0
+
+    rm.handleInput(message('cem-1', { message_type: MessageType.REVOKE_OBJECT, message_id: 'rv-1', object_id: 'instr-1', object_type: instruction.message_type }), jest.fn())
+    jest.advanceTimersByTime(6000)
+
+    expect(transportMsgs.map(m => (m?.payload as { message: Record<string, unknown> }).message).map(m => m.status_type ?? m.status)).toEqual(['REVOKED', 'OK'])
+    expect(cemMsgs.some(m => m?.topic === instruction.message_type)).toBe(false)
+  })
+
   it('keeps the queues of two resource managers that share one flow context apart', () => {
     jest.useFakeTimers()
     const shared: Record<string, unknown> = {}

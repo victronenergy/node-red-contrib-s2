@@ -798,55 +798,43 @@ describe('S2Session RevokeObject', () => {
     return mocks
   }
 
-  it('acks RevokeObject with ReceptionStatus OK', () => {
-    const { session, onSend } = connectedSession()
+  const instruction = { message_type: MessageType.OMBC_INSTRUCTION, message_id: 'm1', id: 'instr-1', execution_time: '2026-01-01T00:00:00Z', operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false }
 
-    session.handleMessage(raw({
-      message_type: MessageType.REVOKE_OBJECT,
-      message_id: 'rv1',
-      object_id: 'instr-1',
-      object_type: 'OMBC.Instruction'
-    }))
+  it.each([
+    { what: 'an open instruction', before: [], type: 'OMBC.Instruction', status: 'OK' },
+    { what: 'an instruction that is still STARTED', before: ['STARTED'], type: 'OMBC.Instruction', status: 'OK' },
+    { what: 'an unknown instruction', before: null, type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'an unknown PPBC instruction', before: null, type: 'PPBC.ScheduleInstruction', status: 'PERMANENT_ERROR' },
+    { what: 'a REJECTED instruction', before: ['REJECTED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'a REVOKED instruction', before: ['REVOKED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'a SUCCEEDED instruction', before: ['STARTED', 'SUCCEEDED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'an ABORTED instruction', before: ['ABORTED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
+    { what: 'an object that is not an instruction', before: null, type: 'PEBC.PowerConstraints', status: 'OK' }
+  ] as const)('answers a RevokeObject for $what with $status, and forwards it only when OK', ({ before, type, status }) => {
+    const { session, onSend, onMessage } = connectedSession()
+    if (before) {
+      session.handleMessage(raw(instruction))
+      for (const s of before) session.sendInstructionStatus('instr-1', s)
+    }
+    onSend.mockClear()
+    onMessage.mockClear()
 
-    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
-      message_type: MessageType.RECEPTION_STATUS,
-      subject_message_id: 'rv1',
-      status: 'OK'
-    }))
+    session.handleMessage(raw({ message_type: MessageType.REVOKE_OBJECT, message_id: 'rv1', object_id: 'instr-1', object_type: type }))
+
+    expect(onSend.mock.calls.map(c => c[0])).toEqual([
+      expect.objectContaining({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'rv1', status })
+    ])
+    expect(onMessage).toHaveBeenCalledTimes(status === 'OK' ? 1 : 0)
   })
 
-  it('forwards RevokeObject via onMessage', () => {
-    const onInstruction = jest.fn()
-    const { session, onMessage } = connectedSession()
-
-    session.handleMessage(raw({
-      message_type: MessageType.REVOKE_OBJECT,
-      message_id: 'rv2',
-      object_id: 'instr-2',
-      object_type: 'PEBC.Instruction'
-    }))
-
-    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
-      message_type: MessageType.REVOKE_OBJECT,
-      object_id: 'instr-2'
-    }))
-    expect(onInstruction).not.toHaveBeenCalled()
-  })
-
-  it('does not send InstructionStatusUpdate for RevokeObject', () => {
+  it('forgets the oldest open instruction beyond 1000', () => {
     const { session, onSend } = connectedSession()
+    for (let i = 0; i <= 1000; i++) session.handleMessage(raw({ ...instruction, message_id: `m${i}`, id: `instr-${i}` }))
+    onSend.mockClear()
 
-    session.handleMessage(raw({
-      message_type: MessageType.REVOKE_OBJECT,
-      message_id: 'rv3',
-      object_id: 'instr-3',
-      object_type: 'OMBC.Instruction'
-    }))
+    for (const i of [0, 1000]) session.handleMessage(raw({ message_type: MessageType.REVOKE_OBJECT, message_id: `rv${i}`, object_id: `instr-${i}`, object_type: 'OMBC.Instruction' }))
 
-    const hasStatusUpdate = onSend.mock.calls.some(
-      (c: unknown[]) => (c[0] as Record<string, unknown>).message_type === MessageType.INSTRUCTION_STATUS_UPDATE
-    )
-    expect(hasStatusUpdate).toBe(false)
+    expect(onSend.mock.calls.map(c => c[0].status)).toEqual(['PERMANENT_ERROR', 'OK'])
   })
 })
 

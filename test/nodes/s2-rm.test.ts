@@ -878,31 +878,12 @@ describe('s2-rm - RevokeObject handling', () => {
     expect(revoked).toBeDefined()
   })
 
-  it('does not send InstructionStatusUpdate(REVOKED) for an unknown/already-cleared instruction', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-    ;(node.send as jest.Mock).mockClear()
-
-    sendRevokeObject(handlers, 'instr-unknown', 'OMBC.Instruction')
-
-    const port1Calls = (node.send as jest.Mock).mock.calls.filter(
-      (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[0] !== null
-    )
-    const revoked = port1Calls.find(
-      (c: unknown[]) => {
-        const msg = ((c[0] as unknown[])[0] as { payload?: { message?: Record<string, unknown> } })?.payload?.message
-        return msg?.message_type === MessageType.INSTRUCTION_STATUS_UPDATE && msg?.status_type === 'REVOKED'
-      }
-    )
-    expect(revoked).toBeUndefined()
-  })
-
   it('forwards RevokeObject on port 2', () => {
     const { node, handlers } = setupNode({})
     connectCem(handlers)
     ;(node.send as jest.Mock).mockClear()
 
-    sendRevokeObject(handlers, 'instr-unknown', 'OMBC.Instruction')
+    sendRevokeObject(handlers, 'constraints-1', 'PEBC.PowerConstraints')
 
     const port2Calls = (node.send as jest.Mock).mock.calls.filter(
       (c: unknown[]) => Array.isArray(c[0]) && (c[0] as unknown[])[1] !== null
@@ -910,29 +891,7 @@ describe('s2-rm - RevokeObject handling', () => {
     expect(port2Calls.length).toBeGreaterThan(0)
     const payload = ((port2Calls[0][0] as unknown[])[1] as { payload: Record<string, unknown> }).payload
     expect(payload.message_type).toBe(MessageType.REVOKE_OBJECT)
-    expect(payload.object_id).toBe('instr-unknown')
-  })
-
-  it('is harmless when revoked object_id does not match any pending instruction', () => {
-    const { node, handlers } = setupNode({})
-    connectCem(handlers)
-
-    const done = jest.fn()
-    handlers.input({
-      payload: {
-        command: 'Message',
-        cemId: 'cem-1',
-        message: serialize({
-          message_type: MessageType.REVOKE_OBJECT,
-          message_id: 'rv-noop',
-          object_id: 'no-such-id',
-          object_type: 'OMBC.Instruction'
-        })
-      }
-    }, jest.fn(), done)
-
-    expect(done).toHaveBeenCalledWith()
-    expect(node.error as jest.Mock).not.toHaveBeenCalled()
+    expect(payload.object_id).toBe('constraints-1')
   })
 })
 

@@ -205,15 +205,14 @@ export class S2ResourceManager {
         if (msg.message_type === MessageType.REVOKE_OBJECT) {
           const revokedId = (msg as { object_id?: string }).object_id
           const revokedObjectType = (msg as { object_type?: string }).object_type
-          if (revokedId && revokedObjectType && revokedObjectType.endsWith('.Instruction')) {
+          if (revokedId && revokedObjectType && revokedObjectType.endsWith('Instruction')) {
             const pending = this.getPending()
             const revokedItem = pending.find(p => p.instructionId === revokedId)
             if (revokedItem) {
               this.setPending(pending.filter(p => p.instructionId !== revokedId))
-              if (!this.isSkipInstructionStatus) {
-                const sess = this.sessions.get(cemId)
-                if (sess) sess.sendInstructionStatus(revokedId, InstructionStatus.REVOKED)
-              }
+              // Not gated by skipInstructionStatus: S2 requires a final status for every instruction.
+              const sess = this.sessions.get(cemId)
+              if (sess) sess.sendInstructionStatus(revokedId, InstructionStatus.REVOKED)
             }
           }
         }
