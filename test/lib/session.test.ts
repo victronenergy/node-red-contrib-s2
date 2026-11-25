@@ -801,17 +801,20 @@ describe('S2Session RevokeObject', () => {
   const instruction = { message_type: MessageType.OMBC_INSTRUCTION, message_id: 'm1', id: 'instr-1', execution_time: '2026-01-01T00:00:00Z', operation_mode_id: 'mode-1', operation_mode_factor: 1, abnormal_condition: false }
 
   it.each([
-    { what: 'an open instruction', before: [], type: 'OMBC.Instruction', status: 'OK' },
-    { what: 'an instruction that is still STARTED', before: ['STARTED'], type: 'OMBC.Instruction', status: 'OK' },
-    { what: 'an unknown instruction', before: null, type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
-    { what: 'an unknown PPBC instruction', before: null, type: 'PPBC.ScheduleInstruction', status: 'PERMANENT_ERROR' },
-    { what: 'a REJECTED instruction', before: ['REJECTED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
-    { what: 'a REVOKED instruction', before: ['REVOKED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
-    { what: 'a SUCCEEDED instruction', before: ['STARTED', 'SUCCEEDED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
-    { what: 'an ABORTED instruction', before: ['ABORTED'], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR' },
-    { what: 'a PEBC instruction from an earlier session', before: null, type: 'PEBC.Instruction', status: 'OK' },
-    { what: 'an object that is not an instruction', before: null, type: 'PEBC.PowerConstraints', status: 'OK' }
-  ] as const)('answers a RevokeObject for $what with $status, and forwards it only when OK', ({ before, type, status }) => {
+    { what: 'an open FRBC instruction', before: [], type: 'FRBC.Instruction', status: 'OK', forwarded: true },
+    { what: 'an FRBC instruction that is still STARTED', before: ['STARTED'], type: 'FRBC.Instruction', status: 'OK', forwarded: true },
+    { what: 'an open PEBC instruction', before: [], type: 'PEBC.Instruction', status: 'OK', forwarded: true },
+    { what: 'an open OMBC instruction', before: [], type: 'OMBC.Instruction', status: 'PERMANENT_ERROR', forwarded: true },
+    { what: 'an open PPBC instruction', before: [], type: 'PPBC.ScheduleInstruction', status: 'PERMANENT_ERROR', forwarded: true },
+    { what: 'an unknown instruction', before: null, type: 'FRBC.Instruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'an unknown PPBC instruction', before: null, type: 'PPBC.ScheduleInstruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'a REJECTED instruction', before: ['REJECTED'], type: 'FRBC.Instruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'a REVOKED instruction', before: ['REVOKED'], type: 'FRBC.Instruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'a SUCCEEDED instruction', before: ['STARTED', 'SUCCEEDED'], type: 'FRBC.Instruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'an ABORTED instruction', before: ['ABORTED'], type: 'FRBC.Instruction', status: 'PERMANENT_ERROR', forwarded: false },
+    { what: 'a PEBC instruction from an earlier session', before: null, type: 'PEBC.Instruction', status: 'OK', forwarded: true },
+    { what: 'an object that is not an instruction', before: null, type: 'PEBC.PowerConstraints', status: 'OK', forwarded: true }
+  ] as const)('answers a RevokeObject for $what with $status', ({ before, type, status, forwarded }) => {
     const { session, onSend, onMessage } = connectedSession()
     if (before) {
       session.handleMessage(raw(instruction))
@@ -825,7 +828,7 @@ describe('S2Session RevokeObject', () => {
     expect(onSend.mock.calls.map(c => c[0])).toEqual([
       expect.objectContaining({ message_type: MessageType.RECEPTION_STATUS, subject_message_id: 'rv1', status })
     ])
-    expect(onMessage).toHaveBeenCalledTimes(status === 'OK' ? 1 : 0)
+    expect(onMessage).toHaveBeenCalledTimes(forwarded ? 1 : 0)
   })
 
   it('forgets the oldest open instruction beyond 1000', () => {
@@ -833,7 +836,7 @@ describe('S2Session RevokeObject', () => {
     for (let i = 0; i <= 1000; i++) session.handleMessage(raw({ ...instruction, message_id: `m${i}`, id: `instr-${i}` }))
     onSend.mockClear()
 
-    for (const i of [0, 1000]) session.handleMessage(raw({ message_type: MessageType.REVOKE_OBJECT, message_id: `rv${i}`, object_id: `instr-${i}`, object_type: 'OMBC.Instruction' }))
+    for (const i of [0, 1000]) session.handleMessage(raw({ message_type: MessageType.REVOKE_OBJECT, message_id: `rv${i}`, object_id: `instr-${i}`, object_type: 'FRBC.Instruction' }))
 
     expect(onSend.mock.calls.map(c => c[0].status)).toEqual(['PERMANENT_ERROR', 'OK'])
   })

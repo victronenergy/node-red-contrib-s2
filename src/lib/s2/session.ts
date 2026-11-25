@@ -51,6 +51,8 @@ const FINAL_INSTRUCTION_STATUSES: InstructionStatusValue[] = [
   InstructionStatus.ABORTED
 ]
 
+const REVOCABLE_INSTRUCTION_TYPES: string[] = [MessageType.FRBC_INSTRUCTION, MessageType.PEBC_INSTRUCTION]
+
 /** Control-type-namespaced status payload, e.g. `{ ombc: OMBCStatusConfig }`. */
 export interface StatusPayload {
   ombc?: OMBCStatusConfig
@@ -261,10 +263,14 @@ export class S2Session {
           this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.PERMANENT_ERROR, `No open instruction ${msg.object_id as string}`))
           break
         }
-        // Forward before the OK: s2-rm sends REVOKED for an instruction it still holds, and
-        // EN 50491-12-2 §9.6.10 requires that status by the time the CEM gets the OK. For one
-        // already passed on to the flow, the control-type node's REVOKED follows the OK.
+        // Forward before answering: s2-rm sends REVOKED for an instruction it still holds, and
+        // EN 50491-12-2 §9.6.10 requires that status by the time the CEM gets the OK. One already
+        // passed on is revoked only by s2-frbc or s2-pebc, whose REVOKED follows the OK.
         this._onMessage(msg)
+        if (this._openInstructions.has(msg.object_id as string) && !REVOCABLE_INSTRUCTION_TYPES.includes(msg.object_type as string)) {
+          this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.PERMANENT_ERROR, `Instruction ${msg.object_id as string} can no longer be revoked`))
+          break
+        }
         this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.OK))
         break
 
