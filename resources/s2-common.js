@@ -111,6 +111,48 @@ window.__s2Common.versionAtLeast = function (version, minimum) {
   return true
 }
 
+// Keeps a dialog's Update or Done button $ok disabled until a delayed check of its values passes,
+// and shows the check's errors in $err. check(done) calls done({ valid, errors }). Pass the button
+// and error box found in oneditprepare, and let check read inputs captured there with val(). The
+// timer may fire after the dialog closed, or while the "..." JSON editor has it detached: then a
+// lookup by id finds nothing, typedInput() throws, and another dialog's button may have that id.
+window.__s2Common.validationGate = function ($ok, $err, check) {
+  let timer = null
+  let seq = 0
+
+  function set (result) {
+    const valid = !!result.valid
+    $ok.prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
+    if (valid) {
+      $err.hide()
+    } else {
+      $err.empty()
+      ;(result.errors || []).forEach(function (e) { $('<div>').text(e).appendTo($err) })
+      $err.show()
+    }
+  }
+
+  return {
+    schedule: function () {
+      const mine = ++seq
+      // No saving until these values pass.
+      $ok.prop('disabled', true).addClass('ui-state-disabled')
+      clearTimeout(timer)
+      timer = setTimeout(function () {
+        check(function (result) {
+          if (mine === seq) set(result)
+        })
+      }, 400)
+    },
+    // For values that are valid by construction; drops a check still under way.
+    pass: function () {
+      seq++
+      clearTimeout(timer)
+      set({ valid: true })
+    }
+  }
+}
+
 window.__s2Common.initializeTooltips = function () {
   $('.s2-tooltip-container').remove()
   $('.s2-form .tooltip-icon').off('mouseenter.s2 mouseleave.s2')

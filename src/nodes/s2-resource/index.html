@@ -268,36 +268,20 @@
         // specific error while the Advanced JSON violates the real OMBC.SystemDescription schema.
         // Friendly mode always produces valid JSON by construction, so the gate is only armed
         // while Advanced mode is active.
-        let schemaValidateTimer = null
-        let schemaValidateSeq = 0
-
-        function setSchemaGate (valid, errorText) {
-          $('#node-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-          const $err = $('#s2-resource-ombc-schema-error')
-          if (errorText) {
-            $err.text(errorText).show()
-          } else {
-            $err.hide()
-          }
-        }
+        const $sd = $('#node-input-systemDescription')
+        const gate = window.__s2Common.validationGate($('#node-dialog-ok'), $('#s2-resource-ombc-schema-error'), function (done) {
+          ombcEditor.validateSystemDescription($sd.val(), done)
+        })
 
         function scheduleSchemaValidation () {
           if (currentOmbcMode !== 'advanced') {
-            setSchemaGate(true)
+            gate.pass()
             return
           }
-          const seq = ++schemaValidateSeq
-          clearTimeout(schemaValidateTimer)
-          schemaValidateTimer = setTimeout(function () {
-            const rawJson = $('#node-input-systemDescription').typedInput('value')
-            ombcEditor.validateSystemDescription(rawJson, function (result) {
-              if (seq !== schemaValidateSeq) return
-              setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
-            })
-          }, 400)
+          gate.schedule()
         }
 
-        $('#node-input-systemDescription').on('change input', scheduleSchemaValidation)
+        $sd.on('change input', scheduleSchemaValidation)
 
         function showOmbcFriendlySection () {
           currentOmbcMode = 'friendly'
@@ -307,7 +291,7 @@
           $('#s2-resource-ombc-tab-friendly').addClass('s2-tab-active')
           $('#s2-resource-ombc-tab-advanced').removeClass('s2-tab-active')
           refreshDefaultModeOptions()
-          setSchemaGate(true)
+          gate.pass()
         }
 
         function showOmbcAdvancedSection (warningText) {

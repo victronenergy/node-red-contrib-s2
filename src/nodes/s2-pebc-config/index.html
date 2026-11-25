@@ -58,44 +58,27 @@
       // endpoint) - disables the Update button and shows a specific error while the Advanced
       // JSON violates the real PEBC.PowerConstraints schema. Friendly mode always produces valid
       // constraints by construction, so the gate is only armed while Advanced mode is active.
-      let schemaValidateTimer = null
-      let schemaValidateSeq = 0
-
-      function setSchemaGate (valid, errorText) {
-        $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-        const $err = $('#s2-pebc-schema-error')
-        if (errorText) {
-          $err.text(errorText).show()
-        } else {
-          $err.hide()
-        }
-      }
+      const $constraints = $('#node-config-input-constraints')
+      const gate = window.__s2Common.validationGate($('#node-config-dialog-ok'), $('#s2-pebc-schema-error'), function (done) {
+        $.ajax({
+          url: 's2/validate-pebc-constraints',
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({ constraints: $constraints.val() })
+        }).done(done).fail(function () {
+          done({ valid: false, errors: ['Could not reach the validation endpoint'] })
+        })
+      })
 
       function scheduleSchemaValidation () {
         if (currentMode !== 'advanced') {
-          setSchemaGate(true)
+          gate.pass()
           return
         }
-        const seq = ++schemaValidateSeq
-        clearTimeout(schemaValidateTimer)
-        schemaValidateTimer = setTimeout(function () {
-          const rawJson = $('#node-config-input-constraints').typedInput('value')
-          $.ajax({
-            url: 's2/validate-pebc-constraints',
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({ constraints: rawJson })
-          }).done(function (result) {
-            if (seq !== schemaValidateSeq) return
-            setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
-          }).fail(function () {
-            if (seq !== schemaValidateSeq) return
-            setSchemaGate(false, 'Could not reach the validation endpoint')
-          })
-        }, 400)
+        gate.schedule()
       }
 
-      $('#node-config-input-constraints').on('change input', scheduleSchemaValidation)
+      $constraints.on('change input', scheduleSchemaValidation)
 
       function showFriendlySection () {
         currentMode = 'friendly'
@@ -104,7 +87,7 @@
         $('#s2-pebc-advanced-warning').hide()
         $('#s2-pebc-tab-friendly').addClass('s2-tab-active')
         $('#s2-pebc-tab-advanced').removeClass('s2-tab-active')
-        setSchemaGate(true)
+        gate.pass()
       }
 
       function showAdvancedSection (warningText) {

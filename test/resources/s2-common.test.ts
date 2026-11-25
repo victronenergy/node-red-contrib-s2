@@ -307,3 +307,52 @@ describe('s2-common - versionAtLeast', () => {
     expect(versionAtLeast('next', '0.9.7')).toBe(false)
   })
 })
+
+describe('s2-common - validationGate', () => {
+  type Done = (result: { valid: boolean, errors?: string[] }) => void
+  interface Gate { schedule: () => void, pass: () => void }
+
+  // The dialog's Update button and error box, as far as the gate touches them.
+  function setup () {
+    const ok = { disabled: false, prop (_name: string, value: boolean) { this.disabled = value; return this }, toggleClass () { return this }, addClass () { return this } }
+    const err = { shown: false, lines: [] as string[], hide () { this.shown = false }, show () { this.shown = true }, empty () { this.lines = [] } }
+    const $ = () => ({ text: (line: string) => ({ appendTo: (box: typeof err) => box.lines.push(line) }) })
+    const window: Record<string, unknown> = {}
+    runInNewContext(readFileSync(join(__dirname, '../../resources/s2-common.js'), 'utf8'), { window, $, setTimeout, clearTimeout })
+    const checks: Done[] = []
+    const common = window.__s2Common as { validationGate: (ok: unknown, err: unknown, check: (done: Done) => void) => Gate }
+    const gate = common.validationGate(ok, err, done => checks.push(done))
+    return { ok, err, checks, gate }
+  }
+
+  beforeEach(() => { jest.useFakeTimers() })
+  afterEach(() => { jest.useRealTimers() })
+
+  it('keeps Update disabled until the check passes, and shows its errors', () => {
+    const { ok, err, checks, gate } = setup()
+    gate.schedule()
+    expect(ok.disabled).toBe(true)
+    jest.advanceTimersByTime(400)
+    checks[0]({ valid: false, errors: ['bad'] })
+    expect(ok.disabled).toBe(true)
+    expect(err).toMatchObject({ shown: true, lines: ['bad'] })
+    gate.schedule()
+    jest.advanceTimersByTime(400)
+    checks[1]({ valid: true })
+    expect(ok.disabled).toBe(false)
+    expect(err.shown).toBe(false)
+  })
+
+  it.each([
+    ['a newer check', (gate: Gate) => { gate.schedule(); jest.advanceTimersByTime(400) }],
+    ['pass()', (gate: Gate) => gate.pass()]
+  ])('ignores a late answer once %s overtook it', (_name, overtake) => {
+    const { ok, checks, gate } = setup()
+    gate.schedule()
+    jest.advanceTimersByTime(400)
+    overtake(gate)
+    checks[1]?.({ valid: true })
+    checks[0]({ valid: false, errors: ['stale'] })
+    expect(ok.disabled).toBe(false)
+  })
+})

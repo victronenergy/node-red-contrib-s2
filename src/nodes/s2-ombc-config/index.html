@@ -37,36 +37,20 @@
         // Advanced JSON violates the real OMBC.SystemDescription schema, so an invalid
         // systemDescription can't be saved silently. Friendly mode always produces valid JSON by
         // construction, so the gate is only armed while Advanced mode is active.
-        let schemaValidateTimer = null
-        let schemaValidateSeq = 0
-
-        function setSchemaGate (valid, errorText) {
-          $('#node-config-dialog-ok').prop('disabled', !valid).toggleClass('ui-state-disabled', !valid)
-          const $err = $('#s2-ombc-schema-error')
-          if (errorText) {
-            $err.text(errorText).show()
-          } else {
-            $err.hide()
-          }
-        }
+        const $sd = $('#node-config-input-systemDescription')
+        const gate = window.__s2Common.validationGate($('#node-config-dialog-ok'), $('#s2-ombc-schema-error'), function (done) {
+          editor.validateSystemDescription($sd.val(), done)
+        })
 
         function scheduleSchemaValidation () {
           if (currentMode !== 'advanced') {
-            setSchemaGate(true)
+            gate.pass()
             return
           }
-          const seq = ++schemaValidateSeq
-          clearTimeout(schemaValidateTimer)
-          schemaValidateTimer = setTimeout(function () {
-            const rawJson = $('#node-config-input-systemDescription').typedInput('value')
-            editor.validateSystemDescription(rawJson, function (result) {
-              if (seq !== schemaValidateSeq) return
-              setSchemaGate(!!result.valid, result.valid ? null : (result.errors || []).join('; '))
-            })
-          }, 400)
+          gate.schedule()
         }
 
-        $('#node-config-input-systemDescription').on('change input', scheduleSchemaValidation)
+        $sd.on('change input', scheduleSchemaValidation)
 
         function showFriendlySection () {
           currentMode = 'friendly'
@@ -75,7 +59,7 @@
           $('#s2-ombc-advanced-warning').hide()
           $('#s2-ombc-tab-friendly').addClass('s2-tab-active')
           $('#s2-ombc-tab-advanced').removeClass('s2-tab-active')
-          setSchemaGate(true)
+          gate.pass()
         }
 
         function showAdvancedSection (warningText) {
