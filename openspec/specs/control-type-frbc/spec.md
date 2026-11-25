@@ -66,7 +66,7 @@ When `s2-frbc` observes on `s2-rm`'s "from CEM" output that a CEM selected `FILL
 - **THEN** the replayed `UpdateStatus` does not include it
 
 ### Requirement: Selection events
-`s2-frbc` SHALL emit `{ topic: 'Selected', cemId }` on its instruction output when a CEM selects FRBC, and `{ topic: 'Deselected', cemId }` when that CEM later selects another control type or disconnects.
+`s2-frbc` SHALL emit `{ topic: 'Selected', cemId }` on its instruction output when a CEM selects FRBC, and `{ topic: 'Deselected', cemId }` when that CEM later selects another control type or disconnects. After a restart, a CEM with open instructions restored from node context counts as having FRBC selected for `Deselected`, since the flow saw it selected.
 
 #### Scenario: CEM disconnects while FRBC is selected
 - **WHEN** a CEM with FRBC selected disconnects
@@ -177,7 +177,7 @@ Status, forecast, target profile and timer inputs received while no CEM has FRBC
 - **THEN** `s2-frbc` emits `Deselected` with `reason: 'reconnected'`, and a following `StorageStatus` is stored but not sent
 
 ### Requirement: Selection recovered after a restart
-When `s2-frbc` starts, it SHALL send s2-rm a `ReplaySelection` command for `FILL_RATE_BASED_CONTROL`, and SHALL handle a replayed `SelectControlType` like a received one, so that after a partial deploy a CEM that kept FRBC selected receives the current system description and state.
+When `s2-frbc` starts, it SHALL send s2-rm a `ReplaySelection` command, and SHALL handle a replayed `SelectControlType` of any control type like a received one, so that after a partial deploy a CEM that kept FRBC selected receives the current system description and state, and open instructions restored for a CEM that switched to another control type meanwhile are reported `ABORTED`.
 
 #### Scenario: s2-frbc-config edited and deployed
 - **WHEN** only `s2-frbc` restarts while s2-rm keeps a session with FRBC selected
@@ -221,4 +221,8 @@ When the CEM revokes an `FRBC.Instruction` that `s2-frbc` already emitted and th
 #### Scenario: s2-frbc alone redeployed
 - **WHEN** an instruction is open, only `s2-frbc` is redeployed, and `s2-rm` replays the FRBC selection
 - **THEN** the open instruction is restored from node context, and the next matching `ActuatorConfirmation` reports it `SUCCEEDED`, also when it arrives before the selection is replayed; if the new configuration no longer has its actuator or mode, it is reported `ABORTED` on the replayed selection
+
+#### Scenario: CEM switches control type while s2-frbc is redeployed
+- **WHEN** an instruction is open, only `s2-frbc` is redeployed, and the CEM selects `NOT_CONTROLABLE` before the new `s2-frbc` has started
+- **THEN** on the replayed `NOT_CONTROLABLE` selection the instruction is reported `ABORTED` and the flow receives `Deselected`
 

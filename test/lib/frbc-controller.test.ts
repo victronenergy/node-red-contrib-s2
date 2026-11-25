@@ -600,10 +600,10 @@ describe('FRBCController - session lifecycle', () => {
     expect(instructions).toEqual([])
   })
 
-  it('asks s2-rm to replay the FRBC selection, and handles a replayed selection like a real one', () => {
+  it('asks s2-rm to replay the selection, and handles a replayed selection like a real one', () => {
     const { controller, input, commands, instructions } = setup()
     controller.requestSelectionReplay()
-    expect(commands).toEqual([{ command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' }])
+    expect(commands).toEqual([{ command: 'ReplaySelection' }])
 
     input({ cemId: 'cem-1', topic: 'SelectControlType', payload: { message_type: 'SelectControlType', control_type: 'FILL_RATE_BASED_CONTROL', replay: true } })
     expect(commands[1]).toMatchObject({ command: 'SystemDescription', cemId: 'cem-1' })
@@ -867,15 +867,24 @@ describe('FRBCController - instruction lifecycle (every instruction ends in a fi
       expect(statuses(commands)).toEqual(['i1:ABORTED'])
     })
 
-    it('aborts it when the CEM selects another control type instead, and drops it when the session ends', () => {
-      const switched = setup(makeConfig(), before())
-      switched.select('cem-1', 'NOT_CONTROLABLE')
-      expect(statuses(switched.commands)).toEqual(['i1:ABORTED'])
+    const replay = (controlType: string): NodeMessage =>
+      ({ cemId: 'cem-1', topic: 'SelectControlType', payload: { message_type: 'SelectControlType', control_type: controlType, replay: true } })
+    it.each([
+      ['the CEM selected another control type meanwhile', replay('OPERATION_MODE_BASED_CONTROL'), ['i1:ABORTED'], { controlType: 'OPERATION_MODE_BASED_CONTROL' }],
+      ['the CEM selected nothing meanwhile', replay('NO_SELECTION'), ['i1:ABORTED'], { controlType: 'NO_SELECTION' }],
+      ['the session was replaced', { topic: 'Connected', cemId: 'cem-1', payload: undefined }, [], { reason: 'reconnected' }]
+    ])('ends it and tells the flow Deselected when %s', (_name, msg, expectedStatuses, reason) => {
+      const { input, commands, instructions, context } = setup(makeConfig(), before())
+      input(msg as NodeMessage)
+      expect(statuses(commands)).toEqual(expectedStatuses)
+      expect(context.s2FrbcOpenInstructions).toEqual({})
+      expect(instructions).toEqual([{ topic: 'Deselected', payload: reason, cemId: 'cem-1' }])
+    })
 
-      const ended = setup(makeConfig(), before())
-      ended.input({ topic: 'Connected', cemId: 'cem-1', payload: undefined })
-      expect(statuses(ended.commands)).toEqual([])
-      expect(ended.context.s2FrbcOpenInstructions).toEqual({})
+    it('does not tell the flow Deselected for a replayed selection of a CEM it had no instructions from', () => {
+      const { input, instructions } = setup(makeConfig(), before())
+      input({ ...replay('OPERATION_MODE_BASED_CONTROL'), cemId: 'cem-2' })
+      expect(instructions).toEqual([])
     })
   })
 

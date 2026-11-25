@@ -111,6 +111,17 @@ describe('s2-ombc - system description push on control-type selection', () => {
     )
     expect(call).toBeUndefined()
   })
+
+  it.each(['OPERATION_MODE_BASED_CONTROL', 'NOT_CONTROLABLE'])('ignores a replayed selection of %s', (controlType) => {
+    const { node, handlers } = setupNode()
+    selectControlType(handlers, 'cem-1', 'OPERATION_MODE_BASED_CONTROL')
+    ;(node.send as jest.Mock).mockClear()
+
+    handlers.input({ cemId: 'cem-1', payload: { message_type: 'SelectControlType', control_type: controlType, replay: true } }, jest.fn(), jest.fn())
+    handlers.input({ cemId: 'cem-1', payload: { confirmedOperationModeId: 'mode-on' } }, jest.fn(), jest.fn())
+
+    expect(getCommandCalls(node).map(c => c.command)).toEqual(['UpdateStatus'])
+  })
 })
 
 describe('s2-ombc - instruction resolution', () => {

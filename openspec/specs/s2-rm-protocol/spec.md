@@ -25,6 +25,17 @@ The RM SHALL initiate the S2 handshake when a CEM connects, and SHALL send its `
 - **WHEN** a `Connect` command is received for a CEM and that CEM replies with `HandshakeResponse`
 - **THEN** the RM sends `ResourceManagerDetails` to the CEM and the session is marked connected
 
+### Requirement: One CEM at a time
+The RM SHALL have a session with at most one CEM at a time (EN 50491-12-2 §7.6.1). A `Connect` for another `cemId` while a session exists SHALL be refused with an error naming both CEMs, and SHALL NOT create a session.
+
+#### Scenario: Second CEM connects
+- **WHEN** a `Connect` command is received for a CEM while another CEM has a session
+- **THEN** the RM reports an error naming both CEMs, creates no session, and treats the second CEM's messages like those of any unknown CEM
+
+#### Scenario: Same CEM connects again
+- **WHEN** a `Connect` command is received for the CEM that already has a session
+- **THEN** the RM replaces that session, as before
+
 ### Requirement: Control-type selection without control-type-specific behavior
 The RM SHALL acknowledge `SelectControlType` and SHALL NOT itself send any control-type-specific system description or status message. Providing those is the responsibility of a dedicated control-type node (see `control-type-ombc`, `control-type-pebc`).
 
@@ -134,10 +145,6 @@ In either form, once the new list is determined, the RM SHALL re-send `ResourceM
 - **WHEN** a `SetAvailableControlTypes` command is received before any CEM has connected
 - **THEN** the next CEM to complete the handshake receives a `ResourceManagerDetails` reflecting the updated list
 
-#### Scenario: Multiple connected CEMs
-- **WHEN** a `SetAvailableControlTypes` command is received while more than one CEM session is connected
-- **THEN** each connected CEM receives its own updated `ResourceManagerDetails` reflecting the new list
-
 #### Scenario: isControllable false preserves the initial Not Controllable choice
 - **WHEN** a `SetAvailableControlTypes` command `{ isControllable: false }` is received
 - **THEN** the RM advertises exactly `['NOT_CONTROLABLE']` if it was present in the deploy-time configured list, otherwise it rejects the command because an empty S2 control-type list is invalid
@@ -229,11 +236,11 @@ The editor SHALL mark an `s2-rm` node invalid, with a message saying another `s2
 - **THEN** the pasted `s2-rm` is marked invalid in the editor before deploy, with a message saying another `s2-rm` uses the same `s2-rm-config`; the original is marked as well the next time the editor validates it (e.g. when the flows are reloaded)
 
 ### Requirement: Selection replay command
-The RM SHALL accept a `ReplaySelection` command with a `controlType` and no `cemId`. For every connected CEM whose selected control type equals it, the RM SHALL emit `SelectControlType` with that control type and `replay: true` on its "from CEM" output, and SHALL send nothing to any CEM. Without a `controlType` the command SHALL be rejected.
+The RM SHALL accept a `ReplaySelection` command without a `cemId`. For every connected CEM, the RM SHALL emit `SelectControlType` with the control type that CEM has selected, of any type, and `replay: true` on its "from CEM" output, and SHALL send nothing to any CEM. A `controlType` in the command SHALL be ignored.
 
-#### Scenario: One of two CEMs has FRBC selected
-- **WHEN** CEM A has FRBC selected, CEM B has OMBC selected, and `{ command: 'ReplaySelection', controlType: 'FILL_RATE_BASED_CONTROL' }` arrives
-- **THEN** the RM emits one `SelectControlType` for A with `replay: true`, and nothing for B or to either CEM
+#### Scenario: CEM with another control type selected
+- **WHEN** the connected CEM has OMBC selected and `{ command: 'ReplaySelection' }` arrives
+- **THEN** the RM emits `SelectControlType` OMBC with `replay: true`, and sends nothing to the CEM
 
 #### Scenario: No sessions after a full deploy
 - **WHEN** `ReplaySelection` arrives and no CEM is connected

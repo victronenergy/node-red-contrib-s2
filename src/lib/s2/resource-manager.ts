@@ -144,9 +144,7 @@ export class S2ResourceManager {
     if (changed) this.setPending(remaining)
   }
 
-  // S2 is a 1:1 CEM<->RM relationship, so the common case (one session) gets a
-  // singular status naming the connected CEM. Multiple concurrent sessions are
-  // technically possible (the map is keyed by cemId), so that case still shows a count.
+  // S2 is a 1:1 CEM<->RM relationship, so the status names the connected CEM.
   //
   // The currently-advertised control types are appended as a suffix (rather than woven into
   // the sentence) so SetAvailableControlTypes' effect is visible in node.status without
@@ -335,19 +333,15 @@ export class S2ResourceManager {
     }
 
     // ReplaySelection lets a control-type node that restarted while s2-rm kept its sessions (a
-    // modified-nodes deploy) learn which CEMs still have its control type selected: the
-    // selection is re-emitted on the "from CEM" output, marked replay: true, only for those
-    // CEMs. Nothing is sent to any CEM.
+    // modified-nodes deploy) learn each connected CEM's current selection: it is re-emitted on
+    // the "from CEM" output, marked replay: true. Selections of every control type are
+    // replayed: a node that restarted may have missed a switch away from its type. Nothing is
+    // sent to any CEM.
     if (command === 'ReplaySelection') {
-      const { controlType } = msg.payload as { controlType?: unknown }
-      if (typeof controlType !== 'string' || !controlType) {
-        done(new Error('ReplaySelection requires a controlType string'))
-        return
-      }
       for (const [sessionCemId, session] of this.sessions) {
-        if (session.state === State.CONNECTED && session.selectedControlType === controlType) {
+        if (session.state === State.CONNECTED) {
           this.opts.onEmitToCem({
-            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: controlType, replay: true },
+            payload: { message_type: MessageType.SELECT_CONTROL_TYPE, control_type: session.selectedControlType, replay: true },
             cemId: sessionCemId,
             topic: MessageType.SELECT_CONTROL_TYPE
           })
@@ -415,6 +409,12 @@ export class S2ResourceManager {
 
     switch (command) {
       case 'Connect': {
+        // S2 allows a resource manager one CEM at a time (EN 50491-12-2 §7.6.1).
+        const [connectedCemId] = this.sessions.keys()
+        if (connectedCemId !== undefined && connectedCemId !== cemId) {
+          done(new Error(`CEM ${cemId} refused: CEM ${connectedCemId} is already connected, and S2 allows one CEM per resource manager`))
+          return
+        }
         if (this.sessions.has(cemId)) {
           this.opts.onWarn(`CEM ${cemId} connected again without prior Disconnect - replacing session`)
           this.sessions.get(cemId)!.dispose()
