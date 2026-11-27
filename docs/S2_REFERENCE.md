@@ -200,8 +200,10 @@ The RM acks every instruction immediately with `ReceptionStatus` and `Instructio
 An instruction whose `execution_time` is in the future is queued (in flow context, polled every
 `instructionPollIntervalMs`) and forwarded when due; one that is due already is forwarded at once.
 On forwarding, the RM sends `InstructionStatusUpdate(STARTED)`, unless "Skip instruction status updates" is
-checked in the RM config. A `RevokeObject` for a queued instruction removes it and sends `REVOKED`. PEBC
-instructions skip this queue: `s2-pebc` schedules them itself.
+checked in the RM config. A `RevokeObject` for a queued instruction removes it and sends `REVOKED`;
+one for an unknown or finished instruction, or for an OMBC or PPBC instruction already forwarded, is
+rejected with `PERMANENT_ERROR`. PEBC instructions skip this queue: `s2-pebc` schedules them itself,
+keeps them across sessions and answers their revokes.
 
 ### 5. Disconnect
 
