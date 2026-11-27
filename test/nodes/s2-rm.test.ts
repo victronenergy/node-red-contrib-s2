@@ -838,6 +838,10 @@ describe('s2-rm - RevokeObject handling', () => {
       }
     )
     expect(revoked).toBeUndefined()
+    const reception = port1Calls.find(
+      (c: unknown[]) => ((c[0] as unknown[])[0] as { payload?: { message?: Record<string, unknown> } })?.payload?.message?.message_type === MessageType.RECEPTION_STATUS
+    )
+    expect(((reception![0] as unknown[])[0] as { payload: { message: Record<string, unknown> } }).payload.message.status).toBe('OK')
   })
 
   it('sends InstructionStatusUpdate(REVOKED) to the CEM when a pending instruction is revoked', () => {

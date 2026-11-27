@@ -267,7 +267,8 @@ export class S2Session {
         // EN 50491-12-2 §9.6.10 requires that status by the time the CEM gets the OK. One already
         // passed on is revoked only by s2-frbc or s2-pebc, whose REVOKED follows the OK.
         this._onMessage(msg)
-        if (this._openInstructions.has(msg.object_id as string) && !REVOCABLE_INSTRUCTION_TYPES.includes(msg.object_type as string)) {
+        if ((msg.object_type as string).endsWith('Instruction') && this._openInstructions.has(msg.object_id as string) &&
+            !REVOCABLE_INSTRUCTION_TYPES.includes(msg.object_type as string)) {
           this._send(makeReceptionStatus(msg.message_id as string, ReceptionStatusResult.PERMANENT_ERROR, `Instruction ${msg.object_id as string} can no longer be revoked`))
           break
         }
