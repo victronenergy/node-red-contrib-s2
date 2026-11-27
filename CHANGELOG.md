@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.1.1]
+
+### Changed
+
+- `dbus-native-victron` is now required at `^0.4.13`, which loads `xml2js` only when it introspects and has its dependencies updated for `npm audit`.
 
 ### Fixed
 
