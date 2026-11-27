@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-s2",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Node-RED nodes for S2 energy management protocol (EN 50491-12-2)",
   "author": "Victron Energy BV",
   "repository": {
@@ -57,7 +57,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "dbus-native-victron": "^0.4.12",
+    "dbus-native-victron": "^0.4.13",
     "dbus-victron-virtual": "^0.1.37",
     "ws": "^8.18.0"
   },
